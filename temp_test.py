@@ -4,7 +4,7 @@ import os
 from time import time
 
 p = r'D:\Projects\Python\AutomaticBackup\local_mirror_1.db'
-#db = MirrorDataBase(p, reset=True)
+# db = MirrorDatabase(p, reset=True)
 # print(len(db.get_keys()))
 # for i in range(1000):
 #     db.add(i, i)
@@ -12,7 +12,8 @@ p = r'D:\Projects\Python\AutomaticBackup\local_mirror_1.db'
 
 def encode_stats(stats):
     return base64.b64encode(hashlib.md5(str(stats).encode()).digest())[:8]
-    #return hashlib.md5(str(stats).encode()).hexdigest()
+    # return hashlib.md5(str(stats).encode()).hexdigest()
+
 
 # print(sys.getsizeof(encode_stats('sahgahdgjkd hajkgdk jahda ghkjda hkjdg hkjhd gkjhg kjahgkjahd gka h a')))
 # print(type(encode_stats('sahgahdgjkd hajkgdk jahda ghkjda hkjdg hkjhd gkjhg kjahgkjahd gka h a')))
@@ -87,9 +88,9 @@ def search_empty_dirs(dir_path: str, all_dirs=None, all_files=None, root_call=Tr
     return empty_dirs
 
 
-#db.reset()
+# db.reset()
 
-# db = MirrorDataBase(p, reset=True)
+# db = MirrorDatabase(p, reset=True)
 # t1 = time()
 # d = {}
 # for i in range(1000):
@@ -98,7 +99,7 @@ def search_empty_dirs(dir_path: str, all_dirs=None, all_files=None, root_call=Tr
 # print(time() - t1)
 
 #
-# db = MirrorDataBase(p, reset=False)
+# db = MirrorDatabase(p, reset=False)
 # for i in range(13):
 #     print(db.get(i))
 # for i in range(13):
@@ -118,5 +119,3 @@ if __name__ == '__main__':
     t1 = time()
     print('\n'.join(search_empty_dirs(src_dir)))
     print(f'search_empty_dirs3 took {round(time() - t1, 6)}s')
-
-

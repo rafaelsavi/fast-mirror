@@ -14,6 +14,7 @@ from tkinter.scrolledtext import ScrolledText
 
 from src.backend import CompareDirs, SyncDirs
 from src.logger import logger
+from src.mirror import MirrorDatabase
 from src.utils import Counter, CustomException, round_time_to_minutes
 
 
@@ -70,7 +71,7 @@ class Gui:
     def __init__(self):
         # Initialize GUI
         self.root = tk.Tk()
-        self.root.iconbitmap('src/smiley.ico')
+        self.root.iconbitmap(os.path.join(os.path.dirname(__file__), 'smiley.ico'))
         self.root.title('Automatic Backup Tool')
 
         # Initialize variables
@@ -79,7 +80,7 @@ class Gui:
         self._backend_thread_holder = None
         self._backend_thread_status = None
         self.toggle_auto_scroll = tk.BooleanVar()
-        self.config_path = 'config.json'
+        self.config_path = os.path.join(os.path.dirname(__file__), '../config.json')
         self.check_box_value_default_actions = DefaultActions({})
         self.checkbox_value_use_mirror = tk.BooleanVar()
         self.checkbox_value_build_mirror = tk.BooleanVar()
@@ -94,6 +95,7 @@ class Gui:
         self.text_logger = TextLogger()
         self.text_var_status = tk.StringVar()
         self.text_var_next_appointment = tk.StringVar()
+        self.mirror = MirrorDatabase()
 
         # Create widgets
         self.create_widgets()
@@ -540,7 +542,7 @@ class Gui:
                     and round_time_to_minutes(datetime.datetime.now()) == round_time_to_minutes(next_appointment)
                 ):
                     logger.info('-------------------------------------')
-                    logger.info('Initializing scheduled syncronization')
+                    logger.info('Initializing scheduled synchronization')
                     self.call_backend_thread(True, next_appointment)
 
                 elif self.toggle_state_quick_compare:
@@ -583,6 +585,7 @@ class Gui:
         else:
             save_path = ''
         compare = CompareDirs(
+            mirror=self.mirror,
             dirs=self.entry_paths.get(),
             exclusions=self.entry_exclusions.get(),
             use_light_comparison=self.checkbox_value_light_comparison.get(),
@@ -595,6 +598,7 @@ class Gui:
             default_actions = self.check_box_value_default_actions.get_actions()
             SyncDirs(
                 *compare.get_results(),
+                mirror=self.mirror,
                 root_gui=self.root,
                 dirs=self.entry_paths.get(),
                 default_actions=default_actions,

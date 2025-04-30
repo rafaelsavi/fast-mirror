@@ -5,14 +5,13 @@ import stat
 import time
 import tkinter as tk
 import winsound
-from collections.abc import Iterable
 from copy import deepcopy
 
 import pandas as pd
-from sqlitedict import SqliteDict
 
 from src.custom_gui import CustomCheckboxTreeView
 from src.logger import logger
+from src.mirror import MirrorDatabase
 from src.utils import (
     Path,
     check_length,
@@ -20,121 +19,13 @@ from src.utils import (
     encode_stats,
     format_size,
     get_size,
-    is_list_of_substr_in_str,
 )
-
-
-class MirrorDataBase:
-    def __init__(self, path=r'.\local_mirror.db', reset=False):
-        self.path = path
-        if reset:
-            self.reset()
-
-    def _get_db(self):
-        try:
-            return SqliteDict(self.path, autocommit=True)
-        except Exception as e:
-            raise Exception(f'Could not access database. Exception: {e}') from e
-
-    def size(self):
-        try:
-            with self._get_db() as mirror_db:
-                return len(mirror_db)
-        except Exception as e:
-            logger.warning(f'Could not get size of database. Exception: {e}')
-            return 0
-
-    def reset(self):
-        try:
-            os.remove(self.path)
-            self._get_db()
-            return True
-        except Exception as e:
-            logger.warning(f'Could not reset database. Exception: {e}')
-            return False
-
-    def process_and_add(self, file_path: str | list[str] | set[str]):
-        def add_stats(self_, p):
-            try:
-                stats = os.stat(p)
-                stats = encode_stats(stats)
-                self_.add(os.path.normpath(p), stats)
-            except Exception as e:
-                logger.error(f'Could not add file {p} to local mirror. Exception: {e}')
-
-        if isinstance(file_path, Iterable) and not isinstance(file_path, str):
-            for _file_path in file_path:
-                add_stats(self, _file_path)
-        else:
-            add_stats(self, file_path)
-
-    def add(self, key=None, value=None, dictionary=None):
-        try:
-            with self._get_db() as mirror_db:
-                if dictionary is not None:
-                    mirror_db.update(dictionary)
-                elif key is not None and value is not None:
-                    mirror_db[key] = value
-                else:
-                    raise Exception('Missing arguments to set database')
-            return True
-        except Exception as e:
-            logger.warning(f'Could not save to database ({key}: {value}). Exception: {e}')
-            return False
-
-    def get(self, key, fallback=None):
-        def get_from_dict(d, k, f):
-            try:
-                if f:
-                    return d.get(k, f)
-                else:
-                    return d[k]
-            except KeyError:
-                logger.warning(f'Could not read key from database because it does not exist: {k}')
-                return None
-
-        try:
-            with self._get_db() as mirror_db:
-                if isinstance(key, Iterable) and not isinstance(key, str):
-                    return {get_from_dict(mirror_db, k, fallback) for k in key}
-                else:
-                    return get_from_dict(mirror_db, key, fallback)
-        except Exception as e:
-            logger.warning(f'Could not read from database (Key {key}). Exception: {e}')
-            return None
-
-    def get_keys(self, exclude: list[str] | None = None) -> set:
-        if exclude is None:
-            exclude = []
-        try:
-            with self._get_db() as mirror_db:
-                keys = mirror_db.keys()
-                if exclude is not None:
-                    return {k for k in keys if not is_list_of_substr_in_str(exclude, k)}
-                else:
-                    return set(keys)
-        except Exception as e:
-            logger.warning(f'Could not read from database. Exception: {e}')
-            return set()
-
-    def remove(self, key):
-        try:
-            with self._get_db() as mirror_db:
-                if key in mirror_db:
-                    del mirror_db[key]
-                return True
-        except Exception as e:
-            logger.warning(f'Could not remove key from database (Key {key}). Exception: {e}')
-            return False
-
-
-if 'local_mirror' not in locals():
-    local_mirror = MirrorDataBase()
 
 
 class CompareDirs:
     def __init__(
         self,
+        mirror: MirrorDatabase,
         dirs: list[tuple[str, str]],
         exclusions: list[str],
         save_report_path='',
@@ -147,6 +38,7 @@ class CompareDirs:
         logger.info('Directories:\n  ' + '\n  '.join([f'{d1}  -->  {d2}' for d1, d2 in dirs]))
         t1_compare_dirs = time.time()
 
+        self.mirror = mirror
         self.dirs = dirs
         self.exclusions = exclusions
         self.save_report_path = save_report_path
@@ -199,12 +91,12 @@ class CompareDirs:
 
     def get_files_from_source_and_local_mirror(self):
         logger.info('Starting to compare files based on local mirror')
-        logger.debug(f'Local mirror has {local_mirror.size()} entries')
+        logger.debug(f'Local mirror has {self.mirror.size()} entries')
 
         self.files_only_in_source = set()
         self.files_only_in_target = set()
         self.files_in_both = set()
-        paths_in_mirror = local_mirror.get_keys(exclude=self.exclusions)
+        paths_in_mirror = self.mirror.get_keys(exclude=self.exclusions)
         paths_in_source = {
             f.get()
             for source_dir, target_dir in self.dirs
@@ -222,7 +114,7 @@ class CompareDirs:
         paths_only_in_source = paths_in_source - paths_in_mirror  # Paths that might be new
 
         paths_in_both = paths_in_source & paths_in_mirror  # Paths that might have changed
-        mirror_stats = local_mirror.get(paths_in_both)
+        mirror_stats = self.mirror.get(paths_in_both)
         actual_stats = {encode_stats(os.stat(p)) for p in paths_in_both}
         paths_in_both = {
             p
@@ -449,6 +341,7 @@ class SyncDirs:
         files_to_move: list[tuple[Path, Path]],
         files_to_delete: list[Path],
         files_to_keep: list[Path],
+        mirror: MirrorDatabase,
         root_gui,
         dirs,
         default_actions=None,
@@ -459,6 +352,7 @@ class SyncDirs:
 
         # Input variables
         self.root_gui = root_gui
+        self.mirror = mirror
         self.dirs = dirs
         self.default_actions = default_actions if default_actions is not None else ['copy']
 
@@ -486,15 +380,14 @@ class SyncDirs:
         else:
             logger.warning('Popup did not end well')
 
-    @staticmethod
-    def rebuild_local_mirror(add_files: list[Path]):
+    def rebuild_local_mirror(self, add_files: list[Path]):
         logger.info('Rebuilding local mirror')
         time_init = time.time()
-        local_mirror.reset()
-        local_mirror.process_and_add({f.get() for f in add_files})
+        self.mirror.reset()
+        self.mirror.process_and_add({f.get() for f in add_files})
         logger.info(
             f'Local mirror was rebuilt in {int(time.time() - time_init)} seconds. '
-            f'New length is {local_mirror.size()} entries'
+            f'New length is {self.mirror.size()} entries'
         )
 
     def open_confirmation_popup(self):
@@ -529,7 +422,7 @@ class SyncDirs:
                 logger.info(f'Copying file {i} of {number}: {origin} ({format_size(size)})')
                 os.makedirs(os.path.dirname(destination), exist_ok=True)
                 shutil.copy2(origin, destination)
-                local_mirror.process_and_add(origin)
+                self.mirror.process_and_add(origin)
                 counter_size += size
                 logger.debug(
                     f'Copy finished. Average speed {format_size(counter_size / (time.time() - counter_timer))}/s'
@@ -553,8 +446,8 @@ class SyncDirs:
                 shutil.move(origin, destination)
                 source_dir, target_dir = get_dirs_from_path(origin, self.dirs)
                 if source_dir is not None:
-                    local_mirror.remove(origin.replace(target_dir, source_dir))
-                    local_mirror.process_and_add(destination.replace(target_dir, source_dir))
+                    self.mirror.remove(origin.replace(target_dir, source_dir))
+                    self.mirror.process_and_add(destination.replace(target_dir, source_dir))
                 logger.debug(f'Move finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
                 success = True
             except Exception as e:
@@ -575,7 +468,7 @@ class SyncDirs:
                 os.remove(path)
                 source_dir, target_dir = get_dirs_from_path(path, self.dirs)
                 if source_dir is not None:
-                    local_mirror.remove(path.replace(target_dir, source_dir))
+                    self.mirror.remove(path.replace(target_dir, source_dir))
                 logger.info(f'Delete finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
                 success = True
             except Exception as e:
