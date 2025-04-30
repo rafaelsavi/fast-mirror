@@ -5,8 +5,8 @@ from pathlib import Path
 
 from sqlitedict import SqliteDict
 
-from src.logger import logger
-from src.utils import CstmPathType, StatHash, get_encoded_stats, is_list_of_substr_in_str
+from logger import logger
+from utils import CstmPathType, StatHash, get_encoded_stats, is_list_of_substr_in_str
 
 local_mirror_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../local_mirror.db'))
 

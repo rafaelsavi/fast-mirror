@@ -3,6 +3,9 @@
     "python.testing.pytestArgs": [
         "tests"
     ],
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/src"
+    ],
     "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
     "cSpell.words": [
         "createfrom",

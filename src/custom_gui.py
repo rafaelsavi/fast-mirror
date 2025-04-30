@@ -3,8 +3,8 @@ from tkinter import messagebox
 
 import ttkwidgets
 
-from src.logger import logger
-from src.utils import CstmPath, format_size
+from logger import logger
+from utils import CstmPath, format_size
 
 
 class TrayableTk(tk.Tk):

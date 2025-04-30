@@ -12,10 +12,10 @@ from copy import deepcopy
 from tkinter import filedialog, messagebox
 from tkinter.scrolledtext import ScrolledText
 
-from src.backend import CompareDirs, SyncDirs
-from src.logger import logger
-from src.mirror import MirrorDatabase
-from src.utils import Counter, CustomException, round_time_to_minutes
+from backend import CompareDirs, SyncDirs
+from logger import logger
+from mirror import MirrorDatabase
+from utils import Counter, CustomException, round_time_to_minutes
 
 
 class KillableThread(threading.Thread):

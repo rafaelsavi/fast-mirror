@@ -9,18 +9,18 @@ from copy import deepcopy
 
 import pandas as pd
 
-from src.custom_gui import CustomCheckboxTreeView
-from src.logger import logger
-from src.mirror import MirrorDatabase
-from src.utils import (
+from custom_gui import CustomCheckboxTreeView
+from logger import logger
+from mirror import MirrorDatabase
+from utils import (
     CstmPath,
     check_length,
     compare_files,
     encode_stats,
     format_size,
     get_size,
+    log_progress,
 )
-from utils import log_progress
 
 
 class CompareDirs:

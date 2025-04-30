@@ -8,7 +8,7 @@ from os import PathLike
 from pathlib import Path
 from typing import NewType, Union
 
-from src.logger import logger
+from logger import logger
 
 StatHash = NewType('StatHash', str)
 
