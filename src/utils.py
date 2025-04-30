@@ -4,12 +4,13 @@ import filecmp
 import hashlib
 import os
 import time
-from collections.abc import Iterable
 from os import PathLike
 from pathlib import Path
-from typing import Union
+from typing import NewType, Union
 
 from src.logger import logger
+
+StatHash = NewType('StatHash', str)
 
 
 def get_size(path: str | list[str], as_str=True) -> float | str:
@@ -63,8 +64,20 @@ def check_length(p):
     return f'File path of origin and/or destination is too long ({len(p)})' if len(p) > 259 else ''
 
 
-def encode_stats(stats) -> str:
-    return str(base64.b64encode(hashlib.md5(str(stats).encode()).digest())[:8])
+CstmPathType = Union[str, PathLike[str], 'CstmPath']
+
+
+def encode_stats(stats) -> StatHash:
+    return StatHash(str(base64.b64encode(hashlib.md5(str(stats).encode()).digest())[:8]))
+
+
+def get_encoded_stats(path: CstmPathType) -> StatHash:
+    try:
+        stats = os.stat(path)
+        return encode_stats(stats)
+    except Exception as e:
+        logger.warning(f'Could not get stats of {path}. Exception: {e}')
+        raise e
 
 
 def log_progress(progress: int, total: int | None, start_time: float, interval=1000):
@@ -85,14 +98,11 @@ class CustomException(Exception):
     pass
 
 
-CstmPathType = Union[str, PathLike[str], 'CstmPath']
-
-
 class CstmPath(Path):
     def __init__(self, path: CstmPathType, root_dir: CstmPathType | None = None):
         super().__init__(path)
         self._root_dir = Path(root_dir) if root_dir else None
-        self._rel_to_root = self.relative_to(self._root_dir) if self._root_dir else None
+        self._rel_to_root = Path(self).relative_to(self._root_dir) if self._root_dir else None
 
         if self._root_dir and self._root_dir not in self.parents:
             raise CustomException(f'Root directory {self._root_dir} is not a parent of {self}')
@@ -105,7 +115,7 @@ class CstmPath(Path):
     def get_rel(self):
         return str(self._rel_to_root)
 
-    def get_encoded_stats(self) -> str:
+    def get_encoded_stats(self) -> StatHash:
         if self._encoded_stats is None:
             self._encoded_stats = encode_stats(self.stat())
         return self._encoded_stats
@@ -140,7 +150,7 @@ class CstmPath(Path):
             return datetime.datetime.fromtimestamp(timestamp).strftime('%Y/%m/%d %H:%M:%S')
 
     @classmethod
-    def get_from_dir(cls, dir_path: CstmPathType, exclude: list[CstmPathType]) -> set['CstmPath']:
+    def get_from_dir(cls, dir_path: CstmPathType, exclude: list[str]) -> set['CstmPath']:
         logger.info(f'Scanning files from {dir_path}. This may take a while')
         all_paths = set()
         t1 = time.time()
@@ -167,8 +177,8 @@ class CstmPath(Path):
         return CstmPath(combined_path, root_dir=self._root_dir)
 
 
-def is_list_of_substr_in_str(l, s) -> bool:
-    return any([substr in s for substr in l])
+def is_list_of_substr_in_str(l: list[str], s: str) -> bool:
+    return any(substr in s for substr in l)
 
 
 def compare_files(f1, f2, light=False) -> tuple[bool, bool]:

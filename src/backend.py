@@ -97,38 +97,38 @@ class CompareDirs:
         self.files_only_in_source = set()
         self.files_only_in_target = set()
         self.files_in_both = set()
-        paths_in_mirror = self.mirror.get_keys(exclude=self.exclusions)
-        paths_in_source = {
-            f.get()
+        files_in_mirror = self.mirror.get_keys(exclude=self.exclusions)
+        files_in_source = {
+            f
             for source_dir, target_dir in self.dirs
             for f in CstmPath.get_from_dir(source_dir, exclude=self.exclusions)
         }
 
         logger.info(
-            f'Finished scanning all files. Found {len(paths_in_source)} files in the source and '
-            f'{len(paths_in_mirror)} files in the mirror'
+            f'Finished scanning all files. Found {len(files_in_source)} files in the source and '
+            f'{len(files_in_mirror)} files in the mirror'
         )
         logger.info('Starting to compare source with mirror')
 
         # Compare local paths with local mirror
-        paths_only_in_mirror = paths_in_mirror - paths_in_source  # Paths that might be deleted
-        paths_only_in_source = paths_in_source - paths_in_mirror  # Paths that might be new
+        files_only_in_mirror = files_in_mirror - files_in_source  # Paths that might be deleted
+        files_only_in_source = files_in_source - files_in_mirror  # Paths that might be new
 
-        paths_in_both = paths_in_source & paths_in_mirror  # Paths that might have changed
-        mirror_stats = self.mirror.get(paths_in_both)
-        actual_stats = {encode_stats(os.stat(p)) for p in paths_in_both}
-        paths_in_both = {
+        files_in_both = files_in_source & files_in_mirror  # Paths that might have changed
+        mirror_stats = self.mirror.get(files_in_both)
+        actual_stats = {encode_stats(os.stat(p)) for p in files_in_both}
+        files_in_both = {
             p
-            for p, mirror_stat, actual_stat in zip(paths_in_both, mirror_stats, actual_stats, strict=False)
+            for p, mirror_stat, actual_stat in zip(files_in_both, mirror_stats, actual_stats, strict=False)
             if mirror_stat != actual_stat
         }
 
-        total_number = len(paths_only_in_mirror) + len(paths_only_in_source) + len(paths_in_both)
+        total_number = len(files_only_in_mirror) + len(files_only_in_source) + len(files_in_both)
         logger.info(f'Found {total_number} files with possible changes')
         logger.info('Confirming changes with destination now')
 
         # Check file existence in source and target
-        all_paths = paths_only_in_mirror | paths_only_in_source | paths_in_both
+        all_paths = files_only_in_mirror | files_only_in_source | files_in_both
         for p in all_paths:
             source_dir, target_dir = get_dirs_from_path(p, self.dirs)
             if source_dir is not None:
@@ -377,7 +377,7 @@ class SyncDirs:
         logger.info('Rebuilding local mirror')
         time_init = time.time()
         self.mirror.reset()
-        self.mirror.process_and_add({f.get() for f in add_files})
+        self.mirror.add({f.get() for f in add_files})
         logger.info(
             f'Local mirror was rebuilt in {int(time.time() - time_init)} seconds. '
             f'New length is {self.mirror.size()} entries'
@@ -415,7 +415,7 @@ class SyncDirs:
                 logger.info(f'Copying file {i} of {number}: {origin} ({format_size(size)})')
                 os.makedirs(os.path.dirname(destination), exist_ok=True)
                 shutil.copy2(origin, destination)
-                self.mirror.process_and_add(origin)
+                self.mirror.add(origin)
                 counter_size += size
                 logger.debug(
                     f'Copy finished. Average speed {format_size(counter_size / (time.time() - counter_timer))}/s'
@@ -440,7 +440,7 @@ class SyncDirs:
                 source_dir, target_dir = get_dirs_from_path(origin, self.dirs)
                 if source_dir is not None:
                     self.mirror.remove(origin.replace(target_dir, source_dir))
-                    self.mirror.process_and_add(destination.replace(target_dir, source_dir))
+                    self.mirror.add(destination.replace(target_dir, source_dir))
                 logger.debug(f'Move finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
                 success = True
             except Exception as e:

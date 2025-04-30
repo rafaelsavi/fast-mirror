@@ -1,27 +1,34 @@
 import os
 from collections.abc import Iterable
+from os import PathLike
+from pathlib import Path
 
 from sqlitedict import SqliteDict
 
 from src.logger import logger
-from src.utils import encode_stats, is_list_of_substr_in_str
+from src.utils import CstmPathType, StatHash, get_encoded_stats, is_list_of_substr_in_str
 
 local_mirror_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../local_mirror.db'))
 
 
 class MirrorDatabase:
+    """
+    A class to manage a local mirror database using SQLite.
+    The database behaves like a dictionary, where keys are Path objects and values are encoded stats as strings.
+    """
+
     def __init__(self, path=local_mirror_path, reset=False):
         self.path = path
         if reset:
             self.reset()
 
-    def _get_db(self):
+    def _get_db(self) -> SqliteDict:
         try:
             return SqliteDict(self.path, autocommit=True)
         except Exception as e:
             raise Exception(f'Could not access database. Exception: {e}') from e
 
-    def size(self):
+    def size(self) -> int:
         try:
             with self._get_db() as mirror_db:
                 return len(mirror_db)
@@ -29,7 +36,7 @@ class MirrorDatabase:
             logger.warning(f'Could not get size of database. Exception: {e}')
             return 0
 
-    def reset(self):
+    def reset(self) -> bool:
         try:
             os.remove(self.path)
             self._get_db()
@@ -38,59 +45,52 @@ class MirrorDatabase:
             logger.warning(f'Could not reset database. Exception: {e}')
             return False
 
-    def process_and_add(self, file_path: str | list[str] | set[str]):
-        def add_stats(self_, p):
+    def add(self, path: Iterable[CstmPathType] | CstmPathType):
+        def add_single(db: SqliteDict, path_single: CstmPathType):
             try:
-                stats = os.stat(p)
-                stats = encode_stats(stats)
-                self_.add(os.path.normpath(p), stats)
+                encoded_stats = get_encoded_stats(path_single)
+                db[Path(path_single)] = encoded_stats
             except Exception as e:
-                logger.error(f'Could not add file {p} to local mirror. Exception: {e}')
+                logger.error(f'Could not add file {path} to local mirror. Exception: {e}')
 
-        if isinstance(file_path, Iterable) and not isinstance(file_path, str):
-            for _file_path in file_path:
-                add_stats(self, _file_path)
-        else:
-            add_stats(self, file_path)
-
-    def add(self, key=None, value=None, dictionary=None):
         try:
-            with self._get_db() as mirror_db:
-                if dictionary is not None:
-                    mirror_db.update(dictionary)
-                elif key is not None and value is not None:
-                    mirror_db[key] = value
+            with self._get_db() as db:
+                if isinstance(path, Iterable) and not isinstance(path, str):
+                    for path_single in path:
+                        add_single(db, path_single)
                 else:
-                    raise Exception('Missing arguments to set database')
-            return True
+                    add_single(db, path)
         except Exception as e:
-            logger.warning(f'Could not save to database ({key}: {value}). Exception: {e}')
+            logger.critical(f'Could not open DB to add file(s): {path} Exception: {e}')
             return False
 
-    def get(self, key, fallback=None):
-        def get_from_dict(d, k, f):
+    def get(self, path: CstmPathType | Iterable[CstmPathType]) -> StatHash | None | set[StatHash | None]:
+        """
+        Retrieve the value(s) associated with the given path(s) from the database.
+
+        :param path: A single path or an iterable of paths.
+        :return: A single value, None, or a set of values/None for multiple paths.
+        """
+
+        def get_single(db: SqliteDict, path_single: CstmPathType) -> StatHash | None:
             try:
-                if f:
-                    return d.get(k, f)
-                else:
-                    return d[k]
+                return db[Path(path_single)]
             except KeyError:
-                logger.warning(f'Could not read key from database because it does not exist: {k}')
+                logger.warning(f'Key does not exist in database: {path_single}')
                 return None
 
         try:
-            with self._get_db() as mirror_db:
-                if isinstance(key, Iterable) and not isinstance(key, str):
-                    return {get_from_dict(mirror_db, k, fallback) for k in key}
-                else:
-                    return get_from_dict(mirror_db, key, fallback)
+            with self._get_db() as db:
+                if isinstance(path, Iterable) and not isinstance(path, str | bytes):
+                    return {get_single(db, path_single) for path_single in path}
+                return get_single(db, path)
         except Exception as e:
-            logger.warning(f'Could not read from database (Key {key}). Exception: {e}')
+            logger.warning(f'Could not open DB to get keys {path}. Exception: {e}')
             return None
 
-    def get_keys(self, exclude: list[str] | None = None) -> set:
-        if exclude is None:
-            exclude = []
+    def get_keys(self, exclude: list[str] | set[str] | None = None) -> set:
+        exclude = [] if exclude is None else list(exclude)
+
         try:
             with self._get_db() as mirror_db:
                 keys = mirror_db.keys()
@@ -99,15 +99,27 @@ class MirrorDatabase:
                 else:
                     return set(keys)
         except Exception as e:
-            logger.warning(f'Could not read from database. Exception: {e}')
+            logger.warning(f'Could not open DB to get keys. Exception: {e}')
             return set()
 
-    def remove(self, key):
+    def remove(self, path: CstmPathType | Iterable[CstmPathType]) -> bool:
+        def remove_single(db: SqliteDict, path_single: CstmPathType) -> bool:
+            try:
+                if path_single in db:
+                    del db[path_single]
+                    return True
+                else:
+                    logger.warning(f'Key does not exist in database: {path_single}')
+                    return False
+            except Exception as e:
+                logger.warning(f'Could not remove key from database (Key {path_single}). Exception: {e}')
+                return False
+
         try:
-            with self._get_db() as mirror_db:
-                if key in mirror_db:
-                    del mirror_db[key]
-                return True
+            with self._get_db() as db:
+                if isinstance(path, Iterable) and not isinstance(path, str | bytes):
+                    return all(remove_single(db, path_single) for path_single in path)
+                return remove_single(db, path)
         except Exception as e:
-            logger.warning(f'Could not remove key from database (Key {key}). Exception: {e}')
+            logger.warning(f'Could not open DB to remove file(s): {path} Exception: {e}')
             return False
