@@ -123,15 +123,14 @@ class CstmPath(Path):
         return self.to_date_str(time_) if as_date_str else time_
 
     def as_target(self, dirs: list[tuple[CstmPathType, CstmPathType]]) -> 'CstmPath':
-        dirs = {Path(k): Path(v) for k, v in dirs}
-        target_root_dir = dirs.get(self._root_dir, self._root_dir)
-        return CstmPath(target_root_dir / self._rel_to_root)
+        dirs_dict = {Path(source_dir): Path(target_dir) for source_dir, target_dir in dirs}
+        if self._root_dir is None or self._rel_to_root is None:
+            raise CustomException('Root directory is not set. Cannot convert to target path.')
+        if self._root_dir not in dirs_dict:
+            raise CustomException(f'Root directory {self._root_dir} is not in the list of directories.')
 
-    def is_in_list_of_lists(self, l: Iterable[Iterable[CstmPathType]], check_relative_paths=False):
-        if check_relative_paths:
-            return self.get_rel() in [f.get_rel() for sub_l in l for f in sub_l]
-        else:
-            return self in [f for sub_l in l for f in sub_l]
+        target_root_dir = dirs_dict[self._root_dir]
+        return CstmPath(target_root_dir / self._rel_to_root)
 
     @staticmethod
     def to_date_str(timestamp):
@@ -168,7 +167,7 @@ class CstmPath(Path):
         return CstmPath(combined_path, root_dir=self._root_dir)
 
 
-def is_list_of_substr_in_str(l, s):
+def is_list_of_substr_in_str(l, s) -> bool:
     return any([substr in s for substr in l])
 
 
