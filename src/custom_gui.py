@@ -59,7 +59,7 @@ class TrayableTk(tk.Tk):
 
     def menu_func(self, event, x, y):
         if event == 'WM_RBUTTONDOWN':  # Mouse event, Right click on the tray.Mostly we will show it.
-            self.tray_menu.tk_popup(x, y)  # pop it up on this postion
+            self.tray_menu.tk_popup(x, y)  # pop it up on this position
         if event == 'WM_LBUTTONDOWN' or event == 'WM_LBUTTONDBLCLK':
             self.deiconify()  # show it.
         # WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_LBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_RBUTTONDBLCLK,
@@ -113,7 +113,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             for file_entry in file_list:
                 args = (None, file_entry) if type(file_entry) == Path else file_entry
                 values = self.get_row(*args)
-                self._data[group][f"{group}::{values['source']}::{values['destination']}"] = values
+                self._data[group][f'{group}::{values["source"]}::{values["destination"]}'] = values
 
         for group, rows in self._data.items():
             tag = 'checked' if group in default_active else 'unchecked'

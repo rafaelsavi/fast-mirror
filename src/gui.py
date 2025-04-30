@@ -116,7 +116,7 @@ class Gui:
 
         def is_sunken_button(child_):
             try:
-                return type(child_) == tk.Button and child_.config('relief')[-1] == 'sunken'
+                return isinstance(child_, tk.Button) and child_.config('relief')[-1] == 'sunken'
             except:
                 return False
 

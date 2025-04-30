@@ -1,3 +1,18 @@
 {
-    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+    "cSpell.words": [
+        "createfrom",
+        "isort",
+        "Killable",
+        "padx",
+        "pady",
+        "pycodestyle",
+        "Pyflakes",
+        "pyupgrade",
+        "setuptools",
+        "sqlitedict",
+        "Trayable",
+        "ttkwidgets",
+        "winico"
+    ]
 }

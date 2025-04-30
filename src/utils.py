@@ -20,9 +20,9 @@ def get_size(path: str | list[str], as_str=True) -> float | str:
             return 0
 
     size_bytes = 0
-    if type(path) == str:
+    if isinstance(path, str):
         size_bytes = get_single_size(path)
-    elif type(path) == list:
+    elif isinstance(path, list):
         size_bytes = sum([get_single_size(x) for x in path])
 
     if as_str:
@@ -42,7 +42,7 @@ def format_size(size_bytes: float) -> str:
     return msg
 
 
-def round_time_to_minutes(time_: datetime) -> datetime:
+def round_time_to_minutes(time_: datetime.datetime) -> datetime.datetime:
     return time_ - datetime.timedelta(seconds=time_.second, microseconds=time_.microsecond)
 
 

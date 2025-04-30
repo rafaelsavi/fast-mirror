@@ -34,7 +34,7 @@ class MirrorDataBase:
         try:
             return SqliteDict(self.path, autocommit=True)
         except Exception as e:
-            raise Exception(f'Could not access database. Exception: {e}')
+            raise Exception(f'Could not access database. Exception: {e}') from e
 
     def size(self):
         try:
@@ -103,7 +103,9 @@ class MirrorDataBase:
             logger.warning(f'Could not read from database (Key {key}). Exception: {e}')
             return None
 
-    def get_keys(self, exclude: list[str] = None) -> set:
+    def get_keys(self, exclude: list[str] | None = None) -> set:
+        if exclude is None:
+            exclude = []
         try:
             with self._get_db() as mirror_db:
                 keys = mirror_db.keys()
@@ -191,7 +193,7 @@ class CompareDirs:
         self.save_report()
         self.print_results()
 
-        # Estimate syncronization actions
+        # Estimate synchronization actions
         self.estimate_actions()
         logger.info(f'Finished comparing directories in {int((time.time() - t1_compare_dirs) / 60)} minutes')
 
@@ -228,9 +230,8 @@ class CompareDirs:
             if mirror_stat != actual_stat
         }
 
-        logger.info(
-            f'Found {len(paths_only_in_mirror) + len(paths_only_in_source) + len(paths_in_both)} files with possible changes'
-        )
+        total_number = len(paths_only_in_mirror) + len(paths_only_in_source) + len(paths_in_both)
+        logger.info(f'Found {total_number} files with possible changes')
         logger.info('Confirming changes with destination now')
 
         # Check file existence in source and target
@@ -401,12 +402,12 @@ class CompareDirs:
 
     def print_results(self):
         logger.info('-------------------------')
-        logger.info('Analysing directory tree:')
+        logger.info('Analyzing directory tree:')
         logger.info(f'Files that exist only in source: {len(self.files_only_in_source)}')
         logger.info(f'Files that exist only in target: {len(self.files_only_in_target)}')
         logger.info(f'Files that exist in both directories: {len(self.files_in_both)}')
         logger.info('---------------------------')
-        logger.info('Analysing content of files:')
+        logger.info('Analyzing content of files:')
         logger.info(f'Files that are the not modified: {len(self.not_modified_files)}')
         logger.info(f'Files that were modified in source: {len(self.modified_files_in_source)}')
         logger.info(f'Files that were modified in target: {len(self.modified_files_in_target)}')
@@ -414,7 +415,7 @@ class CompareDirs:
         logger.info(f'Files that are new in source: {len(self.new_files)}')
         logger.info(f'Files that are residual in target: {len(self.residual_files)}')
         logger.info(
-            f'Files that could not be analysed ({len(self.error_files)})'
+            f'Files that could not be analyzed ({len(self.error_files)})'
             + str(
                 {True: ': \n' + '\n  '.join([x.get() for x in self.error_files]), False: ''}.get(
                     len(self.error_files) > 0
@@ -454,7 +455,7 @@ class SyncDirs:
         rebuild_mirror=False,
     ):
         logger.info('---------------------------')
-        logger.info('Initializing syncronization')
+        logger.info('Initializing synchronization')
 
         # Input variables
         self.root_gui = root_gui
@@ -468,9 +469,9 @@ class SyncDirs:
         self.files_requested_to_copy: list[tuple[str, str]] = list()
         self.files_requested_to_move: list[tuple[str, str]] = list()
         self.files_requested_to_delete: list[str] = list()
-        self.files_copied = list()
-        self.files_moved = list()
-        self.files_deleted = list()
+        self.files_copied: list[tuple[tuple[str, str], bool]] = list()
+        self.files_moved: list[tuple[tuple[str, str], bool]] = list()
+        self.files_deleted: list[tuple[str, bool]] = list()
 
         # Confirm actions
         if self.open_confirmation_popup():
