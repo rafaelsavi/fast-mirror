@@ -1,3 +1,3 @@
-from source.gui import Gui
+from src.gui import Gui
 
 gui = Gui()

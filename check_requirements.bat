@@ -1,2 +1,2 @@
-python source/check_requirements.py
+python src/check_requirements.py
 PAUSE
