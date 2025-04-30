@@ -5,6 +5,8 @@ import hashlib
 import os
 import time
 from collections.abc import Iterable
+from pathlib import Path
+from typing import Union
 
 from src.logger import logger
 
@@ -60,93 +62,74 @@ def check_length(p):
     return f'File path of origin and/or destination is too long ({len(p)})' if len(p) > 259 else ''
 
 
-def encode_stats(stats):
-    return base64.b64encode(hashlib.md5(str(stats).encode()).digest())[:8]
+def encode_stats(stats) -> str:
+    return str(base64.b64encode(hashlib.md5(str(stats).encode()).digest())[:8])
+
+
+def log_progress(progress: int, total: int | None, start_time: float, interval=1000):
+    if progress > 0 and progress % interval == 0:
+        speed_files_p_min = int(60 * progress / (time.time() - start_time))
+        msgs = []
+        if total is not None:
+            msgs.append(f'{progress} of {total} files scanned so far.')
+        else:
+            msgs.append(f'{progress} files scanned so far.')
+        msgs.append(f'Avg. read speed: {speed_files_p_min} files/min.')
+        if total is not None:
+            msgs.append(f'ETL: {int((total - progress) / speed_files_p_min)} min')
+        logger.debug(' '.join(msgs))
 
 
 class CustomException(Exception):
     pass
 
 
-class Path:
-    def __init__(self, abs_path=None, root_dir='', rel_path=None):
-        if rel_path is not None:
-            abs_path = os.path.join(root_dir, rel_path)
-        if type(abs_path) == Path:
-            abs_path = abs_path.get()
-        self._abs_path = os.path.normpath(os.path.realpath(abs_path))
-        self._root_dir = os.path.normpath(os.path.realpath(root_dir))
-        self._rel_path = os.path.relpath(abs_path, root_dir)
-        self._stats = None  # Filled when called first time
-        self._encoded_stats = None  # Filled when called first time
+CstmPathType = Union[str, Path, 'CstmPath']
+
+
+class CstmPath(Path):
+    def __new__(cls, *args, **kwargs):
+        return super().__new__(cls, *args, **kwargs)
+
+    def __init__(self, path: str | Path, root_dir: str | Path = ''):
+        super().__init__(path)
+        self._root_dir = Path(root_dir).resolve() if root_dir else None
+        self._rel_to_root = self.relative_to(self._root_dir) if self._root_dir else None
+
+        if self._root_dir and self._root_dir not in self.parents:
+            raise CustomException(f'Root directory {self._root_dir} is not a parent of {self}')
+        self._stats: None | str = None  # Cached stats
+        self._encoded_stats: None | str = None  # Cached encoded stats
 
     def check_length(self):
-        return f'File path is too long ({len(self.get())}): {self.get()}' if len(self.get()) > 259 else ''
-
-    def get(self):
-        return self._abs_path
+        return f'File path is too long ({len(str(self))}): {self}' if len(str(self)) > 255 else ''
 
     def get_rel(self):
-        return self._rel_path
-
-    def get_basename(self):
-        return os.path.basename(self._abs_path)
-
-    def exists(self):
-        return os.path.exists(self._abs_path)
-
-    def get_stats(self) -> dict:
-        if self._stats is None:
-            if self.exists():
-                stats = os.stat(self._abs_path)
-                self._stats = {k: getattr(stats, k) for k in dir(stats) if k.startswith('st_')}
-            else:
-                self._stats = {}
-
-        return self._stats
+        return str(self._rel_to_root)
 
     def get_encoded_stats(self) -> str:
         if self._encoded_stats is None:
-            self._encoded_stats = encode_stats(self.get_stats())
-
+            self._encoded_stats = encode_stats(self.stat())
         return self._encoded_stats
 
-    def getsize(self, as_str=False):
-        size_ = self.get_stats().get('st_size', 0)
-        if as_str:
-            return format_size(size_)
-        else:
-            return size_
+    def getsize(self, as_str=False) -> str | int:
+        size_ = self.stat().st_size
+        return format_size(size_) if as_str else size_
 
-    def getmtime(self, as_date_str=False):
-        time_ = self.get_stats().get('st_mtime', 0)
-        if as_date_str:
-            return self.to_date_str(time_)
-        else:
-            return time_
+    def getmtime(self, as_date_str=False) -> str | float:
+        time_ = self.stat().st_mtime
+        return self.to_date_str(time_) if as_date_str else time_
 
-    def getctime(self, as_date_str=False):
-        time_ = self.get_stats().get('st_ctime', 0)
-        if as_date_str:
-            return self.to_date_str(time_)
-        else:
-            return time_
+    def getctime(self, as_date_str=False) -> str | float:
+        time_ = self.stat().st_ctime
+        return self.to_date_str(time_) if as_date_str else time_
 
-    def remove(self):
-        os.remove(self._abs_path)
-
-    def change_root_dir(self, new_root_dir: str) -> 'Path':
-        return Path(root_dir=new_root_dir, rel_path=self._rel_path)
-
-    def __repr__(self):
-        return str(self._abs_path)
-
-    def as_target(self, dirs: list[tuple[str, str]]) -> 'Path':
-        dirs = {k: v for k, v in dirs}
+    def as_target(self, dirs: list[tuple[CstmPathType, CstmPathType]]) -> 'CstmPath':
+        dirs = {Path(k): Path(v) for k, v in dirs}
         target_root_dir = dirs.get(self._root_dir, self._root_dir)
-        return self.change_root_dir(target_root_dir)
+        return CstmPath(target_root_dir / self._rel_to_root)
 
-    def is_in_list_of_lists(self, l: Iterable[Iterable['Path']], check_relative_paths=False):
+    def is_in_list_of_lists(self, l: Iterable[Iterable[CstmPathType]], check_relative_paths=False):
         if check_relative_paths:
             return self.get_rel() in [f.get_rel() for sub_l in l for f in sub_l]
         else:
@@ -160,21 +143,17 @@ class Path:
             return datetime.datetime.fromtimestamp(timestamp).strftime('%Y/%m/%d %H:%M:%S')
 
     @classmethod
-    def get_from_dir(cls, dir_path: str, exclude: list[str]) -> set['Path']:
+    def get_from_dir(cls, dir_path: CstmPathType, exclude: list[CstmPathType]) -> set['CstmPath']:
         logger.info(f'Scanning files from {dir_path}. This may take a while')
         all_paths = set()
         t1 = time.time()
         for root, _dirs, files in os.walk(dir_path):
             if not is_list_of_substr_in_str(exclude, root):
                 for file in files:
-                    abs_path = os.path.join(root, file)
-                    if not is_list_of_substr_in_str(exclude, abs_path):
-                        all_paths.add(Path(abs_path, dir_path))
-                        if len(all_paths) % 5000 == 0:
-                            logger.debug(
-                                f'{len(all_paths)} files found so far. '
-                                f'Average read speed: {int(60 * len(all_paths) / (time.time() - t1))} files/min'
-                            )
+                    abs_path = Path(root) / file
+                    if not is_list_of_substr_in_str(exclude, str(abs_path)):
+                        all_paths.add(CstmPath(abs_path, dir_path))
+                        log_progress(len(all_paths), None, t1, interval=5000)
         logger.info(
             f'Finished scanning {dir_path} with {len(all_paths)} files in {int((time.time() - t1) / 60)} minutes'
         )

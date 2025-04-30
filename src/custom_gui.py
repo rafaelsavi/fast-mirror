@@ -4,7 +4,7 @@ from tkinter import messagebox
 import ttkwidgets
 
 from src.logger import logger
-from src.utils import Path, format_size
+from src.utils import CstmPath, format_size
 
 
 class TrayableTk(tk.Tk):
@@ -104,14 +104,14 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             # Update group item
             self.item(group, text=f'{group} {selected_size} ({selected_number} of {total_number})')
 
-    def add_file_lists(self, file_lists: dict[str, list[tuple[Path, Path] | Path]], default_active=None):
+    def add_file_lists(self, file_lists: dict[str, list[tuple[CstmPath, CstmPath] | CstmPath]], default_active=None):
         if default_active is None:
             default_active = []
 
         for group, file_list in file_lists.items():
             self._data[group] = {}
             for file_entry in file_list:
-                args = (None, file_entry) if type(file_entry) == Path else file_entry
+                args = (None, file_entry) if type(file_entry) == CstmPath else file_entry
                 values = self.get_row(*args)
                 self._data[group][f'{group}::{values["source"]}::{values["destination"]}'] = values
 
@@ -127,7 +127,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                 )
 
     @staticmethod
-    def get_row(source: Path, destination: Path) -> dict[str, float | str]:
+    def get_row(source: CstmPath, destination: CstmPath) -> dict[str, float | str]:
         def try_f(f, arg, default=''):
             if arg is None:
                 return default

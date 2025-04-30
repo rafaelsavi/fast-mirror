@@ -13,23 +13,14 @@ from src.custom_gui import CustomCheckboxTreeView
 from src.logger import logger
 from src.mirror import MirrorDatabase
 from src.utils import (
-    Path,
+    CstmPath,
     check_length,
     compare_files,
     encode_stats,
     format_size,
     get_size,
 )
-
-
-def log_progress(progress, total, start_time, step=1000):
-    if progress > 0 and progress % step == 0:
-        speed_files_p_min = int(60 * progress / (time.time() - start_time))
-        logger.debug(
-            f'{progress} of {total} files scanned so far. '
-            f'Avg. read speed: {speed_files_p_min} files/min. '
-            f'ETL: {int((total - progress) / speed_files_p_min)} min'
-        )
+from utils import log_progress
 
 
 class CompareDirs:
@@ -56,22 +47,22 @@ class CompareDirs:
 
         # Initialize comparison variables
         filecmp.clear_cache()
-        self.files_only_in_source: set[Path] = set()
-        self.files_only_in_target: set[Path] = set()
-        self.files_in_both: set[tuple[Path, Path]] = set()
-        self.not_modified_files: set[tuple[Path, Path]] = set()
-        self.modified_files_in_source: set[tuple[Path, Path]] = set()
-        self.modified_files_in_target: set[tuple[Path, Path]] = set()
-        self.moved_files: set[tuple[Path, Path]] = set()
-        self.new_files: set[Path] = set()
-        self.residual_files: set[Path] = set()
-        self.error_files: set[Path] = set()
+        self.files_only_in_source: set[CstmPath] = set()
+        self.files_only_in_target: set[CstmPath] = set()
+        self.files_in_both: set[tuple[CstmPath, CstmPath]] = set()
+        self.not_modified_files: set[tuple[CstmPath, CstmPath]] = set()
+        self.modified_files_in_source: set[tuple[CstmPath, CstmPath]] = set()
+        self.modified_files_in_target: set[tuple[CstmPath, CstmPath]] = set()
+        self.moved_files: set[tuple[CstmPath, CstmPath]] = set()
+        self.new_files: set[CstmPath] = set()
+        self.residual_files: set[CstmPath] = set()
+        self.error_files: set[CstmPath] = set()
 
         # Initialize sync variables
-        self.files_to_copy: set[tuple[Path, Path]] = set()
-        self.files_to_move: set[tuple[Path, Path]] = set()
-        self.files_to_delete: set[Path] = set()
-        self.files_to_keep: set[Path] = set()
+        self.files_to_copy: set[tuple[CstmPath, CstmPath]] = set()
+        self.files_to_move: set[tuple[CstmPath, CstmPath]] = set()
+        self.files_to_delete: set[CstmPath] = set()
+        self.files_to_keep: set[CstmPath] = set()
 
         # Run comparison
         if compare_with_local_mirror:
@@ -110,7 +101,7 @@ class CompareDirs:
         paths_in_source = {
             f.get()
             for source_dir, target_dir in self.dirs
-            for f in Path.get_from_dir(source_dir, exclude=self.exclusions)
+            for f in CstmPath.get_from_dir(source_dir, exclude=self.exclusions)
         }
 
         logger.info(
@@ -141,7 +132,7 @@ class CompareDirs:
         for p in all_paths:
             source_dir, target_dir = get_dirs_from_path(p, self.dirs)
             if source_dir is not None:
-                source_file = Path(abs_path=p, root_dir=source_dir)
+                source_file = CstmPath(abs_path=p, root_dir=source_dir)
                 target_file = source_file.change_root_dir(target_dir)
                 if source_file.exists() and not target_file.exists():
                     self.files_only_in_source.add(source_file)
@@ -157,8 +148,8 @@ class CompareDirs:
         self.files_in_both = set()
 
         for source_dir, target_dir in self.dirs:
-            files_in_source = Path.get_from_dir(source_dir, exclude=self.exclusions)
-            files_in_target = Path.get_from_dir(target_dir, exclude=self.exclusions)
+            files_in_source = CstmPath.get_from_dir(source_dir, exclude=self.exclusions)
+            files_in_target = CstmPath.get_from_dir(target_dir, exclude=self.exclusions)
 
             rel_paths_in_source = {f.get_rel() for f in files_in_source}
             rel_paths_in_target = {f.get_rel() for f in files_in_target}
@@ -167,9 +158,9 @@ class CompareDirs:
             self.files_only_in_target.update({f for f in files_in_target if f.get_rel() not in rel_paths_in_source})
             self.files_in_both.update(
                 {
-                    (Path(f, source_dir), Path(root_dir=target_dir, rel_path=f.get_rel()))
-                    for f in files_in_source
-                    if f.get_rel() in rel_paths_in_target
+                    (source_dir / rel_path, target_dir / rel_path)
+                    for rel_path in rel_paths_in_source
+                    if rel_path in rel_paths_in_target
                 }
             )
 
@@ -339,10 +330,10 @@ class CompareDirs:
 class SyncDirs:
     def __init__(
         self,
-        files_to_copy: list[tuple[Path, Path]],
-        files_to_move: list[tuple[Path, Path]],
-        files_to_delete: list[Path],
-        files_to_keep: list[Path],
+        files_to_copy: list[tuple[CstmPath, CstmPath]],
+        files_to_move: list[tuple[CstmPath, CstmPath]],
+        files_to_delete: list[CstmPath],
+        files_to_keep: list[CstmPath],
         mirror: MirrorDatabase,
         root_gui,
         dirs,
@@ -359,9 +350,9 @@ class SyncDirs:
         self.default_actions = default_actions if default_actions is not None else ['copy']
 
         # Initialize variables
-        self.files_available_to_copy: list[tuple[Path, Path]] = files_to_copy
-        self.files_available_to_move: list[tuple[Path, Path]] = files_to_move
-        self.files_available_to_delete: list[Path] = files_to_delete
+        self.files_available_to_copy: list[tuple[CstmPath, CstmPath]] = files_to_copy
+        self.files_available_to_move: list[tuple[CstmPath, CstmPath]] = files_to_move
+        self.files_available_to_delete: list[CstmPath] = files_to_delete
         self.files_requested_to_copy: list[tuple[str, str]] = list()
         self.files_requested_to_move: list[tuple[str, str]] = list()
         self.files_requested_to_delete: list[str] = list()
@@ -382,7 +373,7 @@ class SyncDirs:
         else:
             logger.warning('Popup did not end well')
 
-    def rebuild_local_mirror(self, add_files: list[Path]):
+    def rebuild_local_mirror(self, add_files: list[CstmPath]):
         logger.info('Rebuilding local mirror')
         time_init = time.time()
         self.mirror.reset()
