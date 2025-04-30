@@ -4,7 +4,7 @@ import filecmp
 import hashlib
 import os
 import time
-from os import PathLike
+from os import PathLike, stat_result
 from pathlib import Path
 from typing import NewType, Union
 
@@ -67,8 +67,8 @@ def check_length(p):
 CstmPathType = Union[str, PathLike[str], 'CstmPath']
 
 
-def encode_stats(stats) -> StatHash:
-    return StatHash(str(base64.b64encode(hashlib.md5(str(stats).encode()).digest())[:8]))
+def encode_stats(stats: stat_result) -> StatHash:
+    return StatHash(hashlib.blake2b(str(stats).encode(), digest_size=8).hexdigest())
 
 
 def get_encoded_stats(path: CstmPathType) -> StatHash:

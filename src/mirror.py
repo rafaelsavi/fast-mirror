@@ -1,7 +1,5 @@
 import os
 from collections.abc import Iterable
-from os import PathLike
-from pathlib import Path
 
 from sqlitedict import SqliteDict
 
@@ -14,12 +12,12 @@ local_mirror_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../
 class MirrorDatabase:
     """
     A class to manage a local mirror database using SQLite.
-    The database behaves like a dictionary, where keys are Path objects and values are encoded stats as strings.
+    The database behaves like a dictionary, where keys are string paths and values are encoded stats as strings.
     """
 
     def __init__(self, path=local_mirror_path, reset=False):
         self.path = path
-        if reset:
+        if reset or not os.path.exists(self.path):
             self.reset()
 
     def _get_db(self) -> SqliteDict:
@@ -37,19 +35,26 @@ class MirrorDatabase:
             return 0
 
     def reset(self) -> bool:
+        if os.path.exists(self.path):
+            try:
+                os.remove(self.path)
+            except Exception as e:
+                logger.warning(f'Could not reset database. Exception: {e}')
+                return False
+
         try:
-            os.remove(self.path)
-            self._get_db()
-            return True
+            with SqliteDict(self.path, autocommit=True) as db:
+                db.commit()
         except Exception as e:
-            logger.warning(f'Could not reset database. Exception: {e}')
+            logger.warning(f'Could not create database. Exception: {e}')
             return False
+        return True
 
     def add(self, path: Iterable[CstmPathType] | CstmPathType):
         def add_single(db: SqliteDict, path_single: CstmPathType):
             try:
                 encoded_stats = get_encoded_stats(path_single)
-                db[Path(path_single)] = encoded_stats
+                db[str(path_single)] = encoded_stats
             except Exception as e:
                 logger.error(f'Could not add file {path} to local mirror. Exception: {e}')
 
@@ -74,7 +79,7 @@ class MirrorDatabase:
 
         def get_single(db: SqliteDict, path_single: CstmPathType) -> StatHash | None:
             try:
-                return db[Path(path_single)]
+                return db[str(path_single)]
             except KeyError:
                 logger.warning(f'Key does not exist in database: {path_single}')
                 return None
@@ -88,7 +93,7 @@ class MirrorDatabase:
             logger.warning(f'Could not open DB to get keys {path}. Exception: {e}')
             return None
 
-    def get_keys(self, exclude: list[str] | set[str] | None = None) -> set:
+    def get_keys(self, exclude: list[str] | set[str] | None = None) -> set[str]:
         exclude = [] if exclude is None else list(exclude)
 
         try:
@@ -106,7 +111,7 @@ class MirrorDatabase:
         def remove_single(db: SqliteDict, path_single: CstmPathType) -> bool:
             try:
                 if path_single in db:
-                    del db[path_single]
+                    del db[str(path_single)]
                     return True
                 else:
                     logger.warning(f'Key does not exist in database: {path_single}')
