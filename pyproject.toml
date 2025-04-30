@@ -6,6 +6,7 @@ dependencies = [
     "pandas",
     "sqlitedict",
     "ttkwidgets",
+    "ruff"
 ]
 
 [build-system]

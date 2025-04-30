@@ -13,6 +13,25 @@
                 "isDefault": true
             },
             "problemMatcher": []
+        },
+        {
+            "label": "[Workspace] Format and fix with Ruff",
+            "type": "shell",
+            "command": "uvx ruff check \"${input:path}\" --fix --unsafe-fixes && uvx ruff format \"${input:path}\"",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "focus": true
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "type": "promptString",
+            "id": "path",
+            "description": "Enter the path to the file or directory",
+            "default": "${fileDirname}"
         }
     ]
 }

@@ -1,6 +1,6 @@
-import queue
 import logging
 import os
+import queue
 from datetime import datetime
 
 

@@ -1,11 +1,9 @@
-from time import time
-import os
-import hashlib
-import sys
 import base64
+import hashlib
+import os
+from time import time
 
-
-p = r"D:\Projects\Python\AutomaticBackup\local_mirror_1.db"
+p = r'D:\Projects\Python\AutomaticBackup\local_mirror_1.db'
 #db = MirrorDataBase(p, reset=True)
 # print(len(db.get_keys()))
 # for i in range(1000):
@@ -110,7 +108,7 @@ def search_empty_dirs(dir_path: str, all_dirs=None, all_files=None, root_call=Tr
 # print(db.get([1,2,3,15], fallback='__1___'))
 # print(db.get([1,2,3,15], fallback=None))
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     src_dir = r'D:\Van build'
     src_dir = r'N:\BackupPC\D\Backups\Bosch Rexroth Laptop Estagio PFC\50_Electric - Copy'
 
