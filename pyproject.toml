@@ -1,0 +1,55 @@
+[project]
+name = "automatic-backup"
+version = "0.1.0"
+description = "A project for automatic backup with Python."
+dependencies = [
+    "pandas",
+    "sqlitedict",
+    "ttkwidgets",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "D",
+    # pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # quotes
+    "Q",
+]
+
+ignore = [
+    "D100",
+    "D104",
+    "D105",
+    "D107",
+    "D203",
+    "D205",
+    "D212",
+    "D400",
+    "D415",
+]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+
+[tool.ruff.format]
+docstring-code-format = true
+quote-style = "single"
