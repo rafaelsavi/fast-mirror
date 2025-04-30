@@ -99,20 +99,20 @@ class CustomException(Exception):
 
 
 class CstmPath(Path):
-    def __init__(self, path: CstmPathType, root_dir: CstmPathType | None = None):
-        super().__init__(path)
+    def __init__(self, *paths: CstmPathType, root_dir: CstmPathType | None = None):
+        super().__init__(*paths)
         self._root_dir = Path(root_dir) if root_dir else None
         self._rel_to_root = Path(self).relative_to(self._root_dir) if self._root_dir else None
 
         if self._root_dir and self._root_dir not in self.parents:
             raise CustomException(f'Root directory {self._root_dir} is not a parent of {self}')
         self._stats: None | str = None  # Cached stats
-        self._encoded_stats: None | str = None  # Cached encoded stats
+        self._encoded_stats: None | StatHash = None  # Cached encoded stats
 
-    def check_length(self):
+    def check_length(self) -> str:
         return f'File path is too long ({len(str(self))}): {self}' if len(str(self)) > 255 else ''
 
-    def get_rel(self):
+    def get_rel(self) -> str:
         return str(self._rel_to_root)
 
     def get_encoded_stats(self) -> StatHash:
@@ -159,7 +159,7 @@ class CstmPath(Path):
                 for file in files:
                     abs_path = Path(root) / file
                     if not is_list_of_substr_in_str(exclude, str(abs_path)):
-                        all_paths.add(CstmPath(abs_path, dir_path))
+                        all_paths.add(CstmPath(abs_path, root_dir=dir_path))
                         log_progress(len(all_paths), None, t1, interval=5000)
         logger.info(
             f'Finished scanning {dir_path} with {len(all_paths)} files in {int((time.time() - t1) / 60)} minutes'

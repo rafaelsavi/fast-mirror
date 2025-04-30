@@ -6,6 +6,7 @@ import time
 import tkinter as tk
 import winsound
 from copy import deepcopy
+from pathlib import Path
 
 import pandas as pd
 
@@ -132,7 +133,7 @@ class CompareDirs:
         for p in all_paths:
             source_dir, target_dir = get_dirs_from_path(p, self.dirs)
             if source_dir is not None:
-                source_file = CstmPath(abs_path=p, root_dir=source_dir)
+                source_file = CstmPath(p, root_dir=source_dir)
                 target_file = source_file.change_root_dir(target_dir)
                 if source_file.exists() and not target_file.exists():
                     self.files_only_in_source.add(source_file)
@@ -158,7 +159,10 @@ class CompareDirs:
             self.files_only_in_target.update({f for f in files_in_target if f.get_rel() not in rel_paths_in_source})
             self.files_in_both.update(
                 {
-                    (source_dir / rel_path, target_dir / rel_path)
+                    (
+                        CstmPath(source_dir, rel_path, root_dir=source_dir),
+                        CstmPath(target_dir, rel_path, root_dir=target_dir),
+                    )
                     for rel_path in rel_paths_in_source
                     if rel_path in rel_paths_in_target
                 }
@@ -205,10 +209,10 @@ class CompareDirs:
         for i, file_in_source in enumerate(self.files_only_in_source):
             log_progress(i, number_files, start_time)
 
-            file_basename_in_source = file_in_source.get_basename()
+            file_basename_in_source = file_in_source.name
 
             for file_in_target in self.files_only_in_target:
-                file_basename_in_target = file_in_target.get_basename()
+                file_basename_in_target = file_in_target.name
 
                 if file_in_source in used_files:
                     break

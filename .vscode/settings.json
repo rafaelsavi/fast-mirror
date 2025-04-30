@@ -9,6 +9,7 @@
     "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
     "cSpell.words": [
         "createfrom",
+        "Cstm",
         "isort",
         "Killable",
         "padx",
