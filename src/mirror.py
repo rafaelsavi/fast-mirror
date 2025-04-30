@@ -68,7 +68,7 @@ class MirrorDatabase:
         except Exception as e:
             logger.critical(f'Could not open DB to add file(s): {path} Exception: {e}')
 
-    def get(self, path: CstmPathType | Iterable[CstmPathType]) -> StatHash | None | set[StatHash | None]:
+    def get(self, path: CstmPathType | list[CstmPathType]) -> StatHash | None | list[StatHash | None]:
         """
         Retrieve the value(s) associated with the given path(s) from the database.
 
@@ -85,8 +85,8 @@ class MirrorDatabase:
 
         try:
             with self._get_db() as db:
-                if isinstance(path, Iterable) and not isinstance(path, str | bytes):
-                    return {get_single(db, path_single) for path_single in path}
+                if isinstance(path, list):  # Must be list to match idx of in and outs
+                    return [get_single(db, path_single) for path_single in path]
                 return get_single(db, path)
         except Exception as e:
             logger.warning(f'Could not open DB to get keys {path}. Exception: {e}')

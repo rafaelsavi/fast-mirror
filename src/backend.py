@@ -15,10 +15,11 @@ from logger import logger
 from mirror import MirrorDatabase
 from utils import (
     CstmPath,
+    CstmPathType,
     check_length,
     compare_files,
-    encode_stats,
     format_size,
+    get_encoded_stats,
     get_size,
     log_progress,
 )
@@ -98,9 +99,9 @@ class CompareDirs:
         self.files_only_in_source = set()
         self.files_only_in_target = set()
         self.files_in_both = set()
-        files_in_mirror = self.mirror.get_keys(exclude=self.exclusions)
-        files_in_source = {
-            f
+        files_in_mirror: set[str] = self.mirror.get_keys(exclude=self.exclusions)
+        files_in_source: set[str] = {
+            str(f)
             for source_dir, target_dir in self.dirs
             for f in CstmPath.get_from_dir(source_dir, exclude=self.exclusions)
         }
@@ -114,27 +115,26 @@ class CompareDirs:
         # Compare local paths with local mirror
         files_only_in_mirror = files_in_mirror - files_in_source  # Paths that might be deleted
         files_only_in_source = files_in_source - files_in_mirror  # Paths that might be new
-
-        files_in_both = files_in_source & files_in_mirror  # Paths that might have changed
+        files_in_both = list(files_in_source & files_in_mirror)  # Paths that might have changed
         mirror_stats = self.mirror.get(files_in_both)
-        actual_stats = {encode_stats(os.stat(p)) for p in files_in_both}
-        files_in_both = {
+        actual_stats = [get_encoded_stats(p) for p in files_in_both]
+        files_modified = {
             p
-            for p, mirror_stat, actual_stat in zip(files_in_both, mirror_stats, actual_stats, strict=False)
+            for p, mirror_stat, actual_stat in zip(files_in_both, mirror_stats, actual_stats, strict=True)
             if mirror_stat != actual_stat
         }
 
-        total_number = len(files_only_in_mirror) + len(files_only_in_source) + len(files_in_both)
+        total_number = len(files_only_in_mirror) + len(files_only_in_source) + len(files_modified)
         logger.info(f'Found {total_number} files with possible changes')
         logger.info('Confirming changes with destination now')
 
         # Check file existence in source and target
-        all_paths = files_only_in_mirror | files_only_in_source | files_in_both
+        all_paths = files_only_in_mirror | files_only_in_source | files_modified
         for p in all_paths:
             source_dir, target_dir = get_dirs_from_path(p, self.dirs)
             if source_dir is not None:
                 source_file = CstmPath(p, root_dir=source_dir)
-                target_file = source_file.change_root_dir(target_dir)
+                target_file = CstmPath(p.replace(source_dir, target_dir), root_dir=target_dir)
                 if source_file.exists() and not target_file.exists():
                     self.files_only_in_source.add(source_file)
                 elif not source_file.exists() and target_file.exists():
@@ -617,13 +617,17 @@ class ActionSelection:
         return self.files_to_copy, self.files_to_move, self.files_to_delete
 
 
-def get_dirs_from_path(path, dirs):
-    def uniform(p_: str) -> str:
-        return p_.replace('\\', '/')
+def get_dirs_from_path(
+    path: CstmPathType, dirs: list[tuple[CstmPathType, CstmPathType]]
+) -> tuple[CstmPathType | None, CstmPathType | None]:
+    """Find the corresponding source and target directories for a given path."""
 
-    for s, t in dirs:
-        if uniform(s) in uniform(path) or uniform(t) in uniform(path):
-            return s, t
+    def uniform(p_: CstmPathType) -> str:
+        return str(p_).replace('\\', '/')
+
+    for origin, destination in dirs:
+        if uniform(origin) in uniform(path) or uniform(destination) in uniform(path):
+            return origin, destination
     logger.error(f'Could not identify root folders of path {path}')
     return None, None
 

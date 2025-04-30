@@ -8,6 +8,7 @@
     ],
     "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
     "cSpell.words": [
+        "birthtime",
         "createfrom",
         "Cstm",
         "isort",

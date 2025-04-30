@@ -67,17 +67,19 @@ def check_length(p):
 CstmPathType = Union[str, PathLike[str], 'CstmPath']
 
 
-def encode_stats(stats: stat_result) -> StatHash:
+def _encode_stats(stats: tuple[int | float, ...]) -> StatHash:
     return StatHash(hashlib.blake2b(str(stats).encode(), digest_size=8).hexdigest())
 
 
 def get_encoded_stats(path: CstmPathType) -> StatHash:
     try:
         stats = os.stat(path)
-        return encode_stats(stats)
     except Exception as e:
         logger.warning(f'Could not get stats of {path}. Exception: {e}')
         raise e
+
+    stable_stats = (stats.st_size, stats.st_mtime, stats.st_birthtime)
+    return _encode_stats(stable_stats)
 
 
 def log_progress(progress: int, total: int | None, start_time: float, interval=1000):
@@ -106,7 +108,6 @@ class CstmPath(Path):
 
         if self._root_dir and self._root_dir not in self.parents:
             raise CustomException(f'Root directory {self._root_dir} is not a parent of {self}')
-        self._stats: None | str = None  # Cached stats
         self._encoded_stats: None | StatHash = None  # Cached encoded stats
 
     def check_length(self) -> str:
@@ -117,7 +118,7 @@ class CstmPath(Path):
 
     def get_encoded_stats(self) -> StatHash:
         if self._encoded_stats is None:
-            self._encoded_stats = encode_stats(self.stat())
+            self._encoded_stats = get_encoded_stats(self)
         return self._encoded_stats
 
     def getsize(self, as_str=False) -> str | int:
@@ -196,10 +197,3 @@ def compare_files(f1: CstmPathType, f2: CstmPathType, light=False) -> tuple[bool
         error_msg = e if error_msg.strip() == '' else e
         logger.warning(f'Could not compare files <{f1}> and <{f2}>. Exception: {error_msg}')
     return success, same
-
-
-def fake_task(task_name):
-    logger.warning(f'Taking longer to {task_name}')
-    for i in range(7000000):
-        i**2
-    logger.warning(f'{task_name} finished')
