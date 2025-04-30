@@ -22,6 +22,16 @@ from src.utils import (
 )
 
 
+def log_progress(progress, total, start_time, step=1000):
+    if progress > 0 and progress % step == 0:
+        speed_files_p_min = int(60 * progress / (time.time() - start_time))
+        logger.debug(
+            f'{progress} of {total} files scanned so far. '
+            f'Avg. read speed: {speed_files_p_min} files/min. '
+            f'ETL: {int((total - progress) / speed_files_p_min)} min'
+        )
+
+
 class CompareDirs:
     def __init__(
         self,
@@ -167,13 +177,9 @@ class CompareDirs:
         """Compare files that exist in both places and check for newer versions in the source"""
         logger.debug('Searching for modified files')
         number_files = len(self.files_in_both)
-        t1 = time.time()
+        start_time = time.time()
         for i, (file_source, file_target) in enumerate(self.files_in_both):
-            if i > 0 and i % 1000 == 0:
-                logger.debug(
-                    f'{i} of {number_files} files scanned so far. '
-                    f'Average read speed: {int(60 * i / (time.time() - t1))} files/min'
-                )
+            log_progress(i, number_files, start_time)
 
             success, match = compare_files(file_source.get(), file_target.get(), light=self.use_light_comparison)
 
@@ -204,13 +210,9 @@ class CompareDirs:
         logger.debug('Searching for moved files')
         used_files = deepcopy(self.error_files)
         number_files = len(self.files_only_in_source)
-        t1 = time.time()
+        start_time = time.time()
         for i, file_in_source in enumerate(self.files_only_in_source):
-            if i > 0 and i % 500 == 0:
-                logger.debug(
-                    f'{i} of {number_files} files scanned so far'
-                    f'Average read speed: {int(60 * i / (time.time() - t1))} files/min'
-                )
+            log_progress(i, number_files, start_time)
 
             file_basename_in_source = file_in_source.get_basename()
 
