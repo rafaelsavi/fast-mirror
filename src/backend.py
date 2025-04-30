@@ -172,7 +172,7 @@ class CompareDirs:
         for i, (file_source, file_target) in enumerate(self.files_in_both):
             log_progress(i, number_files, start_time)
 
-            success, match = compare_files(file_source.get(), file_target.get(), light=self.use_light_comparison)
+            success, match = compare_files(file_source, file_target, light=self.use_light_comparison)
 
             if success:
                 if match:
@@ -216,9 +216,7 @@ class CompareDirs:
                     continue
 
                 if file_basename_in_source == file_basename_in_target:
-                    success, match = compare_files(
-                        file_in_source.get(), file_in_target.get(), self.use_light_comparison
-                    )
+                    success, match = compare_files(file_in_source, file_in_target, self.use_light_comparison)
                     if success:
                         if match:
                             # logger.debug(f'Found two single files with same basename, '
@@ -301,11 +299,7 @@ class CompareDirs:
         logger.info(f'Files that are residual in target: {len(self.residual_files)}')
         logger.info(
             f'Files that could not be analyzed ({len(self.error_files)})'
-            + str(
-                {True: ': \n' + '\n  '.join([x.get() for x in self.error_files]), False: ''}.get(
-                    len(self.error_files) > 0
-                )
-            )
+            + str({True: ': \n' + '\n  '.join(self.error_files), False: ''}.get(len(self.error_files) > 0))
         )
 
     def estimate_actions(self):
@@ -318,11 +312,13 @@ class CompareDirs:
         self.files_to_delete = self.residual_files
         self.files_to_keep = {s for s, t in self.not_modified_files}
 
-    def get_results(self):
-        sorted_files_to_copy = list(sorted(self.files_to_copy, key=lambda x: x[0].get()))
-        sorted_files_to_move = list(sorted(self.files_to_move, key=lambda x: x[0].get()))
-        sorted_files_to_delete = list(sorted(self.files_to_delete, key=lambda x: x.get()))
-        sorted_files_to_keep = list(sorted(self.files_to_keep, key=lambda x: x.get()))
+    def get_results(
+        self,
+    ) -> tuple[list[tuple[CstmPath, CstmPath]], list[tuple[CstmPath, CstmPath]], list[CstmPath], list[CstmPath]]:
+        sorted_files_to_copy = list(sorted(self.files_to_copy, key=lambda x: x[0]))
+        sorted_files_to_move = list(sorted(self.files_to_move, key=lambda x: x[0]))
+        sorted_files_to_delete = list(sorted(self.files_to_delete))
+        sorted_files_to_keep = list(sorted(self.files_to_keep))
 
         return sorted_files_to_copy, sorted_files_to_move, sorted_files_to_delete, sorted_files_to_keep
 
@@ -377,7 +373,7 @@ class SyncDirs:
         logger.info('Rebuilding local mirror')
         time_init = time.time()
         self.mirror.reset()
-        self.mirror.add({f.get() for f in add_files})
+        self.mirror.add(add_files)
         logger.info(
             f'Local mirror was rebuilt in {int(time.time() - time_init)} seconds. '
             f'New length is {self.mirror.size()} entries'
@@ -439,8 +435,9 @@ class SyncDirs:
                 shutil.move(origin, destination)
                 source_dir, target_dir = get_dirs_from_path(origin, self.dirs)
                 if source_dir is not None:
-                    self.mirror.remove(origin.replace(target_dir, source_dir))
-                    self.mirror.add(destination.replace(target_dir, source_dir))
+                    self.mirror.replace(
+                        origin.replace(target_dir, source_dir), destination.replace(target_dir, source_dir)
+                    )
                 logger.debug(f'Move finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
                 success = True
             except Exception as e:
@@ -499,7 +496,14 @@ class SyncDirs:
 
 
 class ActionSelection:
-    def __init__(self, root_gui, files_to_copy, files_to_move, files_to_delete, default_actions):
+    def __init__(
+        self,
+        root_gui: tk.Tk,
+        files_to_copy: list[tuple[str, str]],
+        files_to_move: list[tuple[str, str]],
+        files_to_delete: list[str],
+        default_actions: list[str],
+    ):
         # Load input variables
         self.files_to_copy = files_to_copy
         self.files_to_move = files_to_move
@@ -513,7 +517,7 @@ class ActionSelection:
 
         # Configure timer
         self.is_timer_active = True
-        self.init_time = None
+        self.init_time = 0  # Filled in create_widgets
         self.countdown_size = 1200
 
         # Configure gui
@@ -610,7 +614,7 @@ class ActionSelection:
 
 
 def get_dirs_from_path(path, dirs):
-    def uniform(p_: str):
+    def uniform(p_: str) -> str:
         return p_.replace('\\', '/')
 
     for s, t in dirs:

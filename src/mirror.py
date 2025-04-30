@@ -67,7 +67,6 @@ class MirrorDatabase:
                     add_single(db, path)
         except Exception as e:
             logger.critical(f'Could not open DB to add file(s): {path} Exception: {e}')
-            return False
 
     def get(self, path: CstmPathType | Iterable[CstmPathType]) -> StatHash | None | set[StatHash | None]:
         """
@@ -92,6 +91,15 @@ class MirrorDatabase:
         except Exception as e:
             logger.warning(f'Could not open DB to get keys {path}. Exception: {e}')
             return None
+
+    def replace(self, path: CstmPathType, new_path: CstmPathType):
+        """Remove path and add new_path to the database."""
+        try:
+            with self._get_db() as db:
+                self.remove(path)
+                self.add(new_path)
+        except Exception as e:
+            logger.warning(f'Could not open DB to replace key {path}. Exception: {e}')
 
     def get_keys(self, exclude: list[str] | set[str] | None = None) -> set[str]:
         exclude = [] if exclude is None else list(exclude)

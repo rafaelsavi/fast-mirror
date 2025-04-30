@@ -140,8 +140,8 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                 return default
 
         row = {}
-        row['source'] = try_f(lambda x: x.get(), source)
-        row['destination'] = try_f(lambda x: x.get(), destination)
+        row['source'] = try_f(str, source)
+        row['destination'] = try_f(str, destination)
         row['size (source)'] = try_f(lambda x: x.getsize(as_str=True), source, default=0)
         row['size (destination)'] = try_f(lambda x: x.getsize(as_str=True), destination, default=0)
         row['modification date (source)'] = try_f(lambda x: x.getmtime(as_date_str=True), source)

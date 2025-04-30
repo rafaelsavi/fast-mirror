@@ -181,7 +181,7 @@ def is_list_of_substr_in_str(l: list[str], s: str) -> bool:
     return any(substr in s for substr in l)
 
 
-def compare_files(f1, f2, light=False) -> tuple[bool, bool]:
+def compare_files(f1: CstmPathType, f2: CstmPathType, light=False) -> tuple[bool, bool]:
     same = False
     success = False
     try:
