@@ -8,6 +8,7 @@
         "pady",
         "pycodestyle",
         "Pyflakes",
+        "pytest",
         "pyupgrade",
         "setuptools",
         "sqlitedict",

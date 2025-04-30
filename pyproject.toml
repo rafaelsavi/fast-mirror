@@ -6,7 +6,8 @@ dependencies = [
     "pandas",
     "sqlitedict",
     "ttkwidgets",
-    "ruff"
+    "ruff",
+    "pytest"
 ]
 
 [build-system]
@@ -16,6 +17,7 @@ build-backend = "setuptools.build_meta"
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+exclude = ["**/.venv/**"]
 
 [tool.ruff.lint]
 select = [
