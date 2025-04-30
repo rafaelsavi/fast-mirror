@@ -5,6 +5,7 @@ import hashlib
 import os
 import time
 from collections.abc import Iterable
+from os import PathLike
 from pathlib import Path
 from typing import Union
 
@@ -84,16 +85,13 @@ class CustomException(Exception):
     pass
 
 
-CstmPathType = Union[str, Path, 'CstmPath']
+CstmPathType = Union[str, PathLike[str], 'CstmPath']
 
 
 class CstmPath(Path):
-    def __new__(cls, *args, **kwargs):
-        return super().__new__(cls, *args, **kwargs)
-
-    def __init__(self, path: str | Path, root_dir: str | Path = ''):
+    def __init__(self, path: CstmPathType, root_dir: CstmPathType | None = None):
         super().__init__(path)
-        self._root_dir = Path(root_dir).resolve() if root_dir else None
+        self._root_dir = Path(root_dir) if root_dir else None
         self._rel_to_root = self.relative_to(self._root_dir) if self._root_dir else None
 
         if self._root_dir and self._root_dir not in self.parents:
@@ -158,6 +156,16 @@ class CstmPath(Path):
             f'Finished scanning {dir_path} with {len(all_paths)} files in {int((time.time() - t1) / 60)} minutes'
         )
         return all_paths
+
+    def __truediv__(self, other: CstmPathType) -> 'CstmPath':
+        """Override the / operator to ensure compatibility with Path objects."""
+        combined_path = Path(self) / other
+        return CstmPath(combined_path, root_dir=self._root_dir)
+
+    def __rtruediv__(self, other: CstmPathType) -> 'CstmPath':
+        """Handle reverse division to preserve CstmPath attributes."""
+        combined_path = Path(other) / self
+        return CstmPath(combined_path, root_dir=self._root_dir)
 
 
 def is_list_of_substr_in_str(l, s):
