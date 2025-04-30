@@ -1,0 +1,2 @@
+python source/check_requirements.py
+PAUSE
