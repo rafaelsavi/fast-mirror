@@ -4,7 +4,7 @@ import hashlib
 import os
 import time
 from collections import namedtuple
-from os import PathLike, stat_result
+from os import PathLike
 from pathlib import Path
 from typing import NewType, Union
 
@@ -66,7 +66,8 @@ class CstmPath(Path):
                 raise e
         return self._stats
 
-    def get_encoded_stats(self) -> StatHash:
+    @property
+    def encoded_stats(self) -> StatHash:
         if self._encoded_stats is None:
             self._encoded_stats = _encode_stats(self.stats)
         return self._encoded_stats
@@ -129,7 +130,10 @@ class CstmPath(Path):
 
 
 class File:
-    """Class representing a file with source and/or target paths"""
+    """
+    Class representing a file with source and/or target paths.
+    Target path can be from target directory or a mirror
+    """
 
     def __init__(
         self,

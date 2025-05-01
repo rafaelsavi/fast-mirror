@@ -3,9 +3,9 @@ from collections.abc import Iterable
 
 from sqlitedict import SqliteDict
 
-from file import CstmPathType, get_encoded_stats
+from file import CstmPathType, StatHash, get_encoded_stats
 from logger import logger
-from utils import StatHash, is_list_of_substr_in_str
+from utils import is_list_of_substr_in_str
 
 local_mirror_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../local_mirror.db'))
 
@@ -95,12 +95,8 @@ class MirrorDatabase:
 
     def replace(self, path: CstmPathType, new_path: CstmPathType):
         """Remove path and add new_path to the database."""
-        try:
-            with self._get_db() as db:
-                self.remove(path)
-                self.add(new_path)
-        except Exception as e:
-            logger.warning(f'Could not open DB to replace key {path}. Exception: {e}')
+        self.remove(path)
+        self.add(new_path)
 
     def get_keys(self, exclude: list[str] | set[str] | None = None) -> set[str]:
         exclude = [] if exclude is None else list(exclude)

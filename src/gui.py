@@ -16,7 +16,7 @@ from backend import CompareDirs, SyncDirs
 from file import CustomException
 from logger import logger
 from mirror import MirrorDatabase
-from utils import CompareMethod, Counter, round_time_to_minutes
+from utils import CompareMethod, Counter, DirectoryPair, round_time_to_minutes
 
 
 class KillableThread(threading.Thread):
@@ -493,7 +493,7 @@ class Gui:
         if p1 != '':
             p2 = filedialog.askdirectory(title='Select destination folder')
             if p2 != '':
-                self.entry_paths.add((p1, p2))
+                self.entry_paths.add(DirectoryPair(source=p1, target=p2))
 
     def button_action_open_report(self):
         filenames = [
@@ -585,6 +585,7 @@ class Gui:
             save_path = os.path.join(logger.log_dir, 'compare_report_' + timestamp + '.xlsx')
         else:
             save_path = ''
+
         compare = CompareDirs(
             mirror=self.mirror,
             dirs=self.entry_paths.get(),
@@ -787,7 +788,7 @@ class EntryPaths(ScrolledText):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get(self, *args, **kwargs) -> list[tuple[str, str]]:
+    def get(self, *args, **kwargs) -> list[DirectoryPair]:
         raw: str
         raw = super().get('1.0', tk.END)
         lines = raw.splitlines()
@@ -795,20 +796,20 @@ class EntryPaths(ScrolledText):
         paths = [pair for pair in paths if pair is not None]
         return paths
 
-    def add(self, pair: tuple[str, str]):
+    def add(self, pair: DirectoryPair):
         self.set(self.get() + [pair])
 
-    def set(self, paths: list[tuple[str, str]]):
-        raw = '\n'.join([f'{p1} -> {p2}' for p1, p2 in paths])
+    def set(self, paths: list[DirectoryPair]):
+        raw = '\n'.join([f'{pair.source} -> {pair.target}' for pair in paths])
         super().delete('1.0', tk.END)  # delete current text
         super().insert('1.0', raw)  # add at line 1, col 0
 
     @staticmethod
-    def parse_line(raw: str) -> None | tuple[str, str]:
+    def parse_line(raw: str) -> None | DirectoryPair:
         try:
             p1, p2 = raw.split(' -> ')
             if os.path.isdir(p1) and os.path.isdir(p2):
-                return os.path.realpath(p1), os.path.realpath(p2)
+                return DirectoryPair(source=os.path.realpath(p1), target=os.path.realpath(p2))
             else:
                 return None
         except:

@@ -11,6 +11,20 @@ class CompareMethod(Enum):
     CONTENT = 'content'
 
 
+class DirectoryPair:
+    def __init__(self, source: str, target: str):
+        if not isinstance(source, str) or not isinstance(target, str):
+            raise TypeError('Both source and target must be strings.')
+        self.source = source
+        self.target = target
+
+    def __repr__(self) -> str:
+        return f'DirectoryPair(source={self.source!r}, target={self.target!r})'
+
+    def __iter__(self) -> os.Iterator[str]:
+        return iter((self.source, self.target))
+
+
 def get_size(path: str | list[str], as_str=True) -> float | str:
     def get_single_size(path_):
         try:

@@ -19,7 +19,8 @@ from utils import (
     format_size,
     get_size,
     log_progress,
-    CompareMethod
+    CompareMethod,
+    DirectoryPair
 )
 
 
@@ -27,7 +28,7 @@ class CompareDirs:
     def __init__(
         self,
         mirror: MirrorDatabase,
-        dirs: list[tuple[str, str]],
+        dirs: list[DirectoryPair],
         exclusions: list[str],
         save_report_path='',
         compare_with_mirror=False,
@@ -88,7 +89,6 @@ class CompareDirs:
         self.print_results()
 
         # Estimate synchronization actions
-        self.estimate_actions()
         logger.info(f'Finished comparing directories in {int((time.time() - t1_compare_dirs) / 60)} minutes')
 
     def get_files_from_source_and_local_mirror(self):
@@ -101,8 +101,8 @@ class CompareDirs:
         files_in_mirror: set[str] = self.mirror.get_keys(exclude=self.exclusions)
         files_in_source: set[str] = {
             str(f)
-            for source_dir, target_dir in self.dirs
-            for f in CstmPath.get_from_dir(source_dir, exclude=self.exclusions)
+            for dir_pair in self.dirs
+            for f in CstmPath.get_from_dir(dir_pair.source, exclude=self.exclusions)
         }
 
         logger.info(
@@ -133,10 +133,10 @@ class CompareDirs:
         self.files_only_in_source = set(source_file if source_file.exists() and not target_file.exists())
         all_paths = files_only_in_mirror | files_only_in_source | files_modified
         for p in all_paths:
-            source_dir, target_dir = get_dirs_from_path(p, self.dirs)
-            if source_dir is not None:
-                source_file = CstmPath(p, root_dir=source_dir)
-                target_file = CstmPath(p.replace(source_dir, target_dir), root_dir=target_dir)
+            dir_pair = get_dirs_from_path(p, self.dirs)
+            if dir_pair is not None:
+                source_file = CstmPath(p, root_dir=dir_pair.source)
+                target_file = CstmPath(p.replace(dir_pair.source, dir_pair.target), root_dir=dir_pair.target)
                 if source_file.exists() and not target_file.exists():
                     self.files_only_in_source.add(source_file)
                 elif not source_file.exists() and target_file.exists():
@@ -418,9 +418,10 @@ class SyncDirs:
                 logger.info(f'Moving file {i} of {number}: {source} ({get_size(source)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.move(source, target)
-                source_dir, target_dir = get_dirs_from_path(source, self.dirs)
-                if source_dir is not None:
-                    self.mirror.replace(source.replace(target_dir, source_dir), target.replace(target_dir, source_dir))
+                dir_pair = get_dirs_from_path(source, self.dirs)
+                if dir_pair is not None:
+                    self.mirror.replace(source.replace(dir_pair.target, dir_pair.source), 
+                                        target.replace(dir_pair.target, dir_pair.source))
                 logger.debug(f'Move finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
                 success = True
             except Exception as e:
@@ -439,9 +440,9 @@ class SyncDirs:
                 logger.info(f'Deleting file {i} of {number}: {path} ({get_size(path)})')
                 os.chmod(path, stat.S_IWRITE)
                 os.remove(path)
-                source_dir, target_dir = get_dirs_from_path(path, self.dirs)
-                if source_dir is not None:
-                    self.mirror.remove(path.replace(target_dir, source_dir))
+                dir_pair = get_dirs_from_path(path, self.dirs)
+                if dir_pair is not None:
+                    self.mirror.remove(path.replace(dir_pair.target, dir_pair.source))
                 logger.info(f'Delete finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
                 success = True
             except Exception as e:
@@ -596,9 +597,7 @@ class ActionSelection:
         return self.files_to_copy, self.files_to_move, self.files_to_delete
 
 
-def get_dirs_from_path(
-    path: CstmPathType, dirs: list[tuple[CstmPathType, CstmPathType]]
-) -> tuple[CstmPathType | None, CstmPathType | None]:
+def get_dirs_from_path(  path: CstmPathType, dirs: list[DirectoryPair] ) -> DirectoryPair:
     """Find the corresponding source and target directories for a given path."""
 
     def uniform(p_: CstmPathType) -> str:
@@ -606,9 +605,8 @@ def get_dirs_from_path(
 
     for source, target in dirs:
         if uniform(source) in uniform(path) or uniform(target) in uniform(path):
-            return source, target
-    logger.error(f'Could not identify root folders of path {path}')
-    return None, None
+            return DirectoryPair(source, target)
+    raise FileNotFoundError(f'Could not identify root folders of path {path}. Dirs: {dirs}')
 
 
 if __name__ == '__main__':
