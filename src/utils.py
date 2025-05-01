@@ -78,15 +78,19 @@ def check_length(p):
     return f'File path of source and/or target is too long ({len(p)})' if len(p) > 259 else ''
 
 
-def log_progress(progress: int, total: int | None, start_time: float, interval=1000):
+def log_progress(progress: int, total: int | None, start_time: float, interval=1000, speed_type=''):
+    if speed_type:
+        speed_type += ' '
+
     if progress > 0 and progress % interval == 0:
         speed_files_p_min = int(60 * progress / (time.time() - start_time))
         msgs = []
         if total is not None:
-            msgs.append(f'{progress} of {total} files scanned so far.')
+            msgs.append(f'{progress} of {total} files so far.')
         else:
-            msgs.append(f'{progress} files scanned so far.')
-        msgs.append(f'Avg. read speed: {speed_files_p_min} files/min.')
+            msgs.append(f'{progress} files so far.')
+
+        msgs.append(f'Avg. {speed_type}speed: {speed_files_p_min} files/min.')
         if total is not None:
             msgs.append(f'ETL: {int((total - progress) / speed_files_p_min)} min')
         logger.debug(' '.join(msgs))

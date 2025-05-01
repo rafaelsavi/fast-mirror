@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
+from typing import Callable
 
 import ttkwidgets
 
@@ -129,27 +130,27 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
     @staticmethod
     def get_row(source: CstmPath, target: CstmPath) -> dict[str, float | str]:
-        def try_f(f, arg, default=''):
-            if arg is None:
+        def try_f(func: Callable, path: CstmPath, default=''):
+            if path is None:
                 return default
             try:
-                return f(arg)
+                return func(path)
             except FileNotFoundError:
                 return default
             except Exception as e:
-                logger.warning(f'Failed to apply {f} on "{str(arg)}". Exception: {e}')
+                logger.warning(f'Failed to apply {func} on "{str(path)}". Exception: {e}')
                 return default
 
         row = {}
         row['source'] = try_f(str, source)
         row['target'] = try_f(str, target)
-        row['size (source)'] = try_f(lambda x: x.getsize(as_str=True), source, default=0)
-        row['size (target)'] = try_f(lambda x: x.getsize(as_str=True), target, default=0)
-        row['modification date (source)'] = try_f(lambda x: x.getmtime(as_date_str=True), source)
-        row['modification date (target)'] = try_f(lambda x: x.getmtime(as_date_str=True), target)
-        row['creation date (source)'] = try_f(lambda x: x.getctime(as_date_str=True), source)
-        row['creation date (target)'] = try_f(lambda x: x.getctime(as_date_str=True), target)
+        row['size (source)'] = try_f(lambda x: x.get_st_size(as_str=True), source, default=0)
+        row['size (target)'] = try_f(lambda x: x.get_st_size(as_str=True), target, default=0)
+        row['modification date (source)'] = try_f(lambda x: x.get_st_mtime(as_date_str=True), source)
+        row['modification date (target)'] = try_f(lambda x: x.get_st_mtime(as_date_str=True), target)
+        row['creation date (source)'] = try_f(lambda x: x.get_st_birthtime(as_date_str=True), source)
+        row['creation date (target)'] = try_f(lambda x: x.get_st_birthtime(as_date_str=True), target)
         get_size_from = source if source is not None else target
-        row['size in bytes'] = try_f(lambda x: x.getsize(as_str=False), get_size_from, default=0)
+        row['size in bytes'] = try_f(lambda x: x.get_st_size(as_str=False), get_size_from, default=0)
 
         return row

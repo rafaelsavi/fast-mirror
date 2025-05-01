@@ -45,9 +45,9 @@ class CompareDirs:
         self.files_in_target: dict[str, set[CstmPath]] = {}
         self.linked_files: list[File] = []
 
-        self.files_to_copy: list[tuple[str, str]] = []
-        self.files_to_move: list[tuple[str, str]] = []
-        self.files_to_delete: list[str] = []
+        self.files_to_copy: list[tuple[CstmPath, CstmPath]] = []
+        self.files_to_move: list[tuple[CstmPath, CstmPath]] = []
+        self.files_to_delete: list[CstmPath] = []
 
         self.scan_source_files()
         self.scan_target_files(use_mirror, increment_mirror, rebuild_mirror)
@@ -90,7 +90,7 @@ class CompareDirs:
 
             if use_mirror and mirror_exists:
                 logger.info(
-                    f'Using mirror for {dir_pair.target}. Table has {self.mirror.size(dir_pair.target)} entries'
+                    f'Using mirror for <{dir_pair.target}>. Table has {self.mirror.size(dir_pair.target)} entries'
                 )
                 self.files_in_target[dir_pair.target] = {
                     CstmPath(p, root_dir=dir_pair.target) for p in self.mirror.get_keys(root_dir=dir_pair.target)
@@ -100,7 +100,7 @@ class CompareDirs:
             if use_mirror and not mirror_exists:
                 logger.warning('Mirror does not exist for target directory. Using file system instead')
 
-            logger.info(f'Using file system to scan target directory {dir_pair.target}')
+            logger.info(f'Using file system to scan target directory <{dir_pair.target}>')
             self.files_in_target[dir_pair.target] = CstmPath.get_from_dir(dir_pair.target, exclude=self.exclusions)
 
             if increment_mirror or rebuild_mirror:
@@ -115,8 +115,8 @@ class CompareDirs:
 
         for dir_pair in self.dirs:
             logger.info(
-                f'Comparing {dir_pair.source} ({len(self.files_in_source[dir_pair.source])} files) and '
-                f'{dir_pair.target} ({len(self.files_in_target[dir_pair.target])} files)'
+                f'Linking <{dir_pair.source}> ({len(self.files_in_source[dir_pair.source])} files) and '
+                f'<{dir_pair.target}> ({len(self.files_in_target[dir_pair.target])} files)'
             )
             source_paths = {f.rel_to_root: f for f in self.files_in_source[dir_pair.source]}
             target_paths = {f.rel_to_root: f for f in self.files_in_target[dir_pair.target]}
@@ -195,9 +195,7 @@ class CompareDirs:
         These are files that only exist in source or that were modified
         """
         self.files_to_copy = [
-            (str(f.source), str(f.missing_target))
-            for f in self.linked_files
-            if f.only_source or (f.in_both and f.modified)
+            (f.source, f.missing_target) for f in self.linked_files if f.only_source or (f.in_both and f.modified)
         ]
         self.files_to_copy = list(sorted(self.files_to_copy, key=lambda x: x[0]))
 
@@ -209,7 +207,7 @@ class CompareDirs:
         Get files that need to be deleted from target.
         These are files that only exist in target
         """
-        self.files_to_delete = list(sorted([str(f.target) for f in self.linked_files if f.only_target]))
+        self.files_to_delete = list(sorted([f.target for f in self.linked_files if f.only_target]))
 
     def save_report(self):
         if self.save_report_path.endswith('.xlsx'):
@@ -240,7 +238,7 @@ class CompareDirs:
             logger.info('Starting to write comparison report')
             os.makedirs(os.path.dirname(self.save_report_path), exist_ok=True)
             df.to_excel(self.save_report_path, index=False)
-            logger.info(f'Comparison report was saved to {self.save_report_path}')
+            logger.info(f'Comparison report was saved to <{self.save_report_path}>')
 
     def print_results(self):
         logger.info('-------------------------')
@@ -258,7 +256,7 @@ class CompareDirs:
         )
         files_compare_error = [f for f in self.linked_files if f.compare_error]
         logger.info(
-            f'Files that could not be analyzed ({len(files_compare_error)})'
+            f'Files that could not be analyzed: {len(files_compare_error)}'
             + str({True: ': \n' + '\n  '.join(files_compare_error), False: ''}.get(len(files_compare_error) > 0))
         )
 
@@ -327,28 +325,28 @@ class SyncDirs:
         return False
 
     def copy_files(self):
-        number = len(self.files_requested_to_copy)
+        total_files = len(self.files_requested_to_copy)
         counter_size = 0
-        counter_timer = time.time()
+        start_time = time.time()
 
         for i, (source, target) in enumerate(self.files_requested_to_copy, 1):
             success = False
             try:
                 size = get_size(source, as_str=False)
-                logger.info(f'Copying file {i} of {number}: {source} ({format_size(size)})')
+                logger.info(f'Copying file {i} of {total_files}: <{source}> - <{target}> ({format_size(size)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copy2(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.add(root_dir=dir_pair.target, path=target)
                 counter_size += size
-                logger.debug(
-                    f'Copy finished. Average speed {format_size(counter_size / (time.time() - counter_timer))}/s'
-                )
+                log_progress(i, total_files, start_time, interval=10, speed_type='copy')
+                if i % 10 == 0:
+                    logger.debug(f'Avg. copy speed: {format_size(counter_size / (time.time() - start_time))}/s')
                 success = True
             except Exception as e:
                 error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
                 error_msg = e if error_msg == '' else error_msg
-                logger.error(f'There was an error while copying file {source}. Exception: {error_msg}')
+                logger.error(f'There was an error while copying file <{source}>. Exception: {error_msg}')
 
             self.files_copied.append(((source, target), success))
 
@@ -358,7 +356,7 @@ class SyncDirs:
         for i, (source, target) in enumerate(self.files_requested_to_move, 1):
             success = False
             try:
-                logger.info(f'Moving file {i} of {number}: {source} ({get_size(source)})')
+                logger.info(f'Moving file {i} of {number}: <{source}> ({get_size(source)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.move(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
@@ -368,36 +366,36 @@ class SyncDirs:
             except Exception as e:
                 error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
                 error_msg = e if error_msg == '' else error_msg
-                logger.error(f'There was an error while moving file {source}. Exception: {error_msg}')
+                logger.error(f'There was an error while moving file <{source}>. Exception: {error_msg}')
 
             self.files_moved.append(((source, target), success))
 
     def delete_files(self):
-        number = len(self.files_requested_to_delete)
-        t1 = time.time()
+        total_files = len(self.files_requested_to_delete)
+        start_time = time.time()
         for i, path in enumerate(self.files_requested_to_delete, 1):
             success = False
             try:
-                logger.info(f'Deleting file {i} of {number}: {path} ({get_size(path)})')
+                logger.info(f'Deleting file {i} of {total_files}: <{path}> ({get_size(path)})')
                 os.chmod(path, stat.S_IWRITE)
                 os.remove(path)
                 dir_pair = get_dirs_from_path(path, self.dirs)
                 self.mirror.remove(root_dir=dir_pair.target, path=path)
-                logger.info(f'Delete finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
+                log_progress(i, total_files, start_time, interval=10, speed_type='delete')
                 success = True
             except Exception as e:
                 error_msg = check_length(path)
                 error_msg = e if error_msg == '' else error_msg
-                logger.error(f'There was an error while deleting file {path}. Exception: {error_msg}')
+                logger.error(f'There was an error while deleting file <{path}>. Exception: {error_msg}')
 
             # If the folder of the deleted file is left empty, delete it
             dir_name = os.path.dirname(path)
             if success and len(os.listdir(dir_name)) == 0:
                 try:
                     os.removedirs(dir_name)
-                    logger.info(f'Also removed empty directory {dir_name}')
+                    logger.info(f'Also removed empty directory <{dir_name}>')
                 except Exception as e:
-                    logger.info(f'Could not remove empty directory {dir_name}. Exception: {e}')
+                    logger.info(f'Could not remove empty directory <{dir_name}>. Exception: {e}')
 
             self.files_deleted.append((path, success))
 
@@ -406,13 +404,13 @@ class SyncDirs:
         if failed_copy:
             logger.warning(
                 'Summary of files that failed to be copied:\n    '
-                + '\n    '.join([f'{s} -> {d}' for s, d in failed_copy])
+                + '\n    '.join([f'<{s}> -> <{d}>' for s, d in failed_copy])
             )
         failed_move = [p for p, success in self.files_moved if not success]
         if failed_move:
             logger.warning(
                 'Summary of files that failed to be moved:\n    '
-                + '\n    '.join([f'{s} -> {d}' for s, d in failed_move])
+                + '\n    '.join([f'<{s}> -> <{d}>' for s, d in failed_move])
             )
         failed_delete = [p for p, success in self.files_deleted if not success]
         if failed_delete:
@@ -546,7 +544,7 @@ def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> Directo
     for source, target in dirs:
         if uniform(source) in uniform(path) or uniform(target) in uniform(path):
             return DirectoryPair(source, target)
-    raise FileNotFoundError(f'Could not identify root folders of path {path}. Dirs: {dirs}')
+    raise FileNotFoundError(f'Could not identify root folders of path <{path}>. Dirs: {dirs}')
 
 
 if __name__ == '__main__':
@@ -564,4 +562,14 @@ if __name__ == '__main__':
         use_mirror=False,
         increment_mirror=True,
         rebuild_mirror=False,
+    )
+
+    sync_dirs = SyncDirs(
+        files_to_copy=compare_dirs.files_to_copy,
+        files_to_move=compare_dirs.files_to_move,
+        files_to_delete=compare_dirs.files_to_delete,
+        mirror=compare_dirs.mirror,
+        root_gui=tk.Tk(),
+        dirs=compare_dirs.dirs,
+        default_actions=['copy', 'move', 'delete'],
     )

@@ -144,8 +144,8 @@ class File:
     def __init__(
         self, source: CstmPathType | None = None, target: CstmPathType | None = None, missing_target_root_dir=None
     ):
-        self.source = CstmPath(source) if source else None
-        self.target = CstmPath(target) if target else None
+        self.source = None if source is None else source if isinstance(source, CstmPath) else CstmPath(source)
+        self.target = None if target is None else target if isinstance(target, CstmPath) else CstmPath(target)
 
         if source is None and target is None:
             raise CustomException('Both source and target cannot be None.')
