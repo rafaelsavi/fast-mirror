@@ -1,6 +1,7 @@
 import datetime
 import os
 import time
+from collections.abc import Iterator
 from enum import Enum
 
 from logger import logger
@@ -18,15 +19,12 @@ class DirectoryPair:
         self.source = source
         self.target = target
 
-    def __repr__(self) -> str:
-        return f'DirectoryPair(source={self.source!r}, target={self.target!r})'
-
-    def __iter__(self) -> os.Iterator[str]:
+    def __iter__(self) -> Iterator[str]:
         return iter((self.source, self.target))
 
 
 def get_size(path: str | list[str], as_str=True) -> float | str:
-    def get_single_size(path_):
+    def get_single_size(path_) -> int:
         try:
             return os.path.getsize(path_)
         except FileNotFoundError:
@@ -62,7 +60,7 @@ def round_time_to_minutes(time_: datetime.datetime) -> datetime.datetime:
     return time_ - datetime.timedelta(seconds=time_.second, microseconds=time_.microsecond)
 
 
-def time_diff_to_minutes(start_time: float) -> str:
+def time_diff_to_min(start_time: float) -> str:
     return f'{int((time.time() - start_time) / 60)} minutes'
 
 

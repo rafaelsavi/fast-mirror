@@ -12,7 +12,7 @@ from custom_gui import CustomCheckboxTreeView
 from file import CstmPath, CstmPathType, File
 from logger import logger
 from mirror import MirrorDatabase
-from utils import CompareMethod, DirectoryPair, check_length, format_size, get_size, log_progress, time_diff_to_minutes
+from utils import CompareMethod, DirectoryPair, check_length, format_size, get_size, log_progress, time_diff_to_min
 
 
 class CompareDirs:
@@ -64,7 +64,7 @@ class CompareDirs:
         self.save_report()
 
         # Estimate synchronization actions
-        logger.info(f'Finished comparing directories in {time_diff_to_minutes(start_time)}')
+        logger.info(f'Finished comparing directories in {time_diff_to_min(start_time)}')
 
     def scan_source_files(self):
         logger.info('Starting to scan source files')
@@ -72,9 +72,8 @@ class CompareDirs:
         self.files_in_source = {
             dir_pair.source: CstmPath.get_from_dir(dir_pair.source, exclude=self.exclusions) for dir_pair in self.dirs
         }
-        logger.info(
-            f'Finished scanning all source files. Found {len(self.files_in_source)} files in {time_diff_to_minutes(start_time)}'
-        )
+        num_files = sum(len(files) for files in self.files_in_source.values())
+        logger.info(f'Finished scanning all source files. Found {num_files} files in {time_diff_to_min(start_time)}')
 
     def scan_target_files(self, use_mirror: bool, increment_mirror: bool, rebuild_mirror: bool):
         logger.info('Starting to scan target files')
@@ -108,9 +107,8 @@ class CompareDirs:
                 logger.info(f'Adding {len(self.files_in_target[dir_pair.target])} files to mirror')
                 self.mirror.add(dir_pair.target, self.files_in_target[dir_pair.target])
 
-        logger.info(
-            f'Finished scanning all target files. Found {len(self.files_in_target)} files in {time_diff_to_minutes(start_time)}'
-        )
+        num_files = sum(len(files) for files in self.files_in_target.values())
+        logger.info(f'Finished scanning all target files. Found {num_files} files in {time_diff_to_min(start_time)}')
 
     def link_files(self):
         logger.info('Starting to link source and target files')
@@ -132,7 +130,9 @@ class CompareDirs:
                     self.linked_files.append(File(source=source_file, target=target_paths[source_file_rel_path]))
                     del target_paths[source_file_rel_path]
                 else:
-                    self.linked_files.append(File(source=source_file, target=None))
+                    self.linked_files.append(
+                        File(source=source_file, target=None, missing_target_root_dir=dir_pair.target)
+                    )
 
             # Remaining target paths did not match to any source path
             self.linked_files += [File(source=None, target=target_file) for target_file in target_paths.values()]
@@ -143,8 +143,12 @@ class CompareDirs:
         """Compare files that exist in both places and check for newer versions in the source"""
         files_in_both = [f for f in self.linked_files if f.in_both]
         number_files = len(files_in_both)
+        if not number_files:
+            logger.info('Not comparing any file since there are no files existing in both directories')
+            return
+
         start_time = time.time()
-        logger.debug(f'Comparing {number_files} files that exist in both directories')
+        logger.info(f'Comparing {number_files} files that exist in both directories')
         for i, file in enumerate(files_in_both):
             log_progress(i, number_files, start_time, interval=1000)
             if file.in_both:
@@ -191,7 +195,9 @@ class CompareDirs:
         These are files that only exist in source or that were modified
         """
         self.files_to_copy = [
-            (str(f.source), str(f.target)) for f in self.linked_files if f.only_source or (f.in_both and f.modified)
+            (str(f.source), str(f.missing_target))
+            for f in self.linked_files
+            if f.only_source or (f.in_both and f.modified)
         ]
         self.files_to_copy = list(sorted(self.files_to_copy, key=lambda x: x[0]))
 
@@ -239,16 +245,16 @@ class CompareDirs:
     def print_results(self):
         logger.info('-------------------------')
         logger.info('Analyzing directory tree:')
-        logger.info(f'Files that exist in source: {len(f for f in self.linked_files if f.source)}')
-        logger.info(f'Files that exist only in source: {len(f for f in self.linked_files if f.only_source)}')
-        logger.info(f'Files that exist in target: {len(f for f in self.linked_files if f.target)}')
-        logger.info(f'Files that exist only in target: {len(f for f in self.linked_files if f.only_target)}')
-        logger.info(f'Files that exist in both: {len(f for f in self.linked_files if f.in_both)}')
+        logger.info(f'Files that exist in source: {len([f for f in self.linked_files if f.source])}')
+        logger.info(f'Files that exist only in source: {len([f for f in self.linked_files if f.only_source])}')
+        logger.info(f'Files that exist in target: {len([f for f in self.linked_files if f.target])}')
+        logger.info(f'Files that exist only in target: {len([f for f in self.linked_files if f.only_target])}')
+        logger.info(f'Files that exist in both: {len([f for f in self.linked_files if f.in_both])}')
         logger.info(
-            f'Files that exist in both and are the same: {len(f for f in self.linked_files if f.in_both and f.same)}'
+            f'Files that exist in both and are the same: {len([f for f in self.linked_files if f.in_both and f.same])}'
         )
         logger.info(
-            f'Files that exist in both and are modified: {len(f for f in self.linked_files if f.in_both and not f.same)}'
+            f'Files that exist in both and are modified: {len([f for f in self.linked_files if f.in_both and not f.same])}'
         )
         files_compare_error = [f for f in self.linked_files if f.compare_error]
         logger.info(
@@ -544,21 +550,18 @@ def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> Directo
 
 
 if __name__ == '__main__':
-    source_root_dir = r'D:\Projects\Python\AutomaticBackup\TestBackupSource'
-    # source_root_dir = r'E:'
-    # target_root_dir = r'N:\BackupPC\D'
-    target_root_dir = r'D:\Projects\Python\AutomaticBackup\TestBackuptarget'
-    # target_root_dir = r'N:\NetBakData\Rafael Savi@RAFAEL-SAVI\Disk E'
-
-    root_ = tk.Tk()
-
-    files = get_all_files('D:/Musicas', [])
-    files2 = files.copy()
-
-    t1 = time.time()
-    stats1 = [get_stat(p) for p in files]
-    t2 = time.time()
-    print(mode, t2 - t1)
-
-    stats1[1]
-    # root_.mainloop()
+    # Example usage CompareDirs
+    compare_dirs = CompareDirs(
+        dirs=[
+            DirectoryPair(
+                source=os.path.normpath(os.path.join(os.path.dirname(__file__), '../tests/TestData/Source')),
+                target=os.path.normpath(os.path.join(os.path.dirname(__file__), '../tests/TestData/Target')),
+            )
+        ],
+        mirror=MirrorDatabase(path=os.path.join(__file__, '../tests/TestData/mirror.db')),
+        exclusions=['.DS_Store', 'Thumbs.db', '__pycache__'],
+        comparison_method=CompareMethod.METADATA,
+        use_mirror=False,
+        increment_mirror=True,
+        rebuild_mirror=False,
+    )

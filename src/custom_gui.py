@@ -112,7 +112,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         for group, file_list in file_lists.items():
             self._data[group] = {}
             for file_entry in file_list:
-                args = (None, file_entry) if type(file_entry) == CstmPath else file_entry
+                args = (None, file_entry) if isinstance(file_entry, CstmPath) else file_entry
                 values = self.get_row(*args)
                 self._data[group][f'{group}::{values["source"]}::{values["target"]}'] = values
 

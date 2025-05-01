@@ -488,11 +488,11 @@ class Gui:
         self.get_next_appointment()
 
     def button_action_add_path(self):
-        p1 = filedialog.askdirectory(title='Select source folder')
-        if p1 != '':
-            p2 = filedialog.askdirectory(title='Select destination folder')
-            if p2 != '':
-                self.entry_paths.add(DirectoryPair(source=p1, target=p2))
+        source = filedialog.askdirectory(title='Select source folder')
+        if source != '':
+            target = filedialog.askdirectory(title='Select destination folder')
+            if target != '':
+                self.entry_paths.add(DirectoryPair(source=source, target=target))
 
     def button_action_open_report(self):
         filenames = [
@@ -589,7 +589,7 @@ class Gui:
 
         compare = CompareDirs(
             mirror=mirror,
-            dirs=self.entry_paths.get(),
+            dirs=self.entry_paths.get_as_dir_pairs(),
             exclusions=self.entry_exclusions.get(),
             comparison_method=CompareMethod.METADATA
             if self.checkbox_value_metadata_comparison.get()
@@ -597,7 +597,7 @@ class Gui:
             care_about_moved_files=self.checkbox_value_care_about_moved_files.get(),
             save_report_path=save_path,
             use_mirror=self.checkbox_value_use_mirror.get(),
-            increment_mirror=True,
+            increment_mirror=not self.checkbox_value_build_mirror.get(),
             rebuild_mirror=self.checkbox_value_build_mirror.get(),
         )
 
@@ -609,9 +609,9 @@ class Gui:
                 files_to_delete=compare.files_to_delete,
                 mirror=mirror,
                 root_gui=self.root,
-                dirs=self.entry_paths.get(),
+                dirs=self.entry_paths.get_as_dir_pairs(),
                 default_actions=default_actions,
-                increment_mirror=True,
+                increment_mirror=not self.checkbox_value_build_mirror.get(),
             )
 
         logger.debug('Processing thread was properly closed')
@@ -793,28 +793,31 @@ class EntryPaths(ScrolledText):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get(self, *args, **kwargs) -> list[DirectoryPair]:
+    def get(self, *args, **kwargs) -> list[tuple[str, str]]:
         raw: str
         raw = super().get('1.0', tk.END)
         lines = raw.splitlines()
-        paths = {self.parse_line(line) for line in lines}
+        paths = list({self.parse_line(line) for line in lines})
         paths = [pair for pair in paths if pair is not None]
         return paths
 
-    def add(self, pair: DirectoryPair):
+    def get_as_dir_pairs(self) -> list[DirectoryPair]:
+        return [DirectoryPair(source=pair[0], target=pair[1]) for pair in self.get()]
+
+    def add(self, pair: tuple[str, str]):
         self.set(self.get() + [pair])
 
-    def set(self, paths: list[DirectoryPair]):
-        raw = '\n'.join([f'{pair.source} -> {pair.target}' for pair in paths])
+    def set(self, paths: list[tuple[str, str]]):
+        raw = '\n'.join([f'{pair[0]} -> {pair[1]}' for pair in paths])
         super().delete('1.0', tk.END)  # delete current text
         super().insert('1.0', raw)  # add at line 1, col 0
 
     @staticmethod
-    def parse_line(raw: str) -> None | DirectoryPair:
+    def parse_line(raw: str) -> None | tuple[str, str]:
         try:
-            p1, p2 = raw.split(' -> ')
-            if os.path.isdir(p1) and os.path.isdir(p2):
-                return DirectoryPair(source=os.path.realpath(p1), target=os.path.realpath(p2))
+            source, target = raw.split(' -> ')
+            if os.path.isdir(source) and os.path.isdir(target):
+                return (os.path.realpath(source), os.path.realpath(target))
             else:
                 return None
         except:

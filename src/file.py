@@ -15,7 +15,7 @@ from utils import (
     format_size,
     is_list_of_substr_in_str,
     log_progress,
-    time_diff_to_minutes,
+    time_diff_to_min,
 )
 
 CstmPathType = Union[str, PathLike[str], 'CstmPath']
@@ -121,7 +121,7 @@ class CstmPath(Path):
                     if not is_list_of_substr_in_str(exclude, str(abs_path)):
                         all_paths.add(CstmPath(abs_path, root_dir=dir_path))
                         log_progress(len(all_paths), None, t1, interval=5000)
-        logger.info(f'Finished scanning {dir_path} with {len(all_paths)} files in {time_diff_to_minutes(t1)}.')
+        logger.info(f'Finished scanning {dir_path} with {len(all_paths)} files in {time_diff_to_min(t1)}.')
         return all_paths
 
     def __truediv__(self, other: CstmPathType) -> 'CstmPath':
@@ -141,7 +141,9 @@ class File:
     Target path can be from target directory or a mirror
     """
 
-    def __init__(self, source: CstmPathType | None = None, target: CstmPathType | None = None):
+    def __init__(
+        self, source: CstmPathType | None = None, target: CstmPathType | None = None, missing_target_root_dir=None
+    ):
         self.source = CstmPath(source) if source else None
         self.target = CstmPath(target) if target else None
 
@@ -150,6 +152,14 @@ class File:
 
         if self.source and self.target and self.source.rel_to_root != self.target.rel_to_root:
             raise CustomException(f'Source and target paths do not match: {self.source} vs {self.target}')
+
+        self.missing_target: CstmPath | None = None
+        if self.source is not None and self.target is None:
+            if missing_target_root_dir is None:
+                raise CustomException('Missing target root directory for missing target path.')
+            self.missing_target = CstmPath(
+                missing_target_root_dir, self.source.rel_to_root, root_dir=missing_target_root_dir
+            )
 
         self.rel_path: str = self.source.rel_to_root if self.source else self.target.rel_to_root if self.target else ''
         self._compare_success: bool | None = None  # Placeholder for comparison success status
@@ -200,6 +210,8 @@ class File:
 
     @property
     def compare_error(self) -> bool:
+        if not self.in_both:
+            return False
         if self._same is None:
             raise CustomException('Comparison has not been performed yet.')
         return not self._compare_success
