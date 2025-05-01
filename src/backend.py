@@ -98,7 +98,9 @@ class CompareDirs:
                 continue
 
             if use_mirror and not mirror_exists:
-                logger.warning('Mirror does not exist for target directory. Using file system instead')
+                logger.warning(
+                    f'Mirror does not exist for target directory <{dir_pair.target}>. Using file system instead'
+                )
 
             logger.info(f'Using file system to scan target directory <{dir_pair.target}>')
             self.files_in_target[dir_pair.target] = CstmPath.get_from_dir(dir_pair.target, exclude=self.exclusions)

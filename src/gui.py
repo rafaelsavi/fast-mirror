@@ -807,7 +807,8 @@ class EntryPaths(ScrolledText):
     def add(self, pair: tuple[str, str]):
         self.set(self.get() + [pair])
 
-    def set(self, paths: list[tuple[str, str]]):
+    def set(self, paths: list[tuple[str, str]] | list[DirectoryPair]):
+        paths = [pair if isinstance(pair, tuple) else (pair.source, pair.target) for pair in paths]
         raw = '\n'.join([f'{pair[0]} -> {pair[1]}' for pair in paths])
         super().delete('1.0', tk.END)  # delete current text
         super().insert('1.0', raw)  # add at line 1, col 0

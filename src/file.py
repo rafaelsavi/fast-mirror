@@ -35,7 +35,7 @@ def _get_stats(path: CstmPathType) -> StableStats:
     try:
         stats = os.stat(path)
     except Exception as e:
-        logger.warning(f'Could not get stats of {path}. Exception: {e}')
+        # logger.warning(f'Could not get stats of {path}. Exception: {e}')
         raise e
 
     stable_stats = StableStats(stats.st_size, stats.st_mtime, stats.st_birthtime)
