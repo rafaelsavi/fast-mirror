@@ -5,23 +5,14 @@ import stat
 import time
 import tkinter as tk
 import winsound
-from copy import deepcopy
-from pathlib import Path
 
 import pandas as pd
 
-from file import CstmPath, CstmPathType, compare_files, get_encoded_stats
 from custom_gui import CustomCheckboxTreeView
+from file import CstmPath, CstmPathType, File
 from logger import logger
 from mirror import MirrorDatabase
-from utils import (
-    check_length,
-    format_size,
-    get_size,
-    log_progress,
-    CompareMethod,
-    DirectoryPair
-)
+from utils import CompareMethod, DirectoryPair, check_length, format_size, get_size, log_progress, time_diff_to_minutes
 
 
 class CompareDirs:
@@ -31,14 +22,16 @@ class CompareDirs:
         dirs: list[DirectoryPair],
         exclusions: list[str],
         save_report_path='',
-        compare_with_mirror=False,
         comparison_method: CompareMethod = CompareMethod.METADATA,
         care_about_moved_files=True,
+        use_mirror=False,
+        increment_mirror=True,
+        rebuild_mirror=False,
     ):
         logger.info('-----------------------------')
         logger.info('Initializing comparison')
         logger.info('Directories:\n  ' + '\n  '.join([f'{d1}  -->  {d2}' for d1, d2 in dirs]))
-        t1_compare_dirs = time.time()
+        start_time = time.time()
 
         self.mirror = mirror
         self.dirs = dirs
@@ -48,224 +41,195 @@ class CompareDirs:
 
         # Initialize comparison variables
         filecmp.clear_cache()
-        self.files_in_source: set[CstmPath] = set()
-        self.files_in_target: set[CstmPath] = set()
-        self.files_only_in_source: set[CstmPath] = set()
-        self.files_only_in_target: set[CstmPath] = set()
-        self.files_in_both: set[tuple[CstmPath, CstmPath]] = set()
-        self.files_not_modified: set[tuple[CstmPath, CstmPath]] = set()
-        self.files_modified: set[tuple[CstmPath, CstmPath]] = set()
-        self.moved_files: set[tuple[CstmPath, CstmPath]] = set()
-        self.new_files: set[CstmPath] = set()
-        self.residual_files: set[CstmPath] = set()
-        self.error_files: set[CstmPath] = set()
+        self.files_in_source: dict[str, set[CstmPath]] = {}
+        self.files_in_target: dict[str, set[CstmPath]] = {}
+        self.linked_files: list[File] = []
 
-        # Initialize sync variables
-        self.files_to_copy: set[tuple[CstmPath, CstmPath]] = set()
-        self.files_to_move: set[tuple[CstmPath, CstmPath]] = set()
-        self.files_to_delete: set[CstmPath] = set()
-        self.files_in_source: set[CstmPath] = set()
+        self.files_to_copy: list[tuple[str, str]] = []
+        self.files_to_move: list[tuple[str, str]] = []
+        self.files_to_delete: list[str] = []
 
-        # Run comparison
-        if compare_with_mirror:
-            self.get_files_from_source_and_local_mirror()
-        else:
-            self.get_files_from_source_and_target()
+        self.scan_source_files()
+        self.scan_target_files(use_mirror, increment_mirror, rebuild_mirror)
+        self.link_files()
+        self.compare_files()
 
-        logger.info(
-            f'Finished collecting file paths: '
-            f'{len(self.files_in_both)} exist in source and target, '
-            f'{len(self.files_only_in_source)} exist only in source, '
-            f'{len(self.files_only_in_target)} exist only in target'
-        )
-        logger.info('Starting to compare files')
-        self.get_modified_files()
         if care_about_moved_files:
             self.get_moved_files()
-        self.get_new_files()
-        self.get_residual_files()
-        logger.info('Finished to compare files')
-        self.save_report()
+
+        self.get_files_to_copy()
+        self.get_files_to_delete()
+
         self.print_results()
+        self.save_report()
 
         # Estimate synchronization actions
-        logger.info(f'Finished comparing directories in {int((time.time() - t1_compare_dirs) / 60)} minutes')
+        logger.info(f'Finished comparing directories in {time_diff_to_minutes(start_time)}')
 
-    def get_files_from_source_and_local_mirror(self):
-        logger.info('Starting to compare files based on local mirror')
-        logger.debug(f'Local mirror has {self.mirror.size()} entries')
-
-        self.files_only_in_source = set()
-        self.files_only_in_target = set()
-        self.files_in_both = set()
-        files_in_mirror: set[str] = self.mirror.get_keys(exclude=self.exclusions)
-        files_in_source: set[str] = {
-            str(f)
-            for dir_pair in self.dirs
-            for f in CstmPath.get_from_dir(dir_pair.source, exclude=self.exclusions)
+    def scan_source_files(self):
+        logger.info('Starting to scan source files')
+        start_time = time.time()
+        self.files_in_source = {
+            dir_pair.source: CstmPath.get_from_dir(dir_pair.source, exclude=self.exclusions) for dir_pair in self.dirs
         }
+        logger.info(
+            f'Finished scanning all source files. Found {len(self.files_in_source)} files in {time_diff_to_minutes(start_time)}'
+        )
+
+    def scan_target_files(self, use_mirror: bool, increment_mirror: bool, rebuild_mirror: bool):
+        logger.info('Starting to scan target files')
+        if use_mirror and rebuild_mirror:
+            raise Exception('Cannot use mirror and rebuild it at the same time.')
+        if rebuild_mirror and increment_mirror:
+            raise Exception('Cannot increment mirror and rebuild it at the same time.')
+
+        start_time = time.time()
+        for dir_pair in self.dirs:
+            mirror_exists = self.mirror.exists_table(dir_pair.target)
+            if rebuild_mirror and mirror_exists:
+                self.mirror.reset(dir_pair.target)
+
+            if use_mirror and mirror_exists:
+                logger.info(
+                    f'Using mirror for {dir_pair.target}. Table has {self.mirror.size(dir_pair.target)} entries'
+                )
+                self.files_in_target[dir_pair.target] = {
+                    CstmPath(p, root_dir=dir_pair.target) for p in self.mirror.get_keys(root_dir=dir_pair.target)
+                }
+                continue
+
+            if use_mirror and not mirror_exists:
+                logger.warning('Mirror does not exist for target directory. Using file system instead')
+
+            logger.info(f'Using file system to scan target directory {dir_pair.target}')
+            self.files_in_target[dir_pair.target] = CstmPath.get_from_dir(dir_pair.target, exclude=self.exclusions)
+
+            if increment_mirror or rebuild_mirror:
+                logger.info(f'Adding {len(self.files_in_target[dir_pair.target])} files to mirror')
+                self.mirror.add(dir_pair.target, self.files_in_target[dir_pair.target])
 
         logger.info(
-            f'Finished scanning all files. Found {len(files_in_source)} files in the source and '
-            f'{len(files_in_mirror)} files in the mirror'
+            f'Finished scanning all target files. Found {len(self.files_in_target)} files in {time_diff_to_minutes(start_time)}'
         )
-        logger.info('Starting to compare source with mirror')
 
-        # Compare local paths with local mirror
-        files_only_in_mirror = files_in_mirror - files_in_source  # Paths that might be deleted
-        files_only_in_source = files_in_source - files_in_mirror  # Paths that might be new
+    def link_files(self):
+        logger.info('Starting to link source and target files')
 
-        files_in_both = list(files_in_source & files_in_mirror)  # Paths that might have changed
-        mirror_stats = self.mirror.get(files_in_both)
-        actual_stats = [get_encoded_stats(p) for p in files_in_both]
-        files_modified = {
-            p
-            for p, mirror_stat, actual_stat in zip(files_in_both, mirror_stats, actual_stats, strict=True)
-            if mirror_stat != actual_stat
-        }
-        files_not_modified = {p for p in files_in_both if p not in files_modified}
-
-        total_number = len(files_only_in_mirror) + len(files_only_in_source) + len(files_modified)
-        logger.info(f'Found {total_number} files with possible changes')
-        logger.info('Confirming changes with target directories now')
-
-        # Check file existence in source and target
-        self.files_only_in_source = set(source_file if source_file.exists() and not target_file.exists())
-        all_paths = files_only_in_mirror | files_only_in_source | files_modified
-        for p in all_paths:
-            dir_pair = get_dirs_from_path(p, self.dirs)
-            if dir_pair is not None:
-                source_file = CstmPath(p, root_dir=dir_pair.source)
-                target_file = CstmPath(p.replace(dir_pair.source, dir_pair.target), root_dir=dir_pair.target)
-                if source_file.exists() and not target_file.exists():
-                    self.files_only_in_source.add(source_file)
-                elif not source_file.exists() and target_file.exists():
-                    self.files_only_in_target.add(target_file)
-                elif source_file.exists() and target_file.exists():
-                    self.files_in_both.add((source_file, target_file))
-
-    def get_files_from_source_and_target(self):
-        logger.info('Starting to compare files')
-        self.files_only_in_source = set()
-        self.files_only_in_target = set()
-        self.files_in_both = set()
-
-        for source_dir, target_dir in self.dirs:
-            files_in_source = CstmPath.get_from_dir(source_dir, exclude=self.exclusions)
-            files_in_target = CstmPath.get_from_dir(target_dir, exclude=self.exclusions)
-
-            rel_paths_in_source = {f.get_rel() for f in files_in_source}
-            rel_paths_in_target = {f.get_rel() for f in files_in_target}
-
-            self.files_only_in_source.update({f for f in files_in_source if f.get_rel() not in rel_paths_in_target})
-            self.files_only_in_target.update({f for f in files_in_target if f.get_rel() not in rel_paths_in_source})
-            self.files_in_both.update(
-                {
-                    (
-                        CstmPath(source_dir, rel_path, root_dir=source_dir),
-                        CstmPath(target_dir, rel_path, root_dir=target_dir),
-                    )
-                    for rel_path in rel_paths_in_source
-                    if rel_path in rel_paths_in_target
-                }
+        for dir_pair in self.dirs:
+            logger.info(
+                f'Comparing {dir_pair.source} ({len(self.files_in_source[dir_pair.source])} files) and '
+                f'{dir_pair.target} ({len(self.files_in_target[dir_pair.target])} files)'
             )
+            source_paths = {f.rel_to_root: f for f in self.files_in_source[dir_pair.source]}
+            target_paths = {f.rel_to_root: f for f in self.files_in_target[dir_pair.target]}
 
-    def get_modified_files(self):
-        """Compare files that exist in both places and check for newer versions in the source"""
-        logger.debug('Searching for modified files')
-        number_files = len(self.files_in_both)
-        start_time = time.time()
-        for i, (file_source, file_target) in enumerate(self.files_in_both):
-            log_progress(i, number_files, start_time)
-
-            success, match = compare_files(file_source, file_target, comparison_method=self.comparison_method)
-
-            if success:
-                if match:
-                    self.files_not_modified.add((file_source, file_target))
+            logger.info('')
+            start_time = time.time()
+            number_files = len(source_paths)
+            for i, (source_file_rel_path, source_file) in enumerate(source_paths.items()):
+                log_progress(i, number_files, start_time, interval=10000)
+                if source_file_rel_path in target_paths:
+                    self.linked_files.append(File(source=source_file, target=target_paths[source_file_rel_path]))
+                    del target_paths[source_file_rel_path]
                 else:
-                    self.files_modified.add((file_source, file_target))
-            else:
-                self.error_files.update({file_source, file_target})
+                    self.linked_files.append(File(source=source_file, target=None))
+
+            # Remaining target paths did not match to any source path
+            self.linked_files += [File(source=None, target=target_file) for target_file in target_paths.values()]
+
+        self.linked_files = list(sorted(self.linked_files, key=lambda x: x.any_path))
+
+    def compare_files(self):
+        """Compare files that exist in both places and check for newer versions in the source"""
+        files_in_both = [f for f in self.linked_files if f.in_both]
+        number_files = len(files_in_both)
+        start_time = time.time()
+        logger.debug(f'Comparing {number_files} files that exist in both directories')
+        for i, file in enumerate(files_in_both):
+            log_progress(i, number_files, start_time, interval=1000)
+            if file.in_both:
+                file.compare(self.comparison_method)
 
     def get_moved_files(self):
-        logger.debug('Searching for moved files')
-        used_files = deepcopy(self.error_files)
-        number_files = len(self.files_only_in_source)
-        start_time = time.time()
-        for i, file_in_source in enumerate(self.files_only_in_source):
-            log_progress(i, number_files, start_time)
+        logger.info('Move files recognition not implemented yet')
+        # logger.debug('Searching for moved files')
+        # used_files = deepcopy(self.error_files)
+        # number_files = len(self.files_only_in_source)
+        # start_time = time.time()
+        # for i, file_in_source in enumerate(self.files_only_in_source):
+        #     log_progress(i, number_files, start_time)
 
-            file_basename_in_source = file_in_source.name
+        #     file_basename_in_source = file_in_source.name
 
-            for file_in_target in self.files_only_in_target:
-                file_basename_in_target = file_in_target.name
+        #     for file_in_target in self.files_only_in_target:
+        #         file_basename_in_target = file_in_target.name
 
-                if file_in_source in used_files:
-                    break
-                if file_in_target in used_files:
-                    continue
+        #         if file_in_source in used_files:
+        #             break
+        #         if file_in_target in used_files:
+        #             continue
 
-                if file_basename_in_source == file_basename_in_target:
-                    success, match = compare_files(file_in_source, file_in_target, self.comparison_method)
-                    if success:
-                        if match:
-                            # logger.debug(f'Found two single files with same basename, '
-                            #              f'and they seem to be the same: {file_in_source} and {file_in_target}')
-                            pair = (file_in_target, file_in_source.change_root_dir(file_in_target._root_dir))
-                            self.moved_files.add(pair)
-                        else:
-                            pass
-                            # logger.debug(f'Found two single files with same basename, '
-                            #              f'but they are not the same: {file_in_source} and {file_in_target}')
-                    else:
-                        self.error_files.update({file_in_source, file_in_target})
-                    used_files.update({file_in_source, file_in_target})
+        #         if file_basename_in_source == file_basename_in_target:
+        #             success, match = compare_files(file_in_source, file_in_target, self.comparison_method)
+        #             if success:
+        #                 if match:
+        #                     # logger.debug(f'Found two single files with same basename, '
+        #                     #              f'and they seem to be the same: {file_in_source} and {file_in_target}')
+        #                     pair = (file_in_target, file_in_source.change_root_dir(file_in_target._root_dir))
+        #                     self.moved_files.add(pair)
+        #                 else:
+        #                     pass
+        #                     # logger.debug(f'Found two single files with same basename, '
+        #                     #              f'but they are not the same: {file_in_source} and {file_in_target}')
+        #             else:
+        #                 self.error_files.update({file_in_source, file_in_target})
+        #             used_files.update({file_in_source, file_in_target})
 
-    def get_new_files(self):
-        logger.debug('Searching for new files')
-        for file_in_source in self.files_only_in_source:
-            if (
-                file_in_source in self.error_files | self.files_modified
-                or file_in_source.get_rel() in [t.get_rel() for s, t in self.moved_files]
-            ):
-                continue
-            self.new_files.add(file_in_source)
+    def get_files_to_copy(self):
+        """
+        Get files that need to be copied from source to target.
+        These are files that only exist in source or that were modified
+        """
+        self.files_to_copy = [
+            (str(f.source), str(f.target)) for f in self.linked_files if f.only_source or (f.in_both and f.modified)
+        ]
+        self.files_to_copy = list(sorted(self.files_to_copy, key=lambda x: x[0]))
 
-    def get_residual_files(self):
-        logger.debug('Searching for residual files')
-        for file_in_target in self.files_only_in_target:
-            if (
-                file_in_target in self.error_files | self.files_modified
-                or file_in_target.get_rel() in [s.get_rel() for s, t in self.moved_files]
-            ):
-                continue
-            self.residual_files.add(file_in_target)
+    def get_files_to_move(self):
+        logger.warning('Not implemented yet')
+
+    def get_files_to_delete(self):
+        """
+        Get files that need to be deleted from target.
+        These are files that only exist in target
+        """
+        self.files_to_delete = list(sorted([str(f.target) for f in self.linked_files if f.only_target]))
 
     def save_report(self):
         if self.save_report_path.endswith('.xlsx'):
             logger.info('Loading data to create comparison report')
-            both_files = {f for sub_l in self.files_in_both for f in sub_l}
-            all_files = sorted(
-                self.files_only_in_target | self.files_only_in_source | both_files, key=lambda x: x.get_rel()
-            )
-            df = pd.DataFrame(data=all_files, columns=['file'])
-            source_files = self.files_only_in_source | both_files
-            df['exist in source'] = list(sorted([file in source_files for file in all_files]))
-            target_files = self.files_only_in_target | both_files
-            df['exist in target'] = list(sorted([file in target_files for file in all_files]))
-            not_modified = [f for sub_l in self.files_not_modified for f in sub_l]
-            df['not modified'] = list(sorted([file in not_modified for file in all_files]))
-            modified_in_source = [f for sub_l in self.files_modified for f in sub_l]
-            df['modified in source'] = list(sorted([file in modified_in_source for file in all_files]))
-            moved = [f.get_rel() for sub_l in self.moved_files for f in sub_l]
-            df['moved'] = list(sorted([file.get_rel() in moved for file in all_files]))
-            df['new'] = list(sorted([file in self.new_files for file in all_files]))
-            df['residual in target'] = list(sorted([file in self.residual_files for file in all_files]))
-            df['error'] = list(sorted([file in self.error_files for file in all_files]))
 
-            # Convert boolean True/False to string 'X' and empty
-            df = df.applymap(lambda x: {True: 'X', False: ''}.get(x, x))
+            # Load all linked files and store as a dataframe where columns are file attributes
+            df = pd.DataFrame(
+                [
+                    {
+                        'source': str(file.source) if file.source else '-',
+                        'target': str(file.target) if file.target else '-',
+                        'in both': 'X' if file.in_both else '',
+                        'modified': 'X' if file.modified else '',
+                        'only source': 'X' if file.only_source else '',
+                        'only target': 'X' if file.only_target else '',
+                        'size (source)': file.source.get_st_size(as_str=True) if file.source else '',
+                        'size (target)': file.target.get_st_size(as_str=True) if file.target else '',
+                        'modified (source)': file.source.get_st_mtime(as_date_str=True) if file.source else '',
+                        'modified (target)': file.target.get_st_mtime(as_date_str=True) if file.target else '',
+                        'created (source)': file.source.get_st_birthtime(as_date_str=True) if file.source else '',
+                        'created (target)': file.target.get_st_birthtime(as_date_str=True) if file.target else '',
+                        'compare error': file.compare_error,
+                    }
+                    for file in self.linked_files
+                ]
+            )
 
             logger.info('Starting to write comparison report')
             os.makedirs(os.path.dirname(self.save_report_path), exist_ok=True)
@@ -275,37 +239,22 @@ class CompareDirs:
     def print_results(self):
         logger.info('-------------------------')
         logger.info('Analyzing directory tree:')
-        logger.info(f'Files that exist in source: {len(self.files_in_source)}')
-        logger.info(f'Files that exist only in source: {len(self.files_only_in_source)}')
-        logger.info(f'Files that exist only in target: {len(self.files_only_in_target)}')
-        logger.info(f'Files that exist in both directories: {len(self.files_in_both)}')
-        logger.info('---------------------------')
-        logger.info('Analyzing content of files:')
-        logger.info(f'Files that are the not modified: {len(self.files_not_modified)}')
-        logger.info(f'Files that were modified in source: {len(self.files_modified)}')
-        logger.info(f'Files that were moved : {len(self.moved_files)}')
-        logger.info(f'Files that are new in source: {len(self.new_files)}')
-        logger.info(f'Files that are residual in target: {len(self.residual_files)}')
+        logger.info(f'Files that exist in source: {len(f for f in self.linked_files if f.source)}')
+        logger.info(f'Files that exist only in source: {len(f for f in self.linked_files if f.only_source)}')
+        logger.info(f'Files that exist in target: {len(f for f in self.linked_files if f.target)}')
+        logger.info(f'Files that exist only in target: {len(f for f in self.linked_files if f.only_target)}')
+        logger.info(f'Files that exist in both: {len(f for f in self.linked_files if f.in_both)}')
         logger.info(
-            f'Files that could not be analyzed ({len(self.error_files)})'
-            + str({True: ': \n' + '\n  '.join(self.error_files), False: ''}.get(len(self.error_files) > 0))
+            f'Files that exist in both and are the same: {len(f for f in self.linked_files if f.in_both and f.same)}'
         )
-
-    def get_results(
-        self,
-    ) -> tuple[list[tuple[CstmPath, CstmPath]], list[tuple[CstmPath, CstmPath]], list[CstmPath], list[CstmPath]]:
-        sorted_files_to_copy = list(
-            sorted(
-                self.files_modified |
-                {(file, file.as_target(self.dirs)) for file in self.new_files},
-                key=lambda x: x[0]
-            )
+        logger.info(
+            f'Files that exist in both and are modified: {len(f for f in self.linked_files if f.in_both and not f.same)}'
         )
-        sorted_files_to_move = list(sorted(self.files_to_move, key=lambda x: x[0]))
-        sorted_files_to_delete = list(sorted(self.files_to_delete))
-        sorted_files_in_source = list(sorted(self.files_in_source))
-
-        return sorted_files_to_copy, sorted_files_to_move, sorted_files_to_delete, sorted_files_in_source
+        files_compare_error = [f for f in self.linked_files if f.compare_error]
+        logger.info(
+            f'Files that could not be analyzed ({len(files_compare_error)})'
+            + str({True: ': \n' + '\n  '.join(files_compare_error), False: ''}.get(len(files_compare_error) > 0))
+        )
 
 
 class SyncDirs:
@@ -314,12 +263,11 @@ class SyncDirs:
         files_to_copy: list[tuple[CstmPath, CstmPath]],
         files_to_move: list[tuple[CstmPath, CstmPath]],
         files_to_delete: list[CstmPath],
-        files_in_source: list[CstmPath],
         mirror: MirrorDatabase,
         root_gui,
-        dirs,
+        dirs: list[DirectoryPair],
         default_actions=None,
-        rebuild_mirror=False,
+        increment_mirror=True,
     ):
         logger.info('---------------------------')
         logger.info('Initializing synchronization')
@@ -327,6 +275,7 @@ class SyncDirs:
         # Input variables
         self.root_gui = root_gui
         self.mirror = mirror
+        self.increment_mirror = increment_mirror
         self.dirs = dirs
         self.default_actions = default_actions if default_actions is not None else ['copy']
 
@@ -343,9 +292,6 @@ class SyncDirs:
 
         # Confirm actions
         if self.open_confirmation_popup():
-            # Run functions
-            if rebuild_mirror:
-                self.rebuild_local_mirror(add_files=files_in_source)
             self.copy_files()
             self.move_files()
             self.delete_files()
@@ -353,16 +299,6 @@ class SyncDirs:
             self.print_errors()
         else:
             logger.warning('Popup did not end well')
-
-    def rebuild_local_mirror(self, add_files: list[CstmPath]):
-        logger.info('Rebuilding local mirror')
-        time_init = time.time()
-        self.mirror.reset()
-        self.mirror.add(add_files)
-        logger.info(
-            f'Local mirror was rebuilt in {int(time.time() - time_init)} seconds. '
-            f'New length is {self.mirror.size()} entries'
-        )
 
     def open_confirmation_popup(self):
         popup = ActionSelection(
@@ -396,7 +332,8 @@ class SyncDirs:
                 logger.info(f'Copying file {i} of {number}: {source} ({format_size(size)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copy2(source, target)
-                self.mirror.add(source)
+                dir_pair = get_dirs_from_path(target, self.dirs)
+                self.mirror.add(root_dir=dir_pair.target, path=target)
                 counter_size += size
                 logger.debug(
                     f'Copy finished. Average speed {format_size(counter_size / (time.time() - counter_timer))}/s'
@@ -418,10 +355,8 @@ class SyncDirs:
                 logger.info(f'Moving file {i} of {number}: {source} ({get_size(source)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.move(source, target)
-                dir_pair = get_dirs_from_path(source, self.dirs)
-                if dir_pair is not None:
-                    self.mirror.replace(source.replace(dir_pair.target, dir_pair.source), 
-                                        target.replace(dir_pair.target, dir_pair.source))
+                dir_pair = get_dirs_from_path(target, self.dirs)
+                self.mirror.replace(root_dir=dir_pair.target, path=source, new_path=target)
                 logger.debug(f'Move finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
                 success = True
             except Exception as e:
@@ -441,8 +376,7 @@ class SyncDirs:
                 os.chmod(path, stat.S_IWRITE)
                 os.remove(path)
                 dir_pair = get_dirs_from_path(path, self.dirs)
-                if dir_pair is not None:
-                    self.mirror.remove(path.replace(dir_pair.target, dir_pair.source))
+                self.mirror.remove(root_dir=dir_pair.target, path=path)
                 logger.info(f'Delete finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
                 success = True
             except Exception as e:
@@ -597,7 +531,7 @@ class ActionSelection:
         return self.files_to_copy, self.files_to_move, self.files_to_delete
 
 
-def get_dirs_from_path(  path: CstmPathType, dirs: list[DirectoryPair] ) -> DirectoryPair:
+def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> DirectoryPair:
     """Find the corresponding source and target directories for a given path."""
 
     def uniform(p_: CstmPathType) -> str:

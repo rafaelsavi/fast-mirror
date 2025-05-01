@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import NewType, Union
 
 from logger import logger
-from utils import CompareMethod, check_length, format_size, is_list_of_substr_in_str, log_progress
+from utils import (
+    CompareMethod,
+    check_length,
+    format_size,
+    is_list_of_substr_in_str,
+    log_progress,
+    time_diff_to_minutes,
+)
 
 CstmPathType = Union[str, PathLike[str], 'CstmPath']
 StatHash = NewType('StatHash', str)
@@ -53,7 +60,8 @@ class CstmPath(Path):
     def check_length(self) -> str:
         return f'File path is too long ({len(str(self))}): {self}' if len(str(self)) > 255 else ''
 
-    def get_rel(self) -> str:
+    @property
+    def rel_to_root(self) -> str:
         return str(self._rel_to_root)
 
     @property
@@ -113,9 +121,7 @@ class CstmPath(Path):
                     if not is_list_of_substr_in_str(exclude, str(abs_path)):
                         all_paths.add(CstmPath(abs_path, root_dir=dir_path))
                         log_progress(len(all_paths), None, t1, interval=5000)
-        logger.info(
-            f'Finished scanning {dir_path} with {len(all_paths)} files in {int((time.time() - t1) / 60)} minutes'
-        )
+        logger.info(f'Finished scanning {dir_path} with {len(all_paths)} files in {time_diff_to_minutes(t1)}.')
         return all_paths
 
     def __truediv__(self, other: CstmPathType) -> 'CstmPath':
@@ -135,26 +141,23 @@ class File:
     Target path can be from target directory or a mirror
     """
 
-    def __init__(
-        self,
-        source: CstmPathType | None = None,
-        target: CstmPathType | None = None,
-        compare_method: CompareMethod = CompareMethod.METADATA,
-    ):
-        self._compare_method = compare_method
+    def __init__(self, source: CstmPathType | None = None, target: CstmPathType | None = None):
         self.source = CstmPath(source) if source else None
         self.target = CstmPath(target) if target else None
 
         if source is None and target is None:
             raise CustomException('Both source and target cannot be None.')
 
-        if self.source and self.target and self.source.get_rel() != self.target.get_rel():
+        if self.source and self.target and self.source.rel_to_root != self.target.rel_to_root:
             raise CustomException(f'Source and target paths do not match: {self.source} vs {self.target}')
 
-        self.rel_path: str = self.source.get_rel() if self.source else self.target.get_rel() if self.target else ''
-        self.in_both: bool = bool(self.source and self.target)
+        self.rel_path: str = self.source.rel_to_root if self.source else self.target.rel_to_root if self.target else ''
         self._compare_success: bool | None = None  # Placeholder for comparison success status
         self._same: bool | None = None  # Placeholder for change status
+
+    @property
+    def any_path(self) -> str:
+        return str(self.source) if self.source else str(self.target) if self.target else ''
 
     @property
     def name(self) -> str:
@@ -171,24 +174,44 @@ class File:
             return NotImplemented
         return self.source == other.source and self.target == other.target
 
-    def _compare(self):
-        if self._compare_success is None:
-            if self.source and self.target:
-                self._compare_success, self._same = compare_files(
-                    self.source, self.target, comparison_method=self._compare_method
-                )
-            else:
-                raise CustomException(f'Cannot compare files {self.source} and {self.target}. One of them is None.')
+    @property
+    def only_source(self) -> bool:
+        return self.source is not None and self.target is None
 
     @property
-    def changed(self) -> bool:
-        self._compare()
+    def only_target(self) -> bool:
+        return self.source is None and self.target is not None
+
+    @property
+    def in_both(self) -> bool:
+        return self.source is not None and self.target is not None
+
+    @property
+    def same(self) -> bool:
+        if self._same is None:
+            raise CustomException('Comparison has not been performed yet.')
+        return self._same
+
+    @property
+    def modified(self) -> bool:
+        if self._same is None:
+            raise CustomException('Comparison has not been performed yet.')
         return not self._same
 
     @property
     def compare_error(self) -> bool:
-        self._compare()
+        if self._same is None:
+            raise CustomException('Comparison has not been performed yet.')
         return not self._compare_success
+
+    def compare(self, compare_method: CompareMethod = CompareMethod.METADATA) -> None:
+        if self._compare_success is None:
+            if self.source and self.target:
+                self._compare_success, self._same = compare_files(
+                    self.source, self.target, comparison_method=compare_method
+                )
+            else:
+                raise CustomException(f'Cannot compare files {self.source} and {self.target}. One of them is None.')
 
 
 def compare_files(

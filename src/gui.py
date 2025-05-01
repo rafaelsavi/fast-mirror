@@ -96,7 +96,6 @@ class Gui:
         self.text_logger = TextLogger()
         self.text_var_status = tk.StringVar()
         self.text_var_next_appointment = tk.StringVar()
-        self.mirror = MirrorDatabase()
 
         # Create widgets
         self.create_widgets()
@@ -135,7 +134,7 @@ class Gui:
         ignore_childs = [self.button_open_report, self.checkbox_auto_scroll, *self.frame_buttons_level.winfo_children()]
 
         for child in all_childs:
-            if type(child) == tk.Label or child in ignore_childs:
+            if isinstance(child, tk.Label) or child in ignore_childs:
                 continue
             convert_child_state(child, general_state)
             if leave_sunken_enabled and is_sunken_button(child):
@@ -586,8 +585,10 @@ class Gui:
         else:
             save_path = ''
 
+        mirror = MirrorDatabase(exclusions=self.entry_exclusions.get())
+
         compare = CompareDirs(
-            mirror=self.mirror,
+            mirror=mirror,
             dirs=self.entry_paths.get(),
             exclusions=self.entry_exclusions.get(),
             comparison_method=CompareMethod.METADATA
@@ -595,18 +596,22 @@ class Gui:
             else CompareMethod.CONTENT,
             care_about_moved_files=self.checkbox_value_care_about_moved_files.get(),
             save_report_path=save_path,
-            compare_with_mirror=self.checkbox_value_use_mirror.get(),
+            use_mirror=self.checkbox_value_use_mirror.get(),
+            increment_mirror=True,
+            rebuild_mirror=self.checkbox_value_build_mirror.get(),
         )
 
         if also_sync:
             default_actions = self.check_box_value_default_actions.get_actions()
             SyncDirs(
-                *compare.get_results(),
-                mirror=self.mirror,
+                files_to_copy=compare.files_to_copy,
+                files_to_move=compare.files_to_move,
+                files_to_delete=compare.files_to_delete,
+                mirror=mirror,
                 root_gui=self.root,
                 dirs=self.entry_paths.get(),
                 default_actions=default_actions,
-                rebuild_mirror=self.checkbox_value_build_mirror.get(),
+                increment_mirror=True,
             )
 
         logger.debug('Processing thread was properly closed')

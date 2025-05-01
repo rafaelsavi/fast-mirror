@@ -62,6 +62,10 @@ def round_time_to_minutes(time_: datetime.datetime) -> datetime.datetime:
     return time_ - datetime.timedelta(seconds=time_.second, microseconds=time_.microsecond)
 
 
+def time_diff_to_minutes(start_time: float) -> str:
+    return f'{int((time.time() - start_time) / 60)} minutes'
+
+
 class Counter:
     def __init__(self, init_value=-1):
         self.v = init_value
