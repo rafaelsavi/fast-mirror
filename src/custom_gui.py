@@ -3,8 +3,9 @@ from tkinter import messagebox
 
 import ttkwidgets
 
+from file import CstmPath
 from logger import logger
-from utils import CstmPath, format_size
+from utils import format_size
 
 
 class TrayableTk(tk.Tk):
@@ -70,13 +71,13 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
     custom_headers = [
         'enable',
         'source',
-        'destination',
+        'target',
         'size (source)',
-        'size (destination)',
+        'size (target)',
         'modification date (source)',
-        'modification date (destination)',
+        'modification date (target)',
         'creation date (source)',
-        'creation date (destination)',
+        'creation date (target)',
     ]
 
     def __init__(self, *args, **kwargs):
@@ -113,7 +114,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             for file_entry in file_list:
                 args = (None, file_entry) if type(file_entry) == CstmPath else file_entry
                 values = self.get_row(*args)
-                self._data[group][f'{group}::{values["source"]}::{values["destination"]}'] = values
+                self._data[group][f'{group}::{values["source"]}::{values["target"]}'] = values
 
         for group, rows in self._data.items():
             tag = 'checked' if group in default_active else 'unchecked'
@@ -127,7 +128,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                 )
 
     @staticmethod
-    def get_row(source: CstmPath, destination: CstmPath) -> dict[str, float | str]:
+    def get_row(source: CstmPath, target: CstmPath) -> dict[str, float | str]:
         def try_f(f, arg, default=''):
             if arg is None:
                 return default
@@ -141,14 +142,14 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         row = {}
         row['source'] = try_f(str, source)
-        row['destination'] = try_f(str, destination)
+        row['target'] = try_f(str, target)
         row['size (source)'] = try_f(lambda x: x.getsize(as_str=True), source, default=0)
-        row['size (destination)'] = try_f(lambda x: x.getsize(as_str=True), destination, default=0)
+        row['size (target)'] = try_f(lambda x: x.getsize(as_str=True), target, default=0)
         row['modification date (source)'] = try_f(lambda x: x.getmtime(as_date_str=True), source)
-        row['modification date (destination)'] = try_f(lambda x: x.getmtime(as_date_str=True), destination)
+        row['modification date (target)'] = try_f(lambda x: x.getmtime(as_date_str=True), target)
         row['creation date (source)'] = try_f(lambda x: x.getctime(as_date_str=True), source)
-        row['creation date (destination)'] = try_f(lambda x: x.getctime(as_date_str=True), destination)
-        get_size_from = source if source is not None else destination
+        row['creation date (target)'] = try_f(lambda x: x.getctime(as_date_str=True), target)
+        get_size_from = source if source is not None else target
         row['size in bytes'] = try_f(lambda x: x.getsize(as_str=False), get_size_from, default=0)
 
         return row

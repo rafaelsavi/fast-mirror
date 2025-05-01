@@ -3,8 +3,9 @@ from collections.abc import Iterable
 
 from sqlitedict import SqliteDict
 
+from file import CstmPathType, get_encoded_stats
 from logger import logger
-from utils import CstmPathType, StatHash, get_encoded_stats, is_list_of_substr_in_str
+from utils import StatHash, is_list_of_substr_in_str
 
 local_mirror_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../local_mirror.db'))
 

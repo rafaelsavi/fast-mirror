@@ -10,18 +10,16 @@ from pathlib import Path
 
 import pandas as pd
 
+from file import CstmPath, CstmPathType, compare_files, get_encoded_stats
 from custom_gui import CustomCheckboxTreeView
 from logger import logger
 from mirror import MirrorDatabase
 from utils import (
-    CstmPath,
-    CstmPathType,
     check_length,
-    compare_files,
     format_size,
-    get_encoded_stats,
     get_size,
     log_progress,
+    CompareMethod
 )
 
 
@@ -32,8 +30,8 @@ class CompareDirs:
         dirs: list[tuple[str, str]],
         exclusions: list[str],
         save_report_path='',
-        compare_with_local_mirror=False,
-        use_light_comparison=False,
+        compare_with_mirror=False,
+        comparison_method: CompareMethod = CompareMethod.METADATA,
         care_about_moved_files=True,
     ):
         logger.info('-----------------------------')
@@ -45,16 +43,17 @@ class CompareDirs:
         self.dirs = dirs
         self.exclusions = exclusions
         self.save_report_path = save_report_path
-        self.use_light_comparison = use_light_comparison
+        self.comparison_method = comparison_method
 
         # Initialize comparison variables
         filecmp.clear_cache()
+        self.files_in_source: set[CstmPath] = set()
+        self.files_in_target: set[CstmPath] = set()
         self.files_only_in_source: set[CstmPath] = set()
         self.files_only_in_target: set[CstmPath] = set()
         self.files_in_both: set[tuple[CstmPath, CstmPath]] = set()
-        self.not_modified_files: set[tuple[CstmPath, CstmPath]] = set()
-        self.modified_files_in_source: set[tuple[CstmPath, CstmPath]] = set()
-        self.modified_files_in_target: set[tuple[CstmPath, CstmPath]] = set()
+        self.files_not_modified: set[tuple[CstmPath, CstmPath]] = set()
+        self.files_modified: set[tuple[CstmPath, CstmPath]] = set()
         self.moved_files: set[tuple[CstmPath, CstmPath]] = set()
         self.new_files: set[CstmPath] = set()
         self.residual_files: set[CstmPath] = set()
@@ -64,19 +63,19 @@ class CompareDirs:
         self.files_to_copy: set[tuple[CstmPath, CstmPath]] = set()
         self.files_to_move: set[tuple[CstmPath, CstmPath]] = set()
         self.files_to_delete: set[CstmPath] = set()
-        self.files_to_keep: set[CstmPath] = set()
+        self.files_in_source: set[CstmPath] = set()
 
         # Run comparison
-        if compare_with_local_mirror:
+        if compare_with_mirror:
             self.get_files_from_source_and_local_mirror()
         else:
-            self.get_files_from_source_and_destination()
+            self.get_files_from_source_and_target()
 
         logger.info(
             f'Finished collecting file paths: '
-            f'{len(self.files_in_both)} exist in source and destination, '
+            f'{len(self.files_in_both)} exist in source and target, '
             f'{len(self.files_only_in_source)} exist only in source, '
-            f'{len(self.files_only_in_target)} exist only in destination'
+            f'{len(self.files_only_in_target)} exist only in target'
         )
         logger.info('Starting to compare files')
         self.get_modified_files()
@@ -115,6 +114,7 @@ class CompareDirs:
         # Compare local paths with local mirror
         files_only_in_mirror = files_in_mirror - files_in_source  # Paths that might be deleted
         files_only_in_source = files_in_source - files_in_mirror  # Paths that might be new
+
         files_in_both = list(files_in_source & files_in_mirror)  # Paths that might have changed
         mirror_stats = self.mirror.get(files_in_both)
         actual_stats = [get_encoded_stats(p) for p in files_in_both]
@@ -123,12 +123,14 @@ class CompareDirs:
             for p, mirror_stat, actual_stat in zip(files_in_both, mirror_stats, actual_stats, strict=True)
             if mirror_stat != actual_stat
         }
+        files_not_modified = {p for p in files_in_both if p not in files_modified}
 
         total_number = len(files_only_in_mirror) + len(files_only_in_source) + len(files_modified)
         logger.info(f'Found {total_number} files with possible changes')
-        logger.info('Confirming changes with destination now')
+        logger.info('Confirming changes with target directories now')
 
         # Check file existence in source and target
+        self.files_only_in_source = set(source_file if source_file.exists() and not target_file.exists())
         all_paths = files_only_in_mirror | files_only_in_source | files_modified
         for p in all_paths:
             source_dir, target_dir = get_dirs_from_path(p, self.dirs)
@@ -142,7 +144,7 @@ class CompareDirs:
                 elif source_file.exists() and target_file.exists():
                     self.files_in_both.add((source_file, target_file))
 
-    def get_files_from_source_and_destination(self):
+    def get_files_from_source_and_target(self):
         logger.info('Starting to compare files')
         self.files_only_in_source = set()
         self.files_only_in_target = set()
@@ -176,28 +178,13 @@ class CompareDirs:
         for i, (file_source, file_target) in enumerate(self.files_in_both):
             log_progress(i, number_files, start_time)
 
-            success, match = compare_files(file_source, file_target, light=self.use_light_comparison)
+            success, match = compare_files(file_source, file_target, comparison_method=self.comparison_method)
 
             if success:
                 if match:
-                    self.not_modified_files.add((file_source, file_target))
+                    self.files_not_modified.add((file_source, file_target))
                 else:
-                    is_target_newer = False
-                    try:
-                        source_mod_date = file_source.getmtime()
-                        target_mod_date = file_target.getmtime()
-                        if source_mod_date < target_mod_date:
-                            is_target_newer = True
-                    except Exception as e:
-                        logger.warning(
-                            f'Could not compare modification times of {file_source} or {file_target}. Exception: {e}'
-                        )
-                        is_target_newer = False
-
-                    if is_target_newer:
-                        self.modified_files_in_target.add((file_source, file_target))
-                    else:
-                        self.modified_files_in_source.add((file_source, file_target))
+                    self.files_modified.add((file_source, file_target))
             else:
                 self.error_files.update({file_source, file_target})
 
@@ -220,7 +207,7 @@ class CompareDirs:
                     continue
 
                 if file_basename_in_source == file_basename_in_target:
-                    success, match = compare_files(file_in_source, file_in_target, self.use_light_comparison)
+                    success, match = compare_files(file_in_source, file_in_target, self.comparison_method)
                     if success:
                         if match:
                             # logger.debug(f'Found two single files with same basename, '
@@ -239,7 +226,7 @@ class CompareDirs:
         logger.debug('Searching for new files')
         for file_in_source in self.files_only_in_source:
             if (
-                file_in_source in self.error_files | self.modified_files_in_source | self.modified_files_in_target
+                file_in_source in self.error_files | self.files_modified
                 or file_in_source.get_rel() in [t.get_rel() for s, t in self.moved_files]
             ):
                 continue
@@ -249,7 +236,7 @@ class CompareDirs:
         logger.debug('Searching for residual files')
         for file_in_target in self.files_only_in_target:
             if (
-                file_in_target in self.error_files | self.modified_files_in_source | self.modified_files_in_target
+                file_in_target in self.error_files | self.files_modified
                 or file_in_target.get_rel() in [s.get_rel() for s, t in self.moved_files]
             ):
                 continue
@@ -267,12 +254,10 @@ class CompareDirs:
             df['exist in source'] = list(sorted([file in source_files for file in all_files]))
             target_files = self.files_only_in_target | both_files
             df['exist in target'] = list(sorted([file in target_files for file in all_files]))
-            not_modified = [f for sub_l in self.not_modified_files for f in sub_l]
-            df['same files'] = list(sorted([file in not_modified for file in all_files]))
-            modified_in_source = [f for sub_l in self.modified_files_in_source for f in sub_l]
+            not_modified = [f for sub_l in self.files_not_modified for f in sub_l]
+            df['not modified'] = list(sorted([file in not_modified for file in all_files]))
+            modified_in_source = [f for sub_l in self.files_modified for f in sub_l]
             df['modified in source'] = list(sorted([file in modified_in_source for file in all_files]))
-            modified_in_target = [f for sub_l in self.modified_files_in_target for f in sub_l]
-            df['modified in target'] = list(sorted([file in modified_in_target for file in all_files]))
             moved = [f.get_rel() for sub_l in self.moved_files for f in sub_l]
             df['moved'] = list(sorted([file.get_rel() in moved for file in all_files]))
             df['new'] = list(sorted([file in self.new_files for file in all_files]))
@@ -290,14 +275,14 @@ class CompareDirs:
     def print_results(self):
         logger.info('-------------------------')
         logger.info('Analyzing directory tree:')
+        logger.info(f'Files that exist in source: {len(self.files_in_source)}')
         logger.info(f'Files that exist only in source: {len(self.files_only_in_source)}')
         logger.info(f'Files that exist only in target: {len(self.files_only_in_target)}')
         logger.info(f'Files that exist in both directories: {len(self.files_in_both)}')
         logger.info('---------------------------')
         logger.info('Analyzing content of files:')
-        logger.info(f'Files that are the not modified: {len(self.not_modified_files)}')
-        logger.info(f'Files that were modified in source: {len(self.modified_files_in_source)}')
-        logger.info(f'Files that were modified in target: {len(self.modified_files_in_target)}')
+        logger.info(f'Files that are the not modified: {len(self.files_not_modified)}')
+        logger.info(f'Files that were modified in source: {len(self.files_modified)}')
         logger.info(f'Files that were moved : {len(self.moved_files)}')
         logger.info(f'Files that are new in source: {len(self.new_files)}')
         logger.info(f'Files that are residual in target: {len(self.residual_files)}')
@@ -306,25 +291,21 @@ class CompareDirs:
             + str({True: ': \n' + '\n  '.join(self.error_files), False: ''}.get(len(self.error_files) > 0))
         )
 
-    def estimate_actions(self):
-        self.files_to_copy = (
-            self.modified_files_in_source
-            | self.modified_files_in_target
-            | {(file, file.as_target(self.dirs)) for file in self.new_files}
-        )
-        self.files_to_move = self.moved_files
-        self.files_to_delete = self.residual_files
-        self.files_to_keep = {s for s, t in self.not_modified_files}
-
     def get_results(
         self,
     ) -> tuple[list[tuple[CstmPath, CstmPath]], list[tuple[CstmPath, CstmPath]], list[CstmPath], list[CstmPath]]:
-        sorted_files_to_copy = list(sorted(self.files_to_copy, key=lambda x: x[0]))
+        sorted_files_to_copy = list(
+            sorted(
+                self.files_modified |
+                {(file, file.as_target(self.dirs)) for file in self.new_files},
+                key=lambda x: x[0]
+            )
+        )
         sorted_files_to_move = list(sorted(self.files_to_move, key=lambda x: x[0]))
         sorted_files_to_delete = list(sorted(self.files_to_delete))
-        sorted_files_to_keep = list(sorted(self.files_to_keep))
+        sorted_files_in_source = list(sorted(self.files_in_source))
 
-        return sorted_files_to_copy, sorted_files_to_move, sorted_files_to_delete, sorted_files_to_keep
+        return sorted_files_to_copy, sorted_files_to_move, sorted_files_to_delete, sorted_files_in_source
 
 
 class SyncDirs:
@@ -333,7 +314,7 @@ class SyncDirs:
         files_to_copy: list[tuple[CstmPath, CstmPath]],
         files_to_move: list[tuple[CstmPath, CstmPath]],
         files_to_delete: list[CstmPath],
-        files_to_keep: list[CstmPath],
+        files_in_source: list[CstmPath],
         mirror: MirrorDatabase,
         root_gui,
         dirs,
@@ -364,7 +345,7 @@ class SyncDirs:
         if self.open_confirmation_popup():
             # Run functions
             if rebuild_mirror:
-                self.rebuild_local_mirror(add_files=files_to_keep)
+                self.rebuild_local_mirror(add_files=files_in_source)
             self.copy_files()
             self.move_files()
             self.delete_files()
@@ -408,48 +389,46 @@ class SyncDirs:
         counter_size = 0
         counter_timer = time.time()
 
-        for i, (origin, destination) in enumerate(self.files_requested_to_copy, 1):
+        for i, (source, target) in enumerate(self.files_requested_to_copy, 1):
             success = False
             try:
-                size = get_size(origin, as_str=False)
-                logger.info(f'Copying file {i} of {number}: {origin} ({format_size(size)})')
-                os.makedirs(os.path.dirname(destination), exist_ok=True)
-                shutil.copy2(origin, destination)
-                self.mirror.add(origin)
+                size = get_size(source, as_str=False)
+                logger.info(f'Copying file {i} of {number}: {source} ({format_size(size)})')
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copy2(source, target)
+                self.mirror.add(source)
                 counter_size += size
                 logger.debug(
                     f'Copy finished. Average speed {format_size(counter_size / (time.time() - counter_timer))}/s'
                 )
                 success = True
             except Exception as e:
-                error_msg = str(check_length(origin) + '  ' + check_length(destination)).strip()
+                error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
                 error_msg = e if error_msg == '' else error_msg
-                logger.error(f'There was an error while copying file {origin}. Exception: {error_msg}')
+                logger.error(f'There was an error while copying file {source}. Exception: {error_msg}')
 
-            self.files_copied.append(((origin, destination), success))
+            self.files_copied.append(((source, target), success))
 
     def move_files(self):
         number = len(self.files_requested_to_move)
         t1 = time.time()
-        for i, (origin, destination) in enumerate(self.files_requested_to_move, 1):
+        for i, (source, target) in enumerate(self.files_requested_to_move, 1):
             success = False
             try:
-                logger.info(f'Moving file {i} of {number}: {origin} ({get_size(origin)})')
-                os.makedirs(os.path.dirname(destination), exist_ok=True)
-                shutil.move(origin, destination)
-                source_dir, target_dir = get_dirs_from_path(origin, self.dirs)
+                logger.info(f'Moving file {i} of {number}: {source} ({get_size(source)})')
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.move(source, target)
+                source_dir, target_dir = get_dirs_from_path(source, self.dirs)
                 if source_dir is not None:
-                    self.mirror.replace(
-                        origin.replace(target_dir, source_dir), destination.replace(target_dir, source_dir)
-                    )
+                    self.mirror.replace(source.replace(target_dir, source_dir), target.replace(target_dir, source_dir))
                 logger.debug(f'Move finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
                 success = True
             except Exception as e:
-                error_msg = str(check_length(origin) + '  ' + check_length(destination)).strip()
+                error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
                 error_msg = e if error_msg == '' else error_msg
-                logger.error(f'There was an error while moving file {origin}. Exception: {error_msg}')
+                logger.error(f'There was an error while moving file {source}. Exception: {error_msg}')
 
-            self.files_moved.append(((origin, destination), success))
+            self.files_moved.append(((source, target), success))
 
     def delete_files(self):
         number = len(self.files_requested_to_delete)
@@ -625,9 +604,9 @@ def get_dirs_from_path(
     def uniform(p_: CstmPathType) -> str:
         return str(p_).replace('\\', '/')
 
-    for origin, destination in dirs:
-        if uniform(origin) in uniform(path) or uniform(destination) in uniform(path):
-            return origin, destination
+    for source, target in dirs:
+        if uniform(source) in uniform(path) or uniform(target) in uniform(path):
+            return source, target
     logger.error(f'Could not identify root folders of path {path}')
     return None, None
 
@@ -636,7 +615,7 @@ if __name__ == '__main__':
     source_root_dir = r'D:\Projects\Python\AutomaticBackup\TestBackupSource'
     # source_root_dir = r'E:'
     # target_root_dir = r'N:\BackupPC\D'
-    target_root_dir = r'D:\Projects\Python\AutomaticBackup\TestBackupDestination'
+    target_root_dir = r'D:\Projects\Python\AutomaticBackup\TestBackuptarget'
     # target_root_dir = r'N:\NetBakData\Rafael Savi@RAFAEL-SAVI\Disk E'
 
     root_ = tk.Tk()

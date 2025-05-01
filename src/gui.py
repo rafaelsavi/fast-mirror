@@ -13,9 +13,10 @@ from tkinter import filedialog, messagebox
 from tkinter.scrolledtext import ScrolledText
 
 from backend import CompareDirs, SyncDirs
+from file import CustomException
 from logger import logger
 from mirror import MirrorDatabase
-from utils import Counter, CustomException, round_time_to_minutes
+from utils import CompareMethod, Counter, round_time_to_minutes
 
 
 class KillableThread(threading.Thread):
@@ -84,7 +85,7 @@ class Gui:
         self.check_box_value_default_actions = DefaultActions({})
         self.checkbox_value_use_mirror = tk.BooleanVar()
         self.checkbox_value_build_mirror = tk.BooleanVar()
-        self.checkbox_value_light_comparison = tk.BooleanVar()
+        self.checkbox_value_metadata_comparison = tk.BooleanVar()
         self.checkbox_value_care_about_moved_files = tk.BooleanVar()
         self.checkbox_value_save_report = tk.BooleanVar()
         self.week_days = WeekDays()
@@ -310,12 +311,12 @@ class Gui:
         )
         checkbox_use_local_mirror.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
-        checkbox_light_comparison = tk.Checkbutton(
+        checkbox_metadata_comparison = tk.Checkbutton(
             self.frame_buttons,
             text='Use fast comparison based on metadata',
-            variable=self.checkbox_value_light_comparison,
+            variable=self.checkbox_value_metadata_comparison,
         )
-        checkbox_light_comparison.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
+        checkbox_metadata_comparison.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
         checkbox_check_moved_files = tk.Checkbutton(
             self.frame_buttons, text='Try to guess moved files', variable=self.checkbox_value_care_about_moved_files
@@ -430,7 +431,7 @@ class Gui:
             for checkbox in [
                 self.checkbox_value_use_mirror,
                 self.checkbox_value_build_mirror,
-                self.checkbox_value_light_comparison,
+                self.checkbox_value_metadata_comparison,
                 self.checkbox_value_care_about_moved_files,
                 self.checkbox_value_save_report,
             ]:
@@ -457,7 +458,7 @@ class Gui:
                 'log_levels',
                 'checkbox_value_use_mirror',
                 'checkbox_value_build_mirror',
-                'checkbox_value_light_comparison',
+                'checkbox_value_metadata_comparison',
                 'checkbox_value_care_about_moved_files',
                 'checkbox_value_save_report',
             ]
@@ -588,10 +589,12 @@ class Gui:
             mirror=self.mirror,
             dirs=self.entry_paths.get(),
             exclusions=self.entry_exclusions.get(),
-            use_light_comparison=self.checkbox_value_light_comparison.get(),
+            comparison_method=CompareMethod.METADATA
+            if self.checkbox_value_metadata_comparison.get()
+            else CompareMethod.CONTENT,
             care_about_moved_files=self.checkbox_value_care_about_moved_files.get(),
             save_report_path=save_path,
-            compare_with_local_mirror=self.checkbox_value_use_mirror.get(),
+            compare_with_mirror=self.checkbox_value_use_mirror.get(),
         )
 
         if also_sync:
