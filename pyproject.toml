@@ -8,7 +8,7 @@ dependencies = [
     "ttkwidgets",
     "ipykernel",
     "ruff",
-    "pytest"
+    "pytest",
 ]
 
 [build-system]

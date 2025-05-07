@@ -310,6 +310,7 @@ class Gui:
         )
         checkbox_use_local_mirror.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
+        self.checkbox_value_metadata_comparison.set(True)
         checkbox_metadata_comparison = tk.Checkbutton(
             self.frame_buttons,
             text='Use fast comparison based on metadata',
@@ -708,7 +709,7 @@ class TextLogger(ScrolledText):
 
 
 class LogLevels:
-    options = 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL'
+    options = 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
 
     def __init__(self):
         self.checkboxes = {option: tk.BooleanVar() for option in self.options}

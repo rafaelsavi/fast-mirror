@@ -1,131 +1,104 @@
 import os
-from pathlib import Path
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 import pytest
+from sqlitedict import SqliteDict
 
+from file import CstmPathType, StatHash
 from mirror import MirrorDatabase
-
-ARTIFACTS_DIR = Path(__file__).parent / 'artifacts'
-ARTIFACTS_DIR.mkdir(exist_ok=True)
 
 
 @pytest.fixture
-def temp_db_path():
+def temp_db_path(tmp_path) -> str:
     """Fixture to provide a temporary database path."""
-    return ARTIFACTS_DIR / 'test_local_mirror.db'
+    return os.path.join(tmp_path, 'test_mirror.db')
 
 
 @pytest.fixture
 def mirror_db(temp_db_path) -> MirrorDatabase:
-    """Fixture to provide a fresh instance of MirrorDatabase."""
-    return MirrorDatabase(path=temp_db_path, reset=True)
+    """Fixture to provide a MirrorDatabase instance."""
+    return MirrorDatabase(path=temp_db_path)
 
 
-def test_initialization(temp_db_path):
-    """Test initialization of the MirrorDatabase."""
-    db = MirrorDatabase(path=temp_db_path, reset=False)
-    assert os.path.exists(temp_db_path) is True
-
-    db = MirrorDatabase(path=temp_db_path, reset=True)
-    assert os.path.exists(temp_db_path) is True
-
-
-def test_add_and_get_single(mirror_db):
-    """Test adding and retrieving a single path."""
-    test_path = ARTIFACTS_DIR / 'test_file.txt'
-    test_path.touch()  # Create a dummy file
-    mirror_db.add(str(test_path))
-
-    result = mirror_db.get(str(test_path))
-    assert result is not None
-    test_path.unlink()
+@pytest.fixture
+def test_data_dir(tmp_path) -> str:
+    """Fixture to provide a TestData directory."""
+    test_data = os.path.join(tmp_path, 'TestData')
+    os.makedirs(test_data, exist_ok=True)
+    # Create some test files
+    with open(os.path.join(test_data, 'file1.txt'), 'w') as f:
+        f.write('Test file 1')
+    with open(os.path.join(test_data, 'file2.txt'), 'w') as f:
+        f.write('Test file 2')
+    return test_data
 
 
-def test_add_and_get_multiple(mirror_db):
-    """Test adding and retrieving multiple paths."""
-    test_paths = [ARTIFACTS_DIR / 'file1.txt', ARTIFACTS_DIR / 'file2.txt']
-    for path in test_paths:
-        path.touch()  # Create dummy files
-
-    mirror_db.add([str(path) for path in test_paths])
-    results = mirror_db.get([str(path) for path in test_paths])
-
-    assert len(results) == len(test_paths)
-    for path in test_paths:
-        assert mirror_db.get(str(path)) is not None
-        path.unlink()
+def test_init_creates_db(temp_db_path):
+    db = MirrorDatabase(path=temp_db_path)
+    assert os.path.exists(temp_db_path)
 
 
-def test_remove_single(mirror_db):
-    """Test removing a single path."""
-    test_path = ARTIFACTS_DIR / 'test_file.txt'
-    test_path.touch()  # Create a dummy file
-    mirror_db.add(str(test_path))
-
-    assert mirror_db.remove(str(test_path)) is True
-    assert mirror_db.get(str(test_path)) is None
-    test_path.unlink()
+def test_generate_table_name(mirror_db, test_data_dir):
+    table_name = mirror_db._generate_table_name(test_data_dir)
+    assert 'TestData' in table_name
 
 
-def test_remove_multiple(mirror_db):
-    """Test removing multiple paths."""
-    test_paths = [ARTIFACTS_DIR / 'file1.txt', ARTIFACTS_DIR / 'file2.txt']
-    for path in test_paths:
-        path.touch()  # Create dummy files
-
-    mirror_db.add([str(path) for path in test_paths])
-    assert mirror_db.remove([str(path) for path in test_paths]) is True
-
-    for path in test_paths:
-        assert mirror_db.get(str(path)) is None
-        path.unlink()
+def test_add_and_exists_path(mirror_db, test_data_dir):
+    root_dir = test_data_dir
+    path = os.path.join(test_data_dir, 'file1.txt')
+    mirror_db.add_path(root_dir, path)
+    assert mirror_db.exists(root_dir, path)
 
 
-def test_get_keys(mirror_db):
-    """Test retrieving keys from the database."""
-    test_paths = [ARTIFACTS_DIR / 'file1.txt', ARTIFACTS_DIR / 'file2.txt']
-    for path in test_paths:
-        path.touch()  # Create dummy files
-
-    mirror_db.add([str(path) for path in test_paths])
-    keys = mirror_db.get_keys()
-
-    assert len(keys) == len(test_paths)
-    for path in test_paths:
-        assert str(path) in keys
-        path.unlink()
+def test_remove_path(mirror_db, test_data_dir):
+    root_dir = test_data_dir
+    path = os.path.join(test_data_dir, 'file1.txt')
+    mirror_db.add_path(root_dir, path)
+    assert mirror_db.exists(root_dir, path)
+    mirror_db.remove_path(root_dir, path)
+    assert not mirror_db.exists(root_dir, path)
 
 
-def test_reset(mirror_db):
-    """Test resetting the database."""
-    test_path = ARTIFACTS_DIR / 'test_file.txt'
-    test_path.touch()  # Create a dummy file
-    mirror_db.add(str(test_path))
-
-    assert mirror_db.size() > 0
-    mirror_db.reset()
-    assert mirror_db.size() == 0
-    test_path.unlink()
+def test_get_paths(mirror_db, test_data_dir):
+    root_dir = test_data_dir
+    paths = [os.path.join(test_data_dir, 'file1.txt'), os.path.join(test_data_dir, 'file2.txt')]
+    mirror_db.add_path(root_dir, paths)
+    retrieved_paths = mirror_db.get_paths(root_dir)
+    assert set(retrieved_paths) == set(paths)
 
 
-if __name__ == '__main__':
-    temp_db_path = ARTIFACTS_DIR / 'test_local_mirror.db'
-    if temp_db_path.exists():
-        temp_db_path.unlink()
+def test_get_stat_hash(mirror_db, test_data_dir):
+    root_dir = test_data_dir
+    path = os.path.join(test_data_dir, 'file1.txt')
+    mirror_db.add_path(root_dir, path)
+    stat_hash = mirror_db.get_stat_hash(root_dir, path)
+    assert stat_hash is not None
 
-    # Initialize a temporary MirrorDatabase instance
-    mirror_db = MirrorDatabase(path=temp_db_path, reset=True)
 
-    # Call all test functions for debugging
-    test_initialization(temp_db_path)
-    test_add_and_get_single(mirror_db)
-    test_add_and_get_multiple(mirror_db)
-    test_remove_single(mirror_db)
-    test_remove_multiple(mirror_db)
-    test_get_keys(mirror_db)
-    test_reset(mirror_db)
+def test_reset(mirror_db, test_data_dir):
+    root_dir = test_data_dir
+    path = os.path.join(test_data_dir, 'file1.txt')
+    mirror_db.add_path(root_dir, path)
+    assert mirror_db.exists(root_dir, path)
+    mirror_db.reset(root_dir)
+    assert not mirror_db.exists(root_dir, path)
 
-    if temp_db_path.exists():
-        temp_db_path.unlink()
 
-    print('All test functions executed for debugging.')
+def test_get_all_tables_as_dict(mirror_db, test_data_dir):
+    root_dir = test_data_dir
+    path = os.path.join(test_data_dir, 'file1.txt')
+    mirror_db.add_path(root_dir, path)
+    tables = mirror_db.get_all_tables_as_dict()
+    assert len(tables) > 0
+
+
+def test_replace_path(mirror_db, test_data_dir):
+    root_dir = test_data_dir
+    old_path = os.path.join(test_data_dir, 'file1.txt')
+    new_path = os.path.join(test_data_dir, 'file3.txt')
+    mirror_db.add_path(root_dir, old_path)
+    mirror_db.replace_path(root_dir, old_path, new_path)
+    assert not mirror_db.exists(root_dir, old_path)
+    assert mirror_db.exists(root_dir, new_path)

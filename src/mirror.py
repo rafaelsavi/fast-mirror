@@ -1,4 +1,5 @@
 import os
+import re
 from collections.abc import Iterable
 
 from sqlitedict import SqliteDict
@@ -22,6 +23,15 @@ class MirrorDatabase:
         if not os.path.exists(self.path):
             self.init()
 
+    def init(self) -> bool:
+        try:
+            with SqliteDict(self.path, autocommit=True) as db:
+                db.commit()
+        except Exception as e:
+            logger.warning(f'Could not create database. Exception: {e}')
+            return False
+        return True
+
     def _generate_table_name(self, root_dir: str) -> str:
         """
         Generate a table name based on root_dir and exclusions.
@@ -31,11 +41,15 @@ class MirrorDatabase:
         """
         sanitized_root = root_dir.replace(os.sep, '_').replace(':', '_')
         sanitized_exclusions = '_'.join(e.replace(os.sep, '_').replace(':', '_') for e in self.exclusions)
-        return f'{sanitized_root}__{sanitized_exclusions}' if sanitized_exclusions else sanitized_root
+        allowed_pattern = r'[^a-zA-Z0-9_]'
+        sanitized_root = re.sub(allowed_pattern, '_', sanitized_root)
+        sanitized_exclusions = re.sub(allowed_pattern, '_', sanitized_exclusions)
+        return f'{sanitized_root}__{sanitized_exclusions}'
 
     def _get_db(self, root_dir: str) -> SqliteDict:
         table_name = self._generate_table_name(root_dir)
         try:
+            logger.debug(f'Accessing database table "{table_name}"')
             return SqliteDict(self.path, tablename=table_name, autocommit=True)
         except Exception as e:
             raise Exception(f'Could not access database table "{table_name}". Exception: {e}') from e
@@ -43,9 +57,8 @@ class MirrorDatabase:
     def exists_table(self, root_dir: str) -> bool:
         """Check if the table for the given root_dir exists in the database and is not empty."""
         try:
-            with SqliteDict(self.path, autocommit=True) as db:
-                table_name = self._generate_table_name(root_dir)
-                return table_name in db and len(db[table_name]) > 0
+            with self._get_db(root_dir) as db:
+                return bool(db)  # Check if the table is not empty
         except Exception as e:
             logger.warning(f'Could not check if table exists. Exception: {e}')
             return False
@@ -69,36 +82,17 @@ class MirrorDatabase:
 
     def reset(self, root_dir: str) -> bool:
         """Reset the database for the given root_dir."""
-        table_name = self._generate_table_name(root_dir)
         try:
-            with SqliteDict(self.path, autocommit=True) as db:
-                if table_name in db:
-                    logger.info(f'Resetting mirror for {root_dir}')
-                    del db[table_name]
+            with self._get_db(root_dir) as db:
+                if db:
+                    logger.info(f'Resetting mirror for <{root_dir}>')
+                    db.clear()
                 else:
-                    logger.info(f'No mirror to reset for {root_dir}')
-                return True
+                    logger.info(f'No mirror to reset for <{root_dir}>')
+            return True
         except Exception as e:
-            logger.warning(f'Could not reset database for {root_dir}. Exception: {e}')
+            logger.warning(f'Could not reset database for <{root_dir}>. Exception: {e}')
             return False
-
-    def init(self) -> bool:
-        try:
-            with SqliteDict(self.path, autocommit=True) as db:
-                db.commit()
-        except Exception as e:
-            logger.warning(f'Could not create database. Exception: {e}')
-            return False
-        return True
-
-    def get_all_tables_as_dict(self) -> dict[str, dict[str, StatHash]]:
-        """Retrieve all tables in the database as a dictionary."""
-        try:
-            with SqliteDict(self.path, autocommit=True) as db:
-                return {table_name: dict(db[table_name]) for table_name in db}
-        except Exception as e:
-            logger.warning(f'Could not open DB to get all tables. Exception: {e}')
-            return {}
 
     def get_table_as_dict(self, root_dir: str) -> dict[str, StatHash]:
         """Retrieve the entire table as a dictionary."""
