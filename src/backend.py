@@ -93,7 +93,7 @@ class CompareDirs:
                     f'Using mirror for <{dir_pair.target}>. Table has {self.mirror.size(dir_pair.target)} entries'
                 )
                 self.files_in_target[dir_pair.target] = {
-                    CstmPath(p, root_dir=dir_pair.target) for p in self.mirror.get_keys(root_dir=dir_pair.target)
+                    CstmPath(p, root_dir=dir_pair.target) for p in self.mirror.get_paths(root_dir=dir_pair.target)
                 }
                 continue
 
@@ -107,7 +107,7 @@ class CompareDirs:
 
             if increment_mirror or rebuild_mirror:
                 logger.info(f'Adding {len(self.files_in_target[dir_pair.target])} files to mirror')
-                self.mirror.add(dir_pair.target, self.files_in_target[dir_pair.target])
+                self.mirror.add_path(dir_pair.target, self.files_in_target[dir_pair.target])
 
         num_files = sum(len(files) for files in self.files_in_target.values())
         logger.info(f'Finished scanning all target files. Found {num_files} files in {time_diff_to_min(start_time)}')
@@ -339,7 +339,7 @@ class SyncDirs:
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copy2(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
-                self.mirror.add(root_dir=dir_pair.target, path=target)
+                self.mirror.add_path(root_dir=dir_pair.target, path=target)
                 counter_size += size
                 log_progress(i, total_files, start_time, interval=10, speed_type='copy')
                 if i % 10 == 0:
@@ -362,7 +362,7 @@ class SyncDirs:
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.move(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
-                self.mirror.replace(root_dir=dir_pair.target, path=source, new_path=target)
+                self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
                 logger.debug(f'Move finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
                 success = True
             except Exception as e:
@@ -382,7 +382,7 @@ class SyncDirs:
                 os.chmod(path, stat.S_IWRITE)
                 os.remove(path)
                 dir_pair = get_dirs_from_path(path, self.dirs)
-                self.mirror.remove(root_dir=dir_pair.target, path=path)
+                self.mirror.remove_path(root_dir=dir_pair.target, path=path)
                 log_progress(i, total_files, start_time, interval=10, speed_type='delete')
                 success = True
             except Exception as e:

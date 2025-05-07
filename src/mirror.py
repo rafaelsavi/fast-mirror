@@ -91,25 +91,39 @@ class MirrorDatabase:
             return False
         return True
 
-    def add(self, root_dir: str, path: Iterable[CstmPathType] | CstmPathType):
-        def add_single(db: SqliteDict, path_single: CstmPathType):
-            try:
-                encoded_stats = get_encoded_stats(path_single)
-                db[str(path_single)] = encoded_stats
-            except Exception as e:
-                logger.error(f'Could not add file {path} to local mirror. Exception: {e}')
+    def get_all_tables_as_dict(self) -> dict[str, dict[str, StatHash]]:
+        """Retrieve all tables in the database as a dictionary."""
+        try:
+            with SqliteDict(self.path, autocommit=True) as db:
+                return {table_name: dict(db[table_name]) for table_name in db}
+        except Exception as e:
+            logger.warning(f'Could not open DB to get all tables. Exception: {e}')
+            return {}
 
+    def get_table_as_dict(self, root_dir: str) -> dict[str, StatHash]:
+        """Retrieve the entire table as a dictionary."""
         try:
             with self._get_db(root_dir) as db:
-                if isinstance(path, Iterable) and not isinstance(path, str):
-                    for path_single in path:
-                        add_single(db, path_single)
-                else:
-                    add_single(db, path)
+                return dict(db)
         except Exception as e:
-            logger.critical(f'Could not open DB to add file(s): {path} Exception: {e}')
+            logger.warning(f'Could not open DB to get table. Exception: {e}')
+            return {}
 
-    def get(self, root_dir: str, path: CstmPathType | list[CstmPathType]) -> StatHash | None | list[StatHash | None]:
+    def get_paths(self, root_dir: str) -> set[str]:
+        try:
+            with self._get_db(root_dir) as mirror_db:
+                keys = mirror_db.keys()
+                if self.exclusions is not None:
+                    return {k for k in keys if not is_list_of_substr_in_str(self.exclusions, k)}
+                else:
+                    return set(keys)
+        except Exception as e:
+            logger.warning(f'Could not open DB to get keys. Exception: {e}')
+            return set()
+
+    def get_stat_hash(
+        self, root_dir: str, path: CstmPathType | list[CstmPathType]
+    ) -> StatHash | None | list[StatHash | None]:
         """
         Retrieve the value(s) associated with the given path(s) from the database.
 
@@ -134,24 +148,25 @@ class MirrorDatabase:
             logger.warning(f'Could not open DB to get keys {path}. Exception: {e}')
             return None
 
-    def replace(self, root_dir: str, path: CstmPathType, new_path: CstmPathType):
-        """Remove path and add new_path to the database."""
-        self.remove(root_dir, path)
-        self.add(root_dir, new_path)
+    def add_path(self, root_dir: str, path: Iterable[CstmPathType] | CstmPathType):
+        def add_single(db: SqliteDict, path_single: CstmPathType):
+            try:
+                encoded_stats = get_encoded_stats(path_single)
+                db[str(path_single)] = encoded_stats
+            except Exception as e:
+                logger.error(f'Could not add file {path} to local mirror. Exception: {e}')
 
-    def get_keys(self, root_dir: str) -> set[str]:
         try:
-            with self._get_db(root_dir) as mirror_db:
-                keys = mirror_db.keys()
-                if self.exclusions is not None:
-                    return {k for k in keys if not is_list_of_substr_in_str(self.exclusions, k)}
+            with self._get_db(root_dir) as db:
+                if isinstance(path, Iterable) and not isinstance(path, str):
+                    for path_single in path:
+                        add_single(db, path_single)
                 else:
-                    return set(keys)
+                    add_single(db, path)
         except Exception as e:
-            logger.warning(f'Could not open DB to get keys. Exception: {e}')
-            return set()
+            logger.critical(f'Could not open DB to add file(s): {path} Exception: {e}')
 
-    def remove(self, root_dir: str, path: CstmPathType | Iterable[CstmPathType]) -> bool:
+    def remove_path(self, root_dir: str, path: CstmPathType | Iterable[CstmPathType]) -> bool:
         def remove_single(db: SqliteDict, path_single: CstmPathType) -> bool:
             try:
                 if path_single in db:
@@ -172,3 +187,8 @@ class MirrorDatabase:
         except Exception as e:
             logger.warning(f'Could not open DB to remove file(s): {path} Exception: {e}')
             return False
+
+    def replace_path(self, root_dir: str, path: CstmPathType, new_path: CstmPathType):
+        """Remove path and add new_path to the database."""
+        self.remove_path(root_dir, path)
+        self.add_path(root_dir, new_path)
