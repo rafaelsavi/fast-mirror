@@ -475,12 +475,14 @@ class Gui:
                 with open(self.config_path) as f:
                     config_vars = json.load(f)
                 for name, value in config_vars.items():
-                    getattr(self, name).set(value)
+                    gui_element = getattr(self, name)
+                    gui_element.set(value)
                 if show_success_msg:
                     logger.info('Configuration was successfully loaded')
-            except:
+            except Exception as e:
                 with contextlib.suppress(Exception):
                     os.rename(self.config_path, self.config_path + '_old.p')
+                raise e
         else:
             logger.info('Cannot find default configuration')
             self.button_action_reset_config(ask_confirmation=False)
@@ -808,7 +810,7 @@ class EntryPaths(ScrolledText):
         self.set(self.get() + [pair])
 
     def set(self, paths: list[tuple[str, str]] | list[DirectoryPair]):
-        paths = [pair if isinstance(pair, tuple) else (pair.source, pair.target) for pair in paths]
+        paths = [(pair.source, pair.target) if isinstance(pair, DirectoryPair) else pair for pair in paths]
         raw = '\n'.join([f'{pair[0]} -> {pair[1]}' for pair in paths])
         super().delete('1.0', tk.END)  # delete current text
         super().insert('1.0', raw)  # add at line 1, col 0
