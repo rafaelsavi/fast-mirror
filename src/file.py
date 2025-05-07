@@ -70,7 +70,7 @@ class CstmPath(Path):
             try:
                 self._stats = _get_stats(self)
             except Exception as e:
-                logger.warning(f'Could not get stats of {self}. Exception: {e}')
+                # logger.warning(f'Could not get stats of {self}. Exception: {e}')
                 raise e
         return self._stats
 
