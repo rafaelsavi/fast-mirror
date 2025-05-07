@@ -20,7 +20,7 @@ from utils import (
 
 CstmPathType = Union[str, PathLike[str], 'CstmPath']
 StatHash = NewType('StatHash', str)
-StableStats = namedtuple('StableStats', ['st_size', 'st_mtime', 'st_birthtime'])
+StableStats = namedtuple('StableStats', ['st_size', 'st_mtime'])
 
 
 class CustomException(Exception):
@@ -38,7 +38,7 @@ def _get_stats(path: CstmPathType) -> StableStats:
         # logger.warning(f'Could not get stats of {path}. Exception: {e}')
         raise e
 
-    stable_stats = StableStats(stats.st_size, stats.st_mtime, stats.st_birthtime)
+    stable_stats = StableStats(stats.st_size, stats.st_mtime)
     return stable_stats
 
 
@@ -86,10 +86,6 @@ class CstmPath(Path):
 
     def get_st_mtime(self, as_date_str=False) -> str | float:
         time_ = self.stats.st_mtime
-        return self.to_date_str(time_) if as_date_str else time_
-
-    def get_st_birthtime(self, as_date_str=False) -> str | float:
-        time_ = self.stats.st_birthtime
         return self.to_date_str(time_) if as_date_str else time_
 
     def as_target(self, dirs: list[tuple[CstmPathType, CstmPathType]]) -> 'CstmPath':

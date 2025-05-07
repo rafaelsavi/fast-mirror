@@ -717,7 +717,10 @@ class LogLevels:
 
     def reset(self):
         for k, _v in self.checkboxes.items():
-            self.checkboxes[k].set(True)
+            if k in ['DEBUG']:
+                self.checkboxes[k].set(False)
+            else:
+                self.checkboxes[k].set(True)
 
     def set(self, values: list[str]):
         for value, _status in self.checkboxes.items():

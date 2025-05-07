@@ -196,10 +196,13 @@ class CompareDirs:
         Get files that need to be copied from source to target.
         These are files that only exist in source or that were modified
         """
-        self.files_to_copy = [
-            (f.source, f.missing_target) for f in self.linked_files if f.only_source or (f.in_both and f.modified)
-        ]
-        self.files_to_copy = list(sorted(self.files_to_copy, key=lambda x: x[0]))
+        self.files_to_copy = []
+
+        for f in self.linked_files:
+            if f.only_source:
+                self.files_to_copy.append((f.source, f.missing_target))
+            elif f.in_both and f.modified:
+                self.files_to_copy.append((f.source, f.target))
 
     def get_files_to_move(self):
         logger.warning('Not implemented yet')
@@ -229,8 +232,6 @@ class CompareDirs:
                         'size (target)': file.target.get_st_size(as_str=True) if file.target else '',
                         'modified (source)': file.source.get_st_mtime(as_date_str=True) if file.source else '',
                         'modified (target)': file.target.get_st_mtime(as_date_str=True) if file.target else '',
-                        'created (source)': file.source.get_st_birthtime(as_date_str=True) if file.source else '',
-                        'created (target)': file.target.get_st_birthtime(as_date_str=True) if file.target else '',
                         'compare error': file.compare_error,
                     }
                     for file in self.linked_files
@@ -295,6 +296,10 @@ class SyncDirs:
         self.files_copied: list[tuple[tuple[str, str], bool]] = list()
         self.files_moved: list[tuple[tuple[str, str], bool]] = list()
         self.files_deleted: list[tuple[str, bool]] = list()
+
+        if not self.files_available_to_copy and not self.files_available_to_move and not self.files_available_to_delete:
+            logger.info('No files to synchronize')
+            return
 
         # Confirm actions
         if self.open_confirmation_popup():

@@ -148,8 +148,6 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         row['size (target)'] = try_f(lambda x: x.get_st_size(as_str=True), target, default=0)
         row['modification date (source)'] = try_f(lambda x: x.get_st_mtime(as_date_str=True), source)
         row['modification date (target)'] = try_f(lambda x: x.get_st_mtime(as_date_str=True), target)
-        row['creation date (source)'] = try_f(lambda x: x.get_st_birthtime(as_date_str=True), source)
-        row['creation date (target)'] = try_f(lambda x: x.get_st_birthtime(as_date_str=True), target)
         get_size_from = source if source is not None else target
         row['size in bytes'] = try_f(lambda x: x.get_st_size(as_str=False), get_size_from, default=0)
 
