@@ -257,10 +257,10 @@ class CompareDirs:
         logger.info(
             f'Files that exist in both and are modified: {len([f for f in self.linked_files if f.in_both and not f.same])}'
         )
-        files_compare_error = [f for f in self.linked_files if f.compare_error]
+        paths_compare_error = [str(f) for f in self.linked_files if f.compare_error]
         logger.info(
-            f'Files that could not be analyzed: {len(files_compare_error)}'
-            + str({True: ': \n' + '\n  '.join(files_compare_error), False: ''}.get(len(files_compare_error) > 0))
+            f'Files that could not be analyzed: {len(paths_compare_error)}'
+            + str({True: ': \n  ' + '\n  '.join(paths_compare_error), False: ''}.get(len(paths_compare_error) > 0))
         )
 
 

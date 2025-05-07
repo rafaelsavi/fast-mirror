@@ -68,14 +68,14 @@ class Counter:
     def __init__(self, init_value=-1):
         self.v = init_value
 
-    def get(self, increment=True):
+    def get(self, increment=True) -> int:
         if increment:
             self.v += 1
         return self.v
 
 
 def check_length(p):
-    return f'File path of source and/or target is too long ({len(p)})' if len(p) > 259 else ''
+    return f'File path of source and/or target is too long ({len(str(p))})' if len(str(p)) > 259 else ''
 
 
 def log_progress(progress: int, total: int | None, start_time: float, interval=1000, speed_type=''):
