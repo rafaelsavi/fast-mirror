@@ -11,6 +11,10 @@ from utils import is_list_of_substr_in_str
 local_mirror_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../local_mirror.db'))
 
 
+def sanitize_path(path: str | CstmPathType) -> str:
+    return str(path).replace('/', '\\')
+
+
 class MirrorDatabase:
     """
     A class to manage a local mirror database using SQLite.
@@ -19,7 +23,7 @@ class MirrorDatabase:
 
     def __init__(self, path=local_mirror_path, exclusions: None | list[str] = None):
         self.path = path
-        self.exclusions = exclusions or []
+        self.exclusions = [sanitize_path(ex) for ex in exclusions] if exclusions else []
         if not os.path.exists(self.path):
             self.init()
 
@@ -39,7 +43,7 @@ class MirrorDatabase:
         :param root_dir: The root directory for which the table is being accessed.
         :return: A string representing the table name.
         """
-        sanitized_root = root_dir.replace(os.sep, '_').replace(':', '_')
+        sanitized_root = sanitize_path(root_dir).replace(os.sep, '_').replace(':', '_')
         sanitized_exclusions = '_'.join(e.replace(os.sep, '_').replace(':', '_') for e in self.exclusions)
         allowed_pattern = r'[^a-zA-Z0-9_]'
         sanitized_root = re.sub(allowed_pattern, '_', sanitized_root)
@@ -67,7 +71,7 @@ class MirrorDatabase:
         """Check if the given path exists in the database for the specified root_dir."""
         try:
             with self._get_db(root_dir) as mirror_db:
-                return str(path) in mirror_db
+                return sanitize_path(path) in mirror_db
         except Exception as e:
             logger.warning(f'Could not check if path exists. Exception: {e}')
             return False
@@ -128,7 +132,7 @@ class MirrorDatabase:
 
         def get_single(db: SqliteDict, path_single: CstmPathType) -> StatHash | None:
             try:
-                return db[str(path_single)]
+                return db[sanitize_path(path_single)]
             except KeyError:
                 logger.warning(f'Key does not exist in database: {path_single}')
                 return None
@@ -146,7 +150,7 @@ class MirrorDatabase:
         def add_single(db: SqliteDict, path_single: CstmPathType):
             try:
                 encoded_stats = get_encoded_stats(path_single)
-                db[str(path_single)] = encoded_stats
+                db[sanitize_path(path_single)] = encoded_stats
             except Exception as e:
                 logger.error(f'Could not add file {path} to local mirror. Exception: {e}')
 
@@ -164,7 +168,7 @@ class MirrorDatabase:
         def remove_single(db: SqliteDict, path_single: CstmPathType) -> bool:
             try:
                 if path_single in db:
-                    del db[str(path_single)]
+                    del db[sanitize_path(path_single)]
                     return True
                 else:
                     logger.warning(f'Key does not exist in database: {path_single}')
