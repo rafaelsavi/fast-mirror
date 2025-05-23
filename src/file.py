@@ -117,7 +117,7 @@ class CstmPath(Path):
                     if not is_list_of_substr_in_str(exclude, str(abs_path)):
                         all_paths.add(CstmPath(abs_path, root_dir=dir_path))
                         log_progress(len(all_paths), None, t1, interval=5000)
-        logger.info(f'Finished scanning {dir_path} with {len(all_paths)} files in {time_diff_to_min(t1)}.')
+        logger.info(f'Finished scanning {dir_path} with {len(all_paths):,} files in {time_diff_to_min(t1)}.')
         return all_paths
 
     def __truediv__(self, other: CstmPathType) -> 'CstmPath':

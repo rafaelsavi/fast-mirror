@@ -82,7 +82,7 @@ class CompareDirs:
             dir_pair.source: CstmPath.get_from_dir(dir_pair.source, exclude=self.exclusions) for dir_pair in self.dirs
         }
         num_files = sum(len(files) for files in self.files_in_source.values())
-        logger.info(f'Finished scanning all source files. Found {num_files} files in {time_diff_to_min(start_time)}')
+        logger.info(f'Finished scanning all source files. Found {num_files:,} files in {time_diff_to_min(start_time)}')
 
     def scan_target_files(self, use_mirror: bool, increment_mirror: bool, rebuild_mirror: bool):
         logger.info('Starting to scan target files')
@@ -119,7 +119,7 @@ class CompareDirs:
                 self.mirror.add_path(dir_pair.target, self.files_in_target[dir_pair.target])
 
         num_files = sum(len(files) for files in self.files_in_target.values())
-        logger.info(f'Finished scanning all target files. Found {num_files} files in {time_diff_to_min(start_time)}')
+        logger.info(f'Finished scanning all target files. Found {num_files:,} files in {time_diff_to_min(start_time)}')
 
     def link_files(self):
         """Link files in source and target directories to a single File object"""

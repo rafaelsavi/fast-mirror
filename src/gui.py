@@ -464,7 +464,7 @@ class Gui:
             ]
             config_vars = {name: getattr(self, name).get() for name in config_var_names}
             with open(self.config_path, 'w') as f:
-                json.dump(config_vars, f)
+                json.dump(config_vars, f, indent=4)
             logger.info('Configuration was successfully saved')
             self.load_config(show_success_msg=False)
 
@@ -482,7 +482,7 @@ class Gui:
                     logger.info('Configuration was successfully loaded')
             except Exception as e:
                 with contextlib.suppress(Exception):
-                    os.rename(self.config_path, self.config_path + '_old.p')
+                    os.rename(self.config_path, self.config_path + '_old.json')
                 raise e
         else:
             logger.info('Cannot find default configuration')

@@ -1,12 +1,13 @@
 import os
 import re
+import time
 from collections.abc import Iterable
 
 from sqlitedict import SqliteDict
 
 from file import CstmPathType, StatHash, get_encoded_stats
 from logger import logger
-from utils import is_list_of_substr_in_str
+from utils import is_list_of_substr_in_str, log_progress
 
 local_mirror_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../local_mirror.db'))
 
@@ -157,8 +158,11 @@ class MirrorDatabase:
         try:
             with self._get_db(root_dir) as db:
                 if isinstance(path, Iterable) and not isinstance(path, str):
-                    for path_single in path:
+                    start_time = time.time()
+                    number_files = len(path)
+                    for i, path_single in enumerate(path):
                         add_single(db, path_single)
+                        log_progress(i, number_files, start_time, interval=10000)
                 else:
                     add_single(db, path)
         except Exception as e:

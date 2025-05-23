@@ -87,11 +87,11 @@ def log_progress(progress: int, total: int | None, start_time: float, interval=1
         speed_files_p_min = int(60 * progress / (time.time() - start_time))
         msgs = []
         if total is not None:
-            msgs.append(f'{progress} of {total} files so far.')
+            msgs.append(f'{progress:,} of {total:,} files so far.')
         else:
-            msgs.append(f'{progress} files so far.')
+            msgs.append(f'{progress:,} files so far.')
 
-        msgs.append(f'Avg. {speed_type}speed: {speed_files_p_min} files/min.')
+        msgs.append(f'Average {speed_type}speed: {speed_files_p_min:,} files/min.')
         if total is not None:
             msgs.append(f'ETL: {int((total - progress) / speed_files_p_min)} min')
         logger.debug(' '.join(msgs))

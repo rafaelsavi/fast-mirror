@@ -61,7 +61,7 @@ def search_empty_dirs(dir_path: str, all_dirs=None, all_files=None, root_call=Tr
                 all_files += [os.path.join(root, f) for f in files]
                 if i % 1000 == 0:
                     print(f'{len(all_files)} files scaned so far')
-            print(f'Finished searching for contents. Found {len(all_files)} files in {len(all_dirs)} directories')
+            print(f'Finished searching for contents. Found {len(all_files):,} files in {len(all_dirs):,} directories')
 
         if len(all_files):
             sub_dir_names = []
