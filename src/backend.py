@@ -55,7 +55,7 @@ class CompareDirs:
         self.compare_files()
 
         if care_about_moved_files:
-            self.get_moved_files()
+            pass  # Checking for moved files implicates that all files metadata are checked
 
         self.get_files_to_copy()
         self.get_files_to_delete()
@@ -113,6 +113,7 @@ class CompareDirs:
         logger.info(f'Finished scanning all target files. Found {num_files} files in {time_diff_to_min(start_time)}')
 
     def link_files(self):
+        """Link files in source and target directories to a single File object"""
         logger.info('Starting to link source and target files')
 
         for dir_pair in self.dirs:
@@ -123,14 +124,15 @@ class CompareDirs:
             source_paths = {f.rel_to_root: f for f in self.files_in_source[dir_pair.source]}
             target_paths = {f.rel_to_root: f for f in self.files_in_target[dir_pair.target]}
 
-            logger.info('')
             start_time = time.time()
             number_files = len(source_paths)
             for i, (source_file_rel_path, source_file) in enumerate(source_paths.items()):
                 log_progress(i, number_files, start_time, interval=10000)
+                # Check if the relative path of the file exists in both source and target
                 if source_file_rel_path in target_paths:
                     self.linked_files.append(File(source=source_file, target=target_paths[source_file_rel_path]))
                     del target_paths[source_file_rel_path]
+                # Relative path exists only in source
                 else:
                     self.linked_files.append(
                         File(source=source_file, target=None, missing_target_root_dir=dir_pair.target)
@@ -156,41 +158,6 @@ class CompareDirs:
             if file.in_both:
                 file.compare(self.comparison_method)
 
-    def get_moved_files(self):
-        logger.info('Move files recognition not implemented yet')
-        # logger.debug('Searching for moved files')
-        # used_files = deepcopy(self.error_files)
-        # number_files = len(self.files_only_in_source)
-        # start_time = time.time()
-        # for i, file_in_source in enumerate(self.files_only_in_source):
-        #     log_progress(i, number_files, start_time)
-
-        #     file_basename_in_source = file_in_source.name
-
-        #     for file_in_target in self.files_only_in_target:
-        #         file_basename_in_target = file_in_target.name
-
-        #         if file_in_source in used_files:
-        #             break
-        #         if file_in_target in used_files:
-        #             continue
-
-        #         if file_basename_in_source == file_basename_in_target:
-        #             success, match = compare_files(file_in_source, file_in_target, self.comparison_method)
-        #             if success:
-        #                 if match:
-        #                     # logger.debug(f'Found two single files with same basename, '
-        #                     #              f'and they seem to be the same: {file_in_source} and {file_in_target}')
-        #                     pair = (file_in_target, file_in_source.change_root_dir(file_in_target._root_dir))
-        #                     self.moved_files.add(pair)
-        #                 else:
-        #                     pass
-        #                     # logger.debug(f'Found two single files with same basename, '
-        #                     #              f'but they are not the same: {file_in_source} and {file_in_target}')
-        #             else:
-        #                 self.error_files.update({file_in_source, file_in_target})
-        #             used_files.update({file_in_source, file_in_target})
-
     def get_files_to_copy(self):
         """
         Get files that need to be copied from source to target.
@@ -203,9 +170,6 @@ class CompareDirs:
                 self.files_to_copy.append((f.source, f.missing_target))
             elif f.in_both and f.modified:
                 self.files_to_copy.append((f.source, f.target))
-
-    def get_files_to_move(self):
-        logger.warning('Not implemented yet')
 
     def get_files_to_delete(self):
         """

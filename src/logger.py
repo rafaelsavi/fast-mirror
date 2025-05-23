@@ -3,8 +3,8 @@ import os
 import queue
 from datetime import datetime
 
-
 log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../log'))
+
 
 class QueueHandler(logging.Handler):
     """Class to send logging records to a queue. It can be used from different threads"""
@@ -18,7 +18,6 @@ class QueueHandler(logging.Handler):
 
 
 class Logger:
-
     def __init__(self, log_level='DEBUG'):
         # Build save path
         self.log_dir = log_dir
