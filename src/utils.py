@@ -23,7 +23,7 @@ class DirectoryPair:
         return iter((self.source, self.target))
 
 
-def get_size(path: str | list[str], as_str=True) -> float | str:
+def get_size(path: str | list[str]) -> float:
     def get_single_size(path_) -> int:
         try:
             return os.path.getsize(path_)
@@ -39,10 +39,11 @@ def get_size(path: str | list[str], as_str=True) -> float | str:
     elif isinstance(path, list):
         size_bytes = sum([get_single_size(x) for x in path])
 
-    if as_str:
-        return format_size(size_bytes)
-    else:
-        return size_bytes
+    return size_bytes
+
+
+def get_size_as_str(path: str | list[str]) -> str:
+    return format_size(get_size(path))
 
 
 def format_size(size_bytes: float) -> str:

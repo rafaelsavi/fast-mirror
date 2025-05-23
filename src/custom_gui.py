@@ -106,7 +106,9 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             # Update group item
             self.item(group, text=f'{group} {selected_size} ({selected_number} of {total_number})')
 
-    def add_file_lists(self, file_lists: dict[str, list[tuple[CstmPath, CstmPath] | CstmPath]], default_active=None):
+    def add_file_lists(
+        self, file_lists: dict[str, list[tuple[CstmPath, CstmPath]] | list[CstmPath]], default_active=None
+    ):
         if default_active is None:
             default_active = []
 
@@ -129,8 +131,8 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                 )
 
     @staticmethod
-    def get_row(source: CstmPath, target: CstmPath) -> dict[str, float | str]:
-        def try_f(func: Callable, path: CstmPath, default=''):
+    def get_row(source: CstmPath | None, target: CstmPath | None) -> dict[str, float | str]:
+        def try_f(func: Callable, path: CstmPath | None, default: str | int = ''):
             if path is None:
                 return default
             try:

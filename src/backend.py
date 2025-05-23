@@ -12,7 +12,16 @@ from custom_gui import CustomCheckboxTreeView
 from file import CstmPath, CstmPathType, File
 from logger import logger
 from mirror import MirrorDatabase
-from utils import CompareMethod, DirectoryPair, check_length, format_size, get_size, log_progress, time_diff_to_min
+from utils import (
+    CompareMethod,
+    DirectoryPair,
+    check_length,
+    format_size,
+    get_size,
+    get_size_as_str,
+    log_progress,
+    time_diff_to_min,
+)
 
 
 class CompareDirs:
@@ -283,6 +292,7 @@ class SyncDirs:
             self.files_available_to_delete,
             self.default_actions,
         )
+
         time_init = time.time()
         while (time.time() - time_init) < 7200:
             if popup.finished:
@@ -292,7 +302,10 @@ class SyncDirs:
                 return popup.proceed
             else:
                 time.sleep(0.1)
-        self.files_requested_to_copy, self.files_requested_to_move, self.files_requested_to_delete = set(), set(), set()
+
+        self.files_requested_to_copy = list()
+        self.files_requested_to_move = list()
+        self.files_requested_to_delete = list()
         return False
 
     def copy_files(self):
@@ -303,7 +316,7 @@ class SyncDirs:
         for i, (source, target) in enumerate(self.files_requested_to_copy, 1):
             success = False
             try:
-                size = get_size(source, as_str=False)
+                size = get_size(source)
                 logger.info(f'Copying file {i} of {total_files}: <{source}> - <{target}> ({format_size(size)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copy2(source, target)
@@ -327,7 +340,7 @@ class SyncDirs:
         for i, (source, target) in enumerate(self.files_requested_to_move, 1):
             success = False
             try:
-                logger.info(f'Moving file {i} of {number}: <{source}> ({get_size(source)})')
+                logger.info(f'Moving file {i} of {number}: <{source}> ({get_size_as_str(source)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.move(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
@@ -347,7 +360,7 @@ class SyncDirs:
         for i, path in enumerate(self.files_requested_to_delete, 1):
             success = False
             try:
-                logger.info(f'Deleting file {i} of {total_files}: <{path}> ({get_size(path)})')
+                logger.info(f'Deleting file {i} of {total_files}: <{path}> ({get_size_as_str(path)})')
                 os.chmod(path, stat.S_IWRITE)
                 os.remove(path)
                 dir_pair = get_dirs_from_path(path, self.dirs)
@@ -392,16 +405,19 @@ class ActionSelection:
     def __init__(
         self,
         root_gui: tk.Tk,
-        files_to_copy: list[tuple[str, str]],
-        files_to_move: list[tuple[str, str]],
-        files_to_delete: list[str],
+        files_available_to_copy: list[tuple[CstmPath, CstmPath]],
+        files_available_to_move: list[tuple[CstmPath, CstmPath]],
+        files_available_to_delete: list[CstmPath],
         default_actions: list[str],
     ):
         # Load input variables
-        self.files_to_copy = files_to_copy
-        self.files_to_move = files_to_move
-        self.files_to_delete = files_to_delete
         self.default_actions = default_actions
+        self.files_available_to_copy = files_available_to_copy
+        self.files_available_to_move = files_available_to_move
+        self.files_available_to_delete = files_available_to_delete
+        self.files_requested_to_copy: list[tuple[str, str]] = list()
+        self.files_requested_to_move: list[tuple[str, str]] = list()
+        self.files_requested_to_delete: list[str] = list()
 
         # Configure variables
         self.root_gui = root_gui
@@ -420,11 +436,6 @@ class ActionSelection:
 
         # Init watchdog functions
         self.check_countdown()
-
-    def get_countdown(self) -> tuple[bool, str]:
-        countdown = max(0, int(self.countdown_size + self.init_time - time.time()))
-        countdown_str = f' ({countdown}s)' if self.is_timer_active else ''
-        return self.is_timer_active and countdown <= 0, countdown_str
 
     def create_widgets(self):
         logger.info('Collecting data for selection window. This may take a while')
@@ -450,6 +461,42 @@ class ActionSelection:
         self.init_time = time.time()
         winsound.PlaySound('SystemQuestion', winsound.SND_ALIAS)
 
+    def button_save_click(self):
+        logger.info('Saving selection of actions')
+        self.is_timer_active = False
+        self.files_requested_to_copy = list()
+        self.files_requested_to_move = list()
+        self.files_requested_to_delete = list()
+
+        # Fill output
+        for id_ in self.tree.get_checked():
+            if '::' in id_:
+                group, source_path, target_path = id_.split('::')
+                if group == 'copy':
+                    self.files_requested_to_copy.append((source_path, target_path))
+                elif group == 'move':
+                    self.files_requested_to_move.append((source_path, target_path))
+                elif group == 'delete':
+                    self.files_requested_to_delete.append(target_path)
+
+        self.finished = True
+        self.proceed = True
+        self.popup.destroy()
+
+    def button_cancel_click(self):
+        logger.info('Canceling selection of actions. No action will be taken')
+        self.is_timer_active = False
+        self.files_requested_to_copy = list()
+        self.files_requested_to_move = list()
+        self.files_requested_to_delete = list()
+        self.finished = True
+        self.popup.destroy()
+
+    def get_countdown(self) -> tuple[bool, str]:
+        countdown = max(0, int(self.countdown_size + self.init_time - time.time()))
+        countdown_str = f' ({countdown}s)' if self.is_timer_active else ''
+        return self.is_timer_active and countdown <= 0, countdown_str
+
     def check_countdown(self):
         if not self.finished:
             status, value = self.get_countdown()
@@ -463,7 +510,11 @@ class ActionSelection:
         # Create blank widget
         self.tree = CustomCheckboxTreeView(self.popup, height=30)
         self.tree.add_file_lists(
-            {'copy': self.files_to_copy, 'move': self.files_to_move, 'delete': self.files_to_delete},
+            {
+                'copy': self.files_available_to_copy,
+                'move': self.files_available_to_move,
+                'delete': self.files_available_to_delete,
+            },
             default_active=self.default_actions,
         )
 
@@ -471,39 +522,8 @@ class ActionSelection:
         self.tree.refresh_group_stats()
         self.tree.grid(row=1, column=0, sticky='wens')
 
-    def button_save_click(self):
-        logger.info('Saving selection of actions')
-        self.is_timer_active = False
-        self.files_to_copy = set()
-        self.files_to_move = set()
-        self.files_to_delete = set()
-
-        # Fill output
-        for id_ in self.tree.get_checked():
-            if '::' in id_:
-                group, source_path, target_path = id_.split('::')
-                if group == 'copy':
-                    self.files_to_copy.add((source_path, target_path))
-                elif group == 'move':
-                    self.files_to_move.add((source_path, target_path))
-                elif group == 'delete':
-                    self.files_to_delete.add(target_path)
-
-        self.finished = True
-        self.proceed = True
-        self.popup.destroy()
-
-    def button_cancel_click(self):
-        logger.info('Canceling selection of actions. No action will be taken')
-        self.is_timer_active = False
-        self.files_to_copy = set()
-        self.files_to_move = set()
-        self.files_to_delete = set()
-        self.finished = True
-        self.popup.destroy()
-
     def get_outputs(self):
-        return self.files_to_copy, self.files_to_move, self.files_to_delete
+        return self.files_requested_to_copy, self.files_requested_to_move, self.files_requested_to_delete
 
 
 def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> DirectoryPair:
