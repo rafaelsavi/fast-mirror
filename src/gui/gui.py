@@ -17,6 +17,7 @@ from file import CustomException
 from logger import logger
 from mirror import MirrorDatabase
 from utils import CompareMethod, Counter, DirectoryPair, round_time_to_minutes
+from .enums import BackendThreadStatus
 
 
 class KillableThread(threading.Thread):
@@ -78,8 +79,8 @@ class Gui:
         # Initialize variables
         self._gui_initialized = False
         self.last_realized_sync = None
-        self._backend_thread_holder = None
-        self._backend_thread_status = None
+        self._backend_thread_holder: KillableThread | None = None
+        self._backend_thread_status = BackendThreadStatus.STANDBY
         self.toggle_auto_scroll = tk.BooleanVar()
         self.config_path = os.path.join(os.path.dirname(__file__), '../config.json')
         self.check_box_value_default_actions = DefaultActions({})
@@ -147,18 +148,18 @@ class Gui:
     @backend_thread_status.setter
     def backend_thread_status(self, value):
         self._backend_thread_status = value
-        self.text_var_status.set(value)
+        self.text_var_status.set(value.value if isinstance(value, BackendThreadStatus) else str(value))
 
         # If thread is running, disable all unused buttons
-        if value == 'Standby':
+        if value == BackendThreadStatus.STANDBY:
             self.set_gui_enable_state(general_state=True)
             # Release triggers when backend is done
             self.toggle_state_quick_compare = False
             self.toggle_state_sync_now = False
             self.toggle_state_schedule = False
-        elif value == 'Running':
+        elif value == BackendThreadStatus.RUNNING:
             self.set_gui_enable_state(general_state=False, leave_sunken_enabled=True)
-        elif value == 'Stopping':
+        elif value == BackendThreadStatus.STOPPING:
             self.set_gui_enable_state(general_state=False, leave_sunken_enabled=False)
 
     @property
@@ -170,7 +171,7 @@ class Gui:
         self._backend_thread_holder = thread
 
         # Update text of status widget
-        self.backend_thread_status = {True: 'Running', False: 'Standby'}.get(thread is not None)
+        self.backend_thread_status = BackendThreadStatus.RUNNING if thread is not None else BackendThreadStatus.STANDBY
 
     @property
     def toggle_state_schedule(self):
@@ -537,7 +538,7 @@ class Gui:
             next_appointment = self.get_next_appointment()
 
             # If backend thread is not running
-            if self.backend_thread_status == 'Standby':
+            if self.backend_thread_status == BackendThreadStatus.STANDBY:
                 if (
                     self.toggle_state_schedule
                     and next_appointment is not None
@@ -555,22 +556,22 @@ class Gui:
                     self.call_backend_thread(True, now)
 
             # If backend thread is running but a stop command was requested
-            elif self.backend_thread_status == 'Running' and not (
+            elif self.backend_thread_status == BackendThreadStatus.RUNNING and not (
                 self.toggle_state_quick_compare or self.toggle_state_sync_now or self.toggle_state_schedule
             ):
                 try:
                     logger.info('---------------------------------')
                     logger.info('Trying to stop background process')
-                    self.backend_thread_status = 'Stopping'
+                    self.backend_thread_status = BackendThreadStatus.STOPPING
                     self.backend_thread_holder.kill()
                 except Exception as e:
-                    self.backend_thread_status = 'Running'
+                    self.backend_thread_status = BackendThreadStatus.RUNNING
                     logger.error(f'Could not stop background process. Exception: {e}')
 
-        delay = 1000 if self.backend_thread_status == 'Standby' else 50
+        delay = 1000 if self.backend_thread_status == BackendThreadStatus.STANDBY else 50
         self.root.after(delay, self.backend_watchdog)
 
-    def call_backend_thread(self, also_sync, timestamp):
+    def call_backend_thread(self, also_sync: bool, timestamp: datetime.datetime):
         self.last_realized_sync = timestamp
         self.backend_thread_holder = KillableThread(
             target=self.backend_thread,
@@ -581,7 +582,7 @@ class Gui:
         )
         self.backend_thread_holder.start()
 
-    def backend_thread(self, also_sync, timestamp):
+    def backend_thread(self, also_sync: bool, timestamp: datetime.datetime):
         if self.checkbox_value_save_report.get():
             timestamp = timestamp.strftime('%Y-%m-%d_%H-%M-%S')
             save_path = os.path.join(logger.log_dir, 'compare_report_' + timestamp + '.xlsx')
