@@ -1,3 +1,4 @@
+from copy import copy
 import filecmp
 import os
 import shutil
@@ -7,9 +8,10 @@ import tkinter as tk
 import winsound
 
 import pandas as pd
+from collections import Counter
 import datetime
 
-from core.file import CstmPath, CstmPathType, File
+from core.file import CstmPath, CstmPathType, File, compare_files
 from core.mirror import MirrorDatabase
 from gui.custom_gui import CustomCheckboxTreeView
 from gui.widgets import Action
@@ -66,11 +68,10 @@ class CompareDirs:
         self.link_files()
         self.compare_files()
 
-        if care_about_moved_files:
-            pass  # Checking for moved files implicates that all files metadata are checked
-
         self.get_files_to_copy()
         self.get_files_to_delete()
+        if care_about_moved_files:
+            self.get_files_to_move()
 
         self.print_results()
         if save_report:
@@ -132,37 +133,85 @@ class CompareDirs:
     def link_files(self):
         """Link files in source and target directories to a single File object"""
         logger.info('Starting to link source and target files')
+        self.linked_files = []
 
         for dir_pair in self.dirs:
+            files_in_source = copy(self.files_in_source.get(dir_pair.source, set()))
+            files_in_target = copy(self.files_in_target.get(dir_pair.target, set()))
+
             logger.info(
-                f'Linking <{dir_pair.source}> ({len(self.files_in_source[dir_pair.source]):,} files) and '
-                f'<{dir_pair.target}> ({len(self.files_in_target[dir_pair.target]):,} files)'
+                f'Linking <{dir_pair.source}> ({len(files_in_source):,} files) and '
+                f'<{dir_pair.target}> ({len(files_in_target):,} files)'
             )
-            source_paths = {f.rel_to_root: f for f in self.files_in_source[dir_pair.source]}
-            target_paths = {f.rel_to_root: f for f in self.files_in_target[dir_pair.target]}
 
+            ################################
+            logger.info('Searching for files that share the same relative path in both directories')
             start_time = time.time()
-            number_files = len(source_paths)
-            for i, (source_file_rel_path, source_file) in enumerate(source_paths.items()):
-                log_progress(i, number_files, start_time, interval=10000)
-                # Check if the relative path of the file exists in both source and target
-                if source_file_rel_path in target_paths:
-                    self.linked_files.append(File(source=source_file, target=target_paths[source_file_rel_path]))
-                    del target_paths[source_file_rel_path]
-                # Relative path exists only in source
-                else:
-                    self.linked_files.append(
-                        File(source=source_file, target=None, missing_target_root_dir=dir_pair.target)
-                    )
+            linked_files: list[File] = []
+            target_rel_paths = {f.rel_to_root: f for f in files_in_target}
 
-            # Remaining target paths did not match to any source path
-            self.linked_files += [File(source=None, target=target_file) for target_file in target_paths.values()]
+            for i, source_file in enumerate(copy(files_in_source), 1):
+                log_progress(i, len(files_in_source), start_time, interval=10000)
+                target_file = target_rel_paths.get(source_file.rel_to_root, None)
+                if target_file is not None:
+                    linked_files.append(File(source=source_file, target=target_file))
+                    # Remove linked files from both sets to avoid double counting
+                    files_in_source.remove(source_file)
+                    files_in_target.remove(target_file)
+
+            logger.info(f'Found {len(linked_files):,} files that share the same relative path in both directories')
+            self.linked_files += linked_files
+
+            ################################
+            logger.info('Searching for files that share the same name and are the same, but have different paths')
+            start_time = time.time()
+            linked_files: list[File] = []
+
+            # Only use files with unique .name in source and target
+            source_name_counts = Counter(f.name for f in files_in_source)
+            target_name_counts = Counter(f.name for f in files_in_target)
+            target_filenames = {
+                f.name: f
+                for f in files_in_target
+                if target_name_counts[f.name] == 1 and source_name_counts.get(f.name, 0) == 1
+            }
+
+            for i, source_file in enumerate(copy(files_in_source), 1):
+                log_progress(i, len(files_in_source), start_time, interval=10000)
+                # Check if the file name exists in both source and target
+                if source_file.name in target_filenames:
+                    target_file = target_filenames[source_file.name]
+                    success, same = compare_files(source_file, target_file, comparison_method=self.comparison_method)
+                    if success and same:
+                        linked_files.append(
+                            File(source=source_file, target=target_file, compare_success=success, same=same)
+                        )
+                        files_in_source.remove(source_file)
+                        files_in_target.remove(target_file)
+
+            logger.info(f'Found {len(linked_files):,} files that share the same name and are the same')
+            self.linked_files += linked_files
+
+            ################################
+            logger.info('Searching for files that exist only in source directory')
+            linked_files: list[File] = [
+                File(source=source_file, target=None, missing_target_root_dir=dir_pair.target)
+                for source_file in files_in_source
+            ]
+            logger.info(f'Found {len(linked_files):,} files that exist only in source directory')
+            self.linked_files += linked_files
+
+            ################################
+            logger.info('Searching for files that exist only in target directory')
+            linked_files: list[File] = [File(source=None, target=target_file) for target_file in files_in_target]
+            logger.info(f'Found {len(linked_files):,} files that exist only in target directory')
+            self.linked_files += linked_files
 
         self.linked_files = list(sorted(self.linked_files, key=lambda x: x.any_path))
 
     def compare_files(self):
         """Compare files that exist in both places and check for newer versions in the source"""
-        files_in_both = [f for f in self.linked_files if f.in_both]
+        files_in_both = [f for f in self.linked_files if f.in_both and not f.moved]
         number_files = len(files_in_both)
         if not number_files:
             logger.info('Not comparing any file since there are no files existing in both directories')
@@ -172,8 +221,7 @@ class CompareDirs:
         logger.info(f'Comparing {number_files:,} files that exist in both directories')
         for i, file in enumerate(files_in_both):
             log_progress(i, number_files, start_time, interval=1000)
-            if file.in_both:
-                file.compare(self.comparison_method)
+            file.compare(self.comparison_method)
 
     def get_files_to_copy(self):
         """
@@ -184,9 +232,22 @@ class CompareDirs:
 
         for f in self.linked_files:
             if f.only_source:
-                self.files_to_copy.append((f.source, f.missing_target))
-            elif f.in_both and f.modified:
+                self.files_to_copy.append((f.source, f.source_as_target))
+            elif f.in_both and not f.moved and f.modified:
                 self.files_to_copy.append((f.source, f.target))
+
+    def get_files_to_move(self):
+        """
+        Get files that need to be moved from source to target.
+        These are files that were moved and modified
+        """
+        self.files_to_move = []
+
+        for f in self.linked_files:
+            if f.moved:
+                self.files_to_move.append((f.target, f.source_as_target))
+
+        logger.info(f'Found {len(self.files_to_move):,} files that need to be moved')
 
     def get_files_to_delete(self):
         """
@@ -205,6 +266,7 @@ class CompareDirs:
                     'source': str(file.source) if file.source else '-',
                     'target': str(file.target) if file.target else '-',
                     'in both': 'X' if file.in_both else '',
+                    'moved': 'X' if file.moved else '',
                     'modified': 'X' if file.in_both and file.modified else '',
                     'only source': 'X' if file.only_source else '',
                     'only target': 'X' if file.only_target else '',
@@ -226,20 +288,22 @@ class CompareDirs:
     def print_results(self):
         logger.info('-------------------------')
         logger.info('Analyzing directory tree:')
-        logger.info(f'Files that exist in source: {len([f for f in self.linked_files if f.source]):,}')
-        logger.info(f'Files that exist only in source: {len([f for f in self.linked_files if f.only_source]):,}')
-        logger.info(f'Files that exist in target: {len([f for f in self.linked_files if f.target]):,}')
-        logger.info(f'Files that exist only in target: {len([f for f in self.linked_files if f.only_target]):,}')
-        logger.info(f'Files that exist in both: {len([f for f in self.linked_files if f.in_both]):,}')
+        logger.info(f'Files in source: {len([f for f in self.linked_files if f.source]):,}')
+        logger.info(f'Files only in source: {len([f for f in self.linked_files if f.only_source]):,}')
+        logger.info(f'Files in target: {len([f for f in self.linked_files if f.target]):,}')
+        logger.info(f'Files only in target: {len([f for f in self.linked_files if f.only_target]):,}')
         logger.info(
-            f'Files that exist in both and are the same: {len([f for f in self.linked_files if f.in_both and f.same]):,}'
+            f'Files in both and are the same: {len([f for f in self.linked_files if f.in_both and not f.moved and f.same]):,}'
         )
         logger.info(
-            f'Files that exist in both and are modified: {len([f for f in self.linked_files if f.in_both and not f.same]):,}'
+            f'Files in both and are the same but moved: {len([f for f in self.linked_files if f.in_both and f.moved]):,}'
+        )
+        logger.info(
+            f'Files in both and are modified: {len([f for f in self.linked_files if f.in_both and not f.same]):,}'
         )
         paths_compare_error = [str(f) for f in self.linked_files if f.compare_error]
         logger.info(
-            f'Files that could not be analyzed: {len(paths_compare_error)}'
+            f'Files with comparing error: {len(paths_compare_error)}'
             + str({True: ': \n  ' + '\n  '.join(paths_compare_error), False: ''}.get(len(paths_compare_error) > 0))
         )
 
@@ -324,7 +388,7 @@ class SyncDirs:
             success = False
             try:
                 size = get_size(source)
-                logger.info(f'Copying file {i:,} of {n_files:,}: <{source}> - <{target}> ({format_size(size)})')
+                logger.info(f'Copying file {i:,} of {n_files:,}: <{source}> -> <{target}> ({format_size(size)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copy2(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
@@ -344,15 +408,17 @@ class SyncDirs:
     def move_files(self):
         n_files = len(self.files_requested_to_move)
         t1 = time.time()
+
         for i, (source, target) in enumerate(self.files_requested_to_move, 1):
             success = False
             try:
-                logger.info(f'Moving file {i:,} of {n_files:,}: <{source}> ({get_size_as_str(source)})')
+                logger.info(f'Moving file {i:,} of {n_files:,}: <{source}> -> <{target}> ({get_size_as_str(source)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.move(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
-                logger.debug(f'Move finished. Average speed {int(60 * i / (time.time() - t1)):,} files/min')
+                if i % 10 == 0:
+                    logger.debug(f'Avg. move speed: {int(60 * i / (time.time() - t1)):,} files/min')
                 success = True
             except Exception as e:
                 error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
@@ -364,6 +430,7 @@ class SyncDirs:
     def delete_files(self):
         n_files = len(self.files_requested_to_delete)
         start_time = time.time()
+
         for i, path in enumerate(self.files_requested_to_delete, 1):
             success = False
             try:

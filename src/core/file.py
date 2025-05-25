@@ -49,11 +49,11 @@ def get_encoded_stats(path: CstmPathType) -> StatHash:
 class CstmPath(Path):
     def __init__(self, *paths: CstmPathType, root_dir: CstmPathType | None = None):
         super().__init__(*paths)
-        self._root_dir = Path(root_dir) if root_dir else None
-        self._rel_to_root = Path(self).relative_to(self._root_dir) if self._root_dir else None
+        self.root_dir = Path(root_dir) if root_dir else None
+        self._rel_to_root = Path(self).relative_to(self.root_dir) if self.root_dir else None
 
-        if self._root_dir and self._root_dir not in self.parents:
-            raise CustomException(f'Root directory {self._root_dir} is not a parent of {self}')
+        if self.root_dir and self.root_dir not in self.parents:
+            raise CustomException(f'Root directory {self.root_dir} is not a parent of {self}')
         self._stats: None | StableStats = None  # Cached stats
         self._encoded_stats: None | StatHash = None  # Cached encoded stats
 
@@ -90,12 +90,12 @@ class CstmPath(Path):
 
     def as_target(self, dirs: list[tuple[CstmPathType, CstmPathType]]) -> 'CstmPath':
         dirs_dict = {Path(source_dir): Path(target_dir) for source_dir, target_dir in dirs}
-        if self._root_dir is None or self._rel_to_root is None:
+        if self.root_dir is None or self._rel_to_root is None:
             raise CustomException('Root directory is not set. Cannot convert to target path.')
-        if self._root_dir not in dirs_dict:
-            raise CustomException(f'Root directory {self._root_dir} is not in the list of directories.')
+        if self.root_dir not in dirs_dict:
+            raise CustomException(f'Root directory {self.root_dir} is not in the list of directories.')
 
-        target_root_dir = dirs_dict[self._root_dir]
+        target_root_dir = dirs_dict[self.root_dir]
         return CstmPath(target_root_dir / self._rel_to_root)
 
     @staticmethod
@@ -123,12 +123,12 @@ class CstmPath(Path):
     def __truediv__(self, other: CstmPathType) -> 'CstmPath':
         """Override the / operator to ensure compatibility with Path objects."""
         combined_path = Path(self) / other
-        return CstmPath(combined_path, root_dir=self._root_dir)
+        return CstmPath(combined_path, root_dir=self.root_dir)
 
     def __rtruediv__(self, other: CstmPathType) -> 'CstmPath':
         """Handle reverse division to preserve CstmPath attributes."""
         combined_path = Path(other) / self
-        return CstmPath(combined_path, root_dir=self._root_dir)
+        return CstmPath(combined_path, root_dir=self.root_dir)
 
 
 class File:
@@ -138,28 +138,39 @@ class File:
     """
 
     def __init__(
-        self, source: CstmPathType | None = None, target: CstmPathType | None = None, missing_target_root_dir=None
+        self,
+        source: CstmPathType | None = None,
+        target: CstmPathType | None = None,
+        missing_target_root_dir: str | None = None,
+        compare_success: bool | None = None,
+        same: bool | None = None,
     ):
         self.source = None if source is None else source if isinstance(source, CstmPath) else CstmPath(source)
         self.target = None if target is None else target if isinstance(target, CstmPath) else CstmPath(target)
+        self.missing_target_root_dir = missing_target_root_dir
 
         if source is None and target is None:
-            raise CustomException('Both source and target cannot be None.')
+            raise CustomException('Both source and target cannot be None at the same time.')
 
-        if self.source and self.target and self.source.rel_to_root != self.target.rel_to_root:
-            raise CustomException(f'Source and target paths do not match: {self.source} vs {self.target}')
+        self._compare_success: bool | None = compare_success  # Placeholder for comparison success status
+        self._same: bool | None = same  # Placeholder for change status
 
-        self.missing_target: CstmPath | None = None
-        if self.source is not None and self.target is None:
-            if missing_target_root_dir is None:
-                raise CustomException('Missing target root directory for missing target path.')
-            self.missing_target = CstmPath(
-                missing_target_root_dir, self.source.rel_to_root, root_dir=missing_target_root_dir
+    @property
+    def source_as_target(self) -> CstmPath:
+        if self.source is None:
+            raise CustomException('Source is not set. Cannot convert source to target path.')
+
+        if self.missing_target_root_dir is not None:
+            target_root_dir = Path(self.missing_target_root_dir)
+        elif self.target is not None:
+            if self.target.root_dir is None:
+                raise CustomException('Target root directory is not set. Cannot convert source to target path.')
+            target_root_dir = self.target.root_dir
+        else:
+            raise CustomException(
+                'Neither target nor missing_target_root_dir is set. Cannot convert source to target path.'
             )
-
-        self.rel_path: str = self.source.rel_to_root if self.source else self.target.rel_to_root if self.target else ''
-        self._compare_success: bool | None = None  # Placeholder for comparison success status
-        self._same: bool | None = None  # Placeholder for change status
+        return CstmPath(target_root_dir / self.source.rel_to_root, root_dir=target_root_dir)
 
     @property
     def any_path(self) -> str:
@@ -191,6 +202,12 @@ class File:
     @property
     def in_both(self) -> bool:
         return self.source is not None and self.target is not None
+
+    @property
+    def moved(self) -> bool:
+        return (
+            self.source is not None and self.target is not None and self.source.rel_to_root != self.target.rel_to_root
+        )
 
     @property
     def same(self) -> bool:
