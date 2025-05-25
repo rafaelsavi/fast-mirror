@@ -61,8 +61,17 @@ def round_time_to_minutes(time_: datetime.datetime) -> datetime.datetime:
     return time_ - datetime.timedelta(seconds=time_.second, microseconds=time_.microsecond)
 
 
-def time_diff_to_min(start_time: float) -> str:
-    return f'{int((time.time() - start_time) / 60)} minutes'
+def format_elapsed_time(start_time: float) -> str:
+    """Format the time difference from start_time to now, showing only nonzero hours/minutes."""
+    elapsed = int(time.time() - start_time)
+    h, m, s = time.gmtime(elapsed).tm_hour, time.gmtime(elapsed).tm_min, time.gmtime(elapsed).tm_sec
+    parts = []
+    if h > 0:
+        parts.append(f'{h}h')
+    if m > 0 or h > 0:  # show minutes if hours > 0, even if minutes == 0
+        parts.append(f'{m}m')
+    parts.append(f'{s}s')
+    return ' '.join(parts)
 
 
 class Counter:
@@ -93,7 +102,7 @@ def log_progress(progress: int, total: int | None, start_time: float, interval=1
 
         msgs.append(f'Average {speed_type}speed: {speed_files_p_min:,} files/min.')
         if total is not None:
-            msgs.append(f'ETL: {int((total - progress) / speed_files_p_min)} min')
+            msgs.append(f'ETL: {int((total - progress) / speed_files_p_min):,} min')
         logger.debug(' '.join(msgs))
 
 

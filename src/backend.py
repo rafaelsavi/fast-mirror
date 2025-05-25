@@ -20,7 +20,7 @@ from utils import (
     get_size,
     get_size_as_str,
     log_progress,
-    time_diff_to_min,
+    format_elapsed_time,
 )
 
 
@@ -73,7 +73,7 @@ class CompareDirs:
         self.save_report()
 
         # Estimate synchronization actions
-        logger.info(f'Finished comparing directories in {time_diff_to_min(start_time)}')
+        logger.info(f'Finished comparing directories in {format_elapsed_time(start_time)}')
 
     def scan_source_files(self):
         logger.info('Starting to scan source files')
@@ -82,7 +82,9 @@ class CompareDirs:
             dir_pair.source: CstmPath.get_from_dir(dir_pair.source, exclude=self.exclusions) for dir_pair in self.dirs
         }
         num_files = sum(len(files) for files in self.files_in_source.values())
-        logger.info(f'Finished scanning all source files. Found {num_files:,} files in {time_diff_to_min(start_time)}')
+        logger.info(
+            f'Finished scanning all source files. Found {num_files:,} files in {format_elapsed_time(start_time)}'
+        )
 
     def scan_target_files(self, use_mirror: bool, increment_mirror: bool, rebuild_mirror: bool):
         logger.info('Starting to scan target files')
@@ -99,7 +101,7 @@ class CompareDirs:
 
             if use_mirror and mirror_exists:
                 logger.info(
-                    f'Using mirror for <{dir_pair.target}>. Table has {self.mirror.size(dir_pair.target)} entries'
+                    f'Using mirror for <{dir_pair.target}>. Table has {self.mirror.size(dir_pair.target):,} entries'
                 )
                 self.files_in_target[dir_pair.target] = {
                     CstmPath(p, root_dir=dir_pair.target) for p in self.mirror.get_paths(root_dir=dir_pair.target)
@@ -115,11 +117,13 @@ class CompareDirs:
             self.files_in_target[dir_pair.target] = CstmPath.get_from_dir(dir_pair.target, exclude=self.exclusions)
 
             if increment_mirror or rebuild_mirror:
-                logger.info(f'Adding {len(self.files_in_target[dir_pair.target])} files to mirror')
+                logger.info(f'Adding {len(self.files_in_target[dir_pair.target]):,} files to mirror')
                 self.mirror.add_path(dir_pair.target, self.files_in_target[dir_pair.target])
 
         num_files = sum(len(files) for files in self.files_in_target.values())
-        logger.info(f'Finished scanning all target files. Found {num_files:,} files in {time_diff_to_min(start_time)}')
+        logger.info(
+            f'Finished scanning all target files. Found {num_files:,} files in {format_elapsed_time(start_time)}'
+        )
 
     def link_files(self):
         """Link files in source and target directories to a single File object"""
@@ -127,8 +131,8 @@ class CompareDirs:
 
         for dir_pair in self.dirs:
             logger.info(
-                f'Linking <{dir_pair.source}> ({len(self.files_in_source[dir_pair.source])} files) and '
-                f'<{dir_pair.target}> ({len(self.files_in_target[dir_pair.target])} files)'
+                f'Linking <{dir_pair.source}> ({len(self.files_in_source[dir_pair.source]):,} files) and '
+                f'<{dir_pair.target}> ({len(self.files_in_target[dir_pair.target]):,} files)'
             )
             source_paths = {f.rel_to_root: f for f in self.files_in_source[dir_pair.source]}
             target_paths = {f.rel_to_root: f for f in self.files_in_target[dir_pair.target]}
@@ -161,7 +165,7 @@ class CompareDirs:
             return
 
         start_time = time.time()
-        logger.info(f'Comparing {number_files} files that exist in both directories')
+        logger.info(f'Comparing {number_files:,} files that exist in both directories')
         for i, file in enumerate(files_in_both):
             log_progress(i, number_files, start_time, interval=1000)
             if file.in_both:
@@ -219,16 +223,16 @@ class CompareDirs:
     def print_results(self):
         logger.info('-------------------------')
         logger.info('Analyzing directory tree:')
-        logger.info(f'Files that exist in source: {len([f for f in self.linked_files if f.source])}')
-        logger.info(f'Files that exist only in source: {len([f for f in self.linked_files if f.only_source])}')
-        logger.info(f'Files that exist in target: {len([f for f in self.linked_files if f.target])}')
-        logger.info(f'Files that exist only in target: {len([f for f in self.linked_files if f.only_target])}')
-        logger.info(f'Files that exist in both: {len([f for f in self.linked_files if f.in_both])}')
+        logger.info(f'Files that exist in source: {len([f for f in self.linked_files if f.source]):,}')
+        logger.info(f'Files that exist only in source: {len([f for f in self.linked_files if f.only_source]):,}')
+        logger.info(f'Files that exist in target: {len([f for f in self.linked_files if f.target]):,}')
+        logger.info(f'Files that exist only in target: {len([f for f in self.linked_files if f.only_target]):,}')
+        logger.info(f'Files that exist in both: {len([f for f in self.linked_files if f.in_both]):,}')
         logger.info(
-            f'Files that exist in both and are the same: {len([f for f in self.linked_files if f.in_both and f.same])}'
+            f'Files that exist in both and are the same: {len([f for f in self.linked_files if f.in_both and f.same]):,}'
         )
         logger.info(
-            f'Files that exist in both and are modified: {len([f for f in self.linked_files if f.in_both and not f.same])}'
+            f'Files that exist in both and are modified: {len([f for f in self.linked_files if f.in_both and not f.same]):,}'
         )
         paths_compare_error = [str(f) for f in self.linked_files if f.compare_error]
         logger.info(
@@ -309,7 +313,7 @@ class SyncDirs:
         return False
 
     def copy_files(self):
-        total_files = len(self.files_requested_to_copy)
+        n_files = len(self.files_requested_to_copy)
         counter_size = 0
         start_time = time.time()
 
@@ -317,13 +321,13 @@ class SyncDirs:
             success = False
             try:
                 size = get_size(source)
-                logger.info(f'Copying file {i} of {total_files}: <{source}> - <{target}> ({format_size(size)})')
+                logger.info(f'Copying file {i:,} of {n_files:,}: <{source}> - <{target}> ({format_size(size)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copy2(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.add_path(root_dir=dir_pair.target, path=target)
                 counter_size += size
-                log_progress(i, total_files, start_time, interval=10, speed_type='copy')
+                log_progress(i, n_files, start_time, interval=10, speed_type='copy')
                 if i % 10 == 0:
                     logger.debug(f'Avg. copy speed: {format_size(counter_size / (time.time() - start_time))}/s')
                 success = True
@@ -335,17 +339,17 @@ class SyncDirs:
             self.files_copied.append(((source, target), success))
 
     def move_files(self):
-        number = len(self.files_requested_to_move)
+        n_files = len(self.files_requested_to_move)
         t1 = time.time()
         for i, (source, target) in enumerate(self.files_requested_to_move, 1):
             success = False
             try:
-                logger.info(f'Moving file {i} of {number}: <{source}> ({get_size_as_str(source)})')
+                logger.info(f'Moving file {i:,} of {n_files:,}: <{source}> ({get_size_as_str(source)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.move(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
-                logger.debug(f'Move finished. Average speed {int(60 * i / (time.time() - t1))} files/min')
+                logger.debug(f'Move finished. Average speed {int(60 * i / (time.time() - t1)):,} files/min')
                 success = True
             except Exception as e:
                 error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
@@ -355,17 +359,17 @@ class SyncDirs:
             self.files_moved.append(((source, target), success))
 
     def delete_files(self):
-        total_files = len(self.files_requested_to_delete)
+        n_files = len(self.files_requested_to_delete)
         start_time = time.time()
         for i, path in enumerate(self.files_requested_to_delete, 1):
             success = False
             try:
-                logger.info(f'Deleting file {i} of {total_files}: <{path}> ({get_size_as_str(path)})')
+                logger.info(f'Deleting file {i:,} of {n_files:,}: <{path}> ({get_size_as_str(path)})')
                 os.chmod(path, stat.S_IWRITE)
                 os.remove(path)
                 dir_pair = get_dirs_from_path(path, self.dirs)
                 self.mirror.remove_path(root_dir=dir_pair.target, path=path)
-                log_progress(i, total_files, start_time, interval=10, speed_type='delete')
+                log_progress(i, n_files, start_time, interval=10, speed_type='delete')
                 success = True
             except Exception as e:
                 error_msg = check_length(path)
