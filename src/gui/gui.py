@@ -45,7 +45,7 @@ class Gui:
         self.checkbox_value_use_mirror = tk.BooleanVar()
         self.checkbox_value_build_mirror = tk.BooleanVar()
         self.checkbox_value_metadata_comparison = tk.BooleanVar()
-        self.checkbox_value_care_about_moved_files = tk.BooleanVar()
+        self.checkbox_value_eval_moved_files = tk.BooleanVar()
         self.checkbox_value_save_report = tk.BooleanVar()
         self.week_days = WeekDays()
         self.log_levels = LogLevels()
@@ -283,7 +283,7 @@ class Gui:
         checkbox_metadata_comparison.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
         checkbox_check_moved_files = tk.Checkbutton(
-            self.frame_buttons, text='Try to guess moved files', variable=self.checkbox_value_care_about_moved_files
+            self.frame_buttons, text='Try to guess moved files', variable=self.checkbox_value_eval_moved_files
         )
         checkbox_check_moved_files.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
@@ -400,7 +400,7 @@ class Gui:
                 self.checkbox_value_use_mirror,
                 self.checkbox_value_build_mirror,
                 self.checkbox_value_metadata_comparison,
-                self.checkbox_value_care_about_moved_files,
+                self.checkbox_value_eval_moved_files,
                 self.checkbox_value_save_report,
             ]:
                 checkbox.set(False)
@@ -427,7 +427,7 @@ class Gui:
                 'checkbox_value_use_mirror',
                 'checkbox_value_build_mirror',
                 'checkbox_value_metadata_comparison',
-                'checkbox_value_care_about_moved_files',
+                'checkbox_value_eval_moved_files',
                 'checkbox_value_save_report',
             ]
             config_vars = {name: getattr(self, name).get() for name in config_var_names}
@@ -565,7 +565,7 @@ class Gui:
             comparison_method=CompareMethod.METADATA
             if self.checkbox_value_metadata_comparison.get()
             else CompareMethod.CONTENT,
-            care_about_moved_files=self.checkbox_value_care_about_moved_files.get(),
+            care_about_moved_files=self.checkbox_value_eval_moved_files.get(),
             save_report_path=save_path,
             use_mirror=self.checkbox_value_use_mirror.get(),
             increment_mirror=not self.checkbox_value_build_mirror.get(),
@@ -573,7 +573,7 @@ class Gui:
         )
 
         if also_sync:
-            default_actions = self.check_box_value_default_actions.get_active()
+            default_actions = self.check_box_value_default_actions.get()
             SyncDirs(
                 files_to_copy=compare.files_to_copy,
                 files_to_move=compare.files_to_move,

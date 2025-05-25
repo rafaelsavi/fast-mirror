@@ -121,19 +121,19 @@ class DefaultActions:
         self._data_as_tkinter = {k: tk.BooleanVar() for k in Action.get_options()}
         self.reset()
 
-    def get(self):
-        for k, _v in self._data_as_tkinter.items():
-            self._data[k] = self._data_as_tkinter[k].get()
-        return self._data
+    def get(self) -> list[str]:
+        return [k.value for k, v in self._data.items() if v]
 
     def get_tk(self, k: Action | str) -> tk.BooleanVar:
         if isinstance(k, str):
             k = Action.from_str(k)
         return self._data_as_tkinter[k]
 
-    def set(self, obj: dict[Action, bool]):
-        for k, v in obj.items():
-            self[k] = v
+    def set(self, values: list[Action | str]):
+        if not isinstance(values, list):
+            raise TypeError(f'Expected list of Action, got {type(values)}.')
+        for k in values:
+            self[k] = True
 
     def __setitem__(self, k: Action | str, v: bool):
         if isinstance(k, str):
@@ -144,9 +144,6 @@ class DefaultActions:
 
         self._data[k] = v
         self._data_as_tkinter[k].set(v)
-
-    def get_active(self) -> list[Action]:
-        return [k for k, v in self.get().items() if v]
 
     def reset(self):
         self[Action.COPY] = True
