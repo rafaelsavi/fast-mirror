@@ -8,19 +8,19 @@ import winsound
 
 import pandas as pd
 
+from core.file import CstmPath, CstmPathType, File
+from core.mirror import MirrorDatabase
 from gui.custom_gui import CustomCheckboxTreeView
-from file import CstmPath, CstmPathType, File
-from logger import logger
-from mirror import MirrorDatabase
-from utils import (
+from utils.logger import logger
+from utils.utils import (
     CompareMethod,
     DirectoryPair,
     check_length,
+    format_elapsed_time,
     format_size,
     get_size,
     get_size_as_str,
     log_progress,
-    format_elapsed_time,
 )
 
 

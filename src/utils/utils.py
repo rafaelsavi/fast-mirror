@@ -4,7 +4,7 @@ import time
 from collections.abc import Iterator
 from enum import Enum
 
-from logger import logger
+from utils.logger import logger
 
 
 class CompareMethod(Enum):

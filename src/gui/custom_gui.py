@@ -1,12 +1,12 @@
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import messagebox
-from typing import Callable
 
 import ttkwidgets
 
-from file import CstmPath
-from logger import logger
-from utils import format_size
+from core.file import CstmPath
+from utils.logger import logger
+from utils.utils import format_size
 
 
 class TrayableTk(tk.Tk):

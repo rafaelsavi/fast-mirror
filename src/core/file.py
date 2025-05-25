@@ -8,14 +8,14 @@ from os import PathLike
 from pathlib import Path
 from typing import NewType, Union
 
-from logger import logger
-from utils import (
+from utils.logger import logger
+from utils.utils import (
     CompareMethod,
     check_length,
+    format_elapsed_time,
     format_size,
     is_list_of_substr_in_str,
     log_progress,
-    format_elapsed_time,
 )
 
 CstmPathType = Union[str, PathLike[str], 'CstmPath']
