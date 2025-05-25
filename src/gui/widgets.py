@@ -73,11 +73,11 @@ class EntryPaths(ScrolledText):
     def get_as_dir_pairs(self) -> list[DirectoryPair]:
         return [DirectoryPair(source=pair[0], target=pair[1]) for pair in self.get()]
 
-    def add(self, pair: tuple[str, str]):
-        self.set(self.get() + [pair])
+    def add(self, pair: tuple[str, str] | DirectoryPair):
+        pair_tuple = (pair.source, pair.target) if isinstance(pair, DirectoryPair) else pair
+        self.set(self.get() + [pair_tuple])
 
-    def set(self, paths: list[tuple[str, str]] | list[DirectoryPair]):
-        paths = [(pair.source, pair.target) if isinstance(pair, DirectoryPair) else pair for pair in paths]
+    def set(self, paths: list[tuple[str, str]]):
         raw = '\n'.join([f'{pair[0]} -> {pair[1]}' for pair in paths])
         super().delete('1.0', tk.END)  # delete current text
         super().insert('1.0', raw)  # add at line 1, col 0

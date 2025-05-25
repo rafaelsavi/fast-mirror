@@ -535,7 +535,7 @@ def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> Directo
     """Find the corresponding source and target directories for a given path."""
 
     def uniform(p_: CstmPathType) -> str:
-        return str(p_).replace('\\', '/')
+        return str(p_).replace('/', '\\')
 
     for source, target in dirs:
         if uniform(source) in uniform(path) or uniform(target) in uniform(path):
