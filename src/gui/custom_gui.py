@@ -5,6 +5,7 @@ from tkinter import messagebox
 import ttkwidgets
 
 from core.file import CstmPath
+from gui.widgets import Action
 from utils.logger import logger
 from utils.utils import format_size
 
@@ -84,7 +85,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._data = {}
+        self._data: dict[str, dict[str, dict[str, float | str]]] = {}
 
         # Configure headers
         self['columns'] = self.custom_headers[1:]
@@ -98,30 +99,36 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self.refresh_group_stats()
 
     def refresh_group_stats(self):
-        for group in self.get_children(''):
-            total_number = len(self.get_children(group))
-            selected_lines = [x for x in self.get_checked() if f'{group}::' in x]
+        for action in self.get_children(''):
+            n_children = len(self.get_children(action))
+            selected_lines = [x for x in self.get_checked() if f'{action}::' in x]
             selected_number = len(selected_lines)
-            selected_size = format_size(sum([self._data[group][x]['size in bytes'] for x in selected_lines]))
+            size_list = [self._data[action][x]['size in bytes'] for x in selected_lines]
+            if not all(isinstance(size, float) for size in size_list):
+                raise TypeError('All elements in size_list must be floats.')
+            selected_size = format_size(sum(size_list))
             # Update group item
-            self.item(group, text=f'{group} {selected_size} ({selected_number} of {total_number})')
+            self.item(action, text=f'{action} {selected_size} ({selected_number} of {n_children})')
 
     def add_file_lists(
-        self, file_lists: dict[str, list[tuple[CstmPath, CstmPath]] | list[CstmPath]], default_active=None
+        self,
+        file_lists: dict[Action, list[tuple[CstmPath, CstmPath]] | list[CstmPath]],
+        default_active: list[Action] | None = None,
     ):
         if default_active is None:
             default_active = []
 
-        for group, file_list in file_lists.items():
-            self._data[group] = {}
+        for action, file_list in file_lists.items():
+            action_str = action.value
+            self._data[action_str] = {}
             for file_entry in file_list:
                 args = (None, file_entry) if isinstance(file_entry, CstmPath) else file_entry
                 values = self.get_row(*args)
-                self._data[group][f'{group}::{values["source"]}::{values["target"]}'] = values
+                self._data[action_str][f'{action_str}::{values["source"]}::{values["target"]}'] = values
 
-        for group, rows in self._data.items():
-            tag = 'checked' if group in default_active else 'unchecked'
-            group_item = self.insert(parent='', index='end', iid=group, text=group, tags=(tag,))
+        for action, rows in self._data.items():
+            tag = 'checked' if action in default_active else 'unchecked'
+            group_item = self.insert(parent='', index='end', iid=action, text=action, tags=(tag,))
             for key, row in rows.items():
                 self.insert(
                     parent=group_item,

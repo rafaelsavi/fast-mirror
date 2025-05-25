@@ -10,7 +10,16 @@ from core.backend import CompareDirs, SyncDirs
 from core.mirror import MirrorDatabase
 from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgStatus
 from gui.threading import KillableThread
-from gui.widgets import DefaultActions, DefaultAction, EntryExclusions, EntryPaths, EntryTimes, LogLevels, TextLogger, WeekDays
+from gui.widgets import (
+    Action,
+    DefaultActions,
+    EntryExclusions,
+    EntryPaths,
+    EntryTimes,
+    LogLevels,
+    TextLogger,
+    WeekDays,
+)
 from utils.constants import ROOT_DIR
 from utils.logger import logger
 from utils.utils import CompareMethod, Counter, DirectoryPair, round_time_to_minutes
@@ -284,17 +293,23 @@ class Gui:
         self.frame_default_actions.grid(row=row_counter.get(increment=False), column=1, columnspan=2)
         # ---
         checkbox_default_action_copy = tk.Checkbutton(
-            self.frame_default_actions, text='Copy', variable=self.check_box_value_default_actions.get_tk(DefaultAction.COPY)
+            self.frame_default_actions,
+            text='Copy',
+            variable=self.check_box_value_default_actions.get_tk(Action.COPY),
         )
         checkbox_default_action_copy.grid(row=0, column=0, sticky='w')
         # ---
         checkbox_default_action_move = tk.Checkbutton(
-            self.frame_default_actions, text='Move', variable=self.check_box_value_default_actions.get_tk(DefaultAction.MOVE)
+            self.frame_default_actions,
+            text='Move',
+            variable=self.check_box_value_default_actions.get_tk(Action.MOVE),
         )
         checkbox_default_action_move.grid(row=0, column=1, sticky='w')
         # ---
         checkbox_default_action_delete = tk.Checkbutton(
-            self.frame_default_actions, text='Delete', variable=self.check_box_value_default_actions.get_tk(DefaultAction.DELETE)
+            self.frame_default_actions,
+            text='Delete',
+            variable=self.check_box_value_default_actions.get_tk(Action.DELETE),
         )
         checkbox_default_action_delete.grid(row=0, column=2, sticky='w')
         # ---
@@ -363,11 +378,6 @@ class Gui:
         # FINISH FRAME OF LOG (DOWN-RIGHT)
 
         self._gui_initialized = True
-
-        # Example: set default actions using the enum
-        self.check_box_value_default_actions[DefaultAction.COPY] = True
-        self.check_box_value_default_actions[DefaultAction.MOVE] = False
-        self.check_box_value_default_actions[DefaultAction.DELETE] = False
 
     def button_action_reset_config(self, ask_confirmation=True):
         if ask_confirmation:
@@ -562,7 +572,7 @@ class Gui:
         )
 
         if also_sync:
-            default_actions = self.check_box_value_default_actions.get_actions()
+            default_actions = self.check_box_value_default_actions.get_active()
             SyncDirs(
                 files_to_copy=compare.files_to_copy,
                 files_to_move=compare.files_to_move,

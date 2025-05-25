@@ -94,50 +94,64 @@ class EntryPaths(ScrolledText):
             return None
 
 
-class DefaultAction(Enum):
+class Action(Enum):
     COPY = 'copy'
     MOVE = 'move'
     DELETE = 'delete'
 
+    @classmethod
+    def get_options(cls) -> list['Action']:
+        return list(cls.__members__.values())
+
+    @classmethod
+    def get_options_str(cls) -> list[str]:
+        return [action.value for action in cls.get_options()]
+
+    @classmethod
+    def from_str(cls, value: str) -> 'Action':
+        if value.upper() in cls.__members__:
+            return cls.__members__[value.upper()]
+        else:
+            raise ValueError(f'Invalid {cls.__name__} value: {value}. Must be one of {list(cls.__members__.keys())}.')
+
 
 class DefaultActions:
-    options = [DefaultAction.COPY, DefaultAction.MOVE, DefaultAction.DELETE]
-
     def __init__(self):
-        self.data: dict[DefaultAction, bool] = {a: False for a in DefaultAction}
+        self._data: dict[Action, bool] = {k: False for k in Action.get_options()}
+        self._data_as_tkinter = {k: tk.BooleanVar() for k in Action.get_options()}
         self.reset()
-        self.data_as_tkinter = {k: tk.BooleanVar() for k in self.data.keys()}
-        self._set_tkinter_data()
 
     def get(self):
-        for k, _v in self.data_as_tkinter.items():
-            self.data[k] = self.data_as_tkinter[k].get()
-        return self.data
+        for k, _v in self._data_as_tkinter.items():
+            self._data[k] = self._data_as_tkinter[k].get()
+        return self._data
 
-    def get_tk(self, k: DefaultAction | str) -> tk.BooleanVar:
-        key = k if isinstance(k, DefaultAction) else DefaultAction(k)
-        return self.data_as_tkinter[key]
+    def get_tk(self, k: Action | str) -> tk.BooleanVar:
+        if isinstance(k, str):
+            k = Action.from_str(k)
+        return self._data_as_tkinter[k]
 
-    def __setitem__(self, k: DefaultAction | str, v: bool):
-        key = k if isinstance(k, DefaultAction) else DefaultAction(k)
-        self.data[key] = v
-        self._set_tkinter_data()
+    def set(self, obj: dict[Action, bool]):
+        for k, v in obj.items():
+            self[k] = v
 
-    def set(self, obj: dict[DefaultAction, bool]):
-        self.data = obj
-        self._set_tkinter_data()
+    def __setitem__(self, k: Action | str, v: bool):
+        if isinstance(k, str):
+            k = Action.from_str(k)
 
-    def _set_tkinter_data(self):
-        for k, v in self.data.items():
-            self.data_as_tkinter[k].set(v)
+        if k not in Action.get_options():
+            raise ValueError(f'Invalid Action: {k}. Must be one of {Action.get_options_str()}.')
 
-    def get_actions(self) -> list[DefaultAction]:
+        self._data[k] = v
+        self._data_as_tkinter[k].set(v)
+
+    def get_active(self) -> list[Action]:
         return [k for k, v in self.get().items() if v]
 
     def reset(self):
-        self.data[DefaultAction.COPY] = True
-        self.data[DefaultAction.MOVE] = False
-        self.data[DefaultAction.DELETE] = False
+        self[Action.COPY] = True
+        self[Action.MOVE] = False
+        self[Action.DELETE] = False
 
 
 class WeekDays:

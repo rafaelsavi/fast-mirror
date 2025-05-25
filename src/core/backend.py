@@ -11,6 +11,7 @@ import pandas as pd
 from core.file import CstmPath, CstmPathType, File
 from core.mirror import MirrorDatabase
 from gui.custom_gui import CustomCheckboxTreeView
+from gui.widgets import Action
 from utils.logger import logger
 from utils.utils import (
     CompareMethod,
@@ -250,7 +251,7 @@ class SyncDirs:
         mirror: MirrorDatabase,
         root_gui,
         dirs: list[DirectoryPair],
-        default_actions=None,
+        default_actions: list[Action] | None = None,
         increment_mirror=True,
     ):
         logger.info('---------------------------')
@@ -261,7 +262,7 @@ class SyncDirs:
         self.mirror = mirror
         self.increment_mirror = increment_mirror
         self.dirs = dirs
-        self.default_actions = default_actions if default_actions is not None else ['copy']
+        self.default_actions = default_actions if default_actions is not None else [Action.COPY]
 
         # Initialize variables
         self.files_available_to_copy: list[tuple[CstmPath, CstmPath]] = files_to_copy
@@ -412,7 +413,7 @@ class ActionSelection:
         files_available_to_copy: list[tuple[CstmPath, CstmPath]],
         files_available_to_move: list[tuple[CstmPath, CstmPath]],
         files_available_to_delete: list[CstmPath],
-        default_actions: list[str],
+        default_actions: list[Action],
     ):
         # Load input variables
         self.default_actions = default_actions
@@ -515,9 +516,9 @@ class ActionSelection:
         self.tree = CustomCheckboxTreeView(self.popup, height=30)
         self.tree.add_file_lists(
             {
-                'copy': self.files_available_to_copy,
-                'move': self.files_available_to_move,
-                'delete': self.files_available_to_delete,
+                Action.COPY: self.files_available_to_copy,
+                Action.MOVE: self.files_available_to_move,
+                Action.DELETE: self.files_available_to_delete,
             },
             default_active=self.default_actions,
         )
@@ -568,5 +569,5 @@ if __name__ == '__main__':
         mirror=compare_dirs.mirror,
         root_gui=tk.Tk(),
         dirs=compare_dirs.dirs,
-        default_actions=['copy', 'move', 'delete'],
+        default_actions=Action.get_options(),
     )
