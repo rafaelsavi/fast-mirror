@@ -1,10 +1,10 @@
 import contextlib
 import datetime
 import json
-from logging import LogRecord
 import os
 import queue
 import tkinter as tk
+from logging import LogRecord
 from tkinter import filedialog, messagebox
 
 from core.backend import CompareDirs, SyncDirs
@@ -40,6 +40,8 @@ class Gui:
         self.last_realized_sync = None
         self._backend_thread_holder: KillableThread | None = None
         self._backend_thread_status = BackendThreadStatus.STANDBY
+
+        # GUI elements
         self.toggle_auto_scroll = tk.BooleanVar()
         self.check_box_value_default_actions = DefaultActions()
         self.checkbox_value_use_mirror = tk.BooleanVar()
@@ -526,14 +528,16 @@ class Gui:
             elif self.backend_thread_status == BackendThreadStatus.RUNNING and not (
                 self.toggle_state_quick_compare or self.toggle_state_sync_now or self.toggle_state_schedule
             ):
-                try:
-                    logger.info('---------------------------------')
-                    logger.info('Trying to stop background process')
-                    self.backend_thread_status = BackendThreadStatus.STOPPING
-                    self.backend_thread_holder.kill()
-                except Exception as e:
-                    self.backend_thread_status = BackendThreadStatus.RUNNING
-                    logger.error(f'Could not stop background process. Exception: {e}')
+                logger.info('---------------------------------')
+                logger.info('Trying to stop background process')
+                if self.backend_thread_holder is None:
+                    logger.warning('There is no background process to stop')
+                else:
+                    try:
+                        self.backend_thread_holder.kill()
+                    except Exception as e:
+                        logger.error(f'Could not stop background process. Exception: {e}')
+                self.backend_thread_status = BackendThreadStatus.STOPPING
 
         delay = 1000 if self.backend_thread_status == BackendThreadStatus.STANDBY else 50
         self.root.after(delay, self.backend_watchdog)

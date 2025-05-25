@@ -1,9 +1,8 @@
+import os
 import time
 import tkinter as tk
-from copy import deepcopy
-from tkinter.scrolledtext import ScrolledText
-import os
 from enum import Enum
+from tkinter.scrolledtext import ScrolledText
 
 from gui.enums import TkinterCfgState
 from utils.logger import logger
@@ -31,9 +30,11 @@ class EntryTimes(ScrolledText):
     def is_hh_mm(t):
         try:
             time.strptime(t, '%H:%M')
-        except:
+        except Exception as e:
             if t.strip() != '':
-                logger.warning(f'Time entry "{t}" was ignored because it does not match the format hh:mm')
+                logger.warning(
+                    f'Time entry "{t}" was ignored because it does not match the format hh:mm. Exception: {e}'
+                )
             return False
         else:
             return True
