@@ -514,13 +514,13 @@ class Gui:
                 ):
                     logger.info('-------------------------------------')
                     logger.info('Initializing scheduled synchronization')
-                    self.call_backend_thread(True, next_appointment)
+                    self.call_backend_thread(also_sync=True, timestamp=next_appointment)
 
                 elif self.toggle_state_quick_compare:
-                    self.call_backend_thread(False, now)
+                    self.call_backend_thread(also_sync=False, timestamp=now)
 
                 elif self.toggle_state_sync_now:
-                    self.call_backend_thread(True, now)
+                    self.call_backend_thread(also_sync=True, timestamp=now)
 
             # If backend thread is running but a stop command was requested
             elif self.backend_thread_status == BackendThreadStatus.RUNNING and not (
@@ -542,20 +542,11 @@ class Gui:
         self.last_realized_sync = timestamp
         self.backend_thread_holder = KillableThread(
             target=self.backend_thread,
-            args=(
-                also_sync,
-                timestamp,
-            ),
+            args=(also_sync,),
         )
         self.backend_thread_holder.start()
 
-    def backend_thread(self, also_sync: bool, timestamp: datetime.datetime):
-        if self.checkbox_value_save_report.get():
-            timestamp_str = timestamp.strftime('%Y-%m-%d_%H-%M-%S')
-            save_path = os.path.join(logger.log_dir, 'compare_report_' + timestamp_str + '.xlsx')
-        else:
-            save_path = ''
-
+    def backend_thread(self, also_sync: bool):
         mirror = MirrorDatabase(exclusions=self.entry_exclusions.get())
 
         compare = CompareDirs(
@@ -566,7 +557,7 @@ class Gui:
             if self.checkbox_value_metadata_comparison.get()
             else CompareMethod.CONTENT,
             care_about_moved_files=self.checkbox_value_eval_moved_files.get(),
-            save_report_path=save_path,
+            save_report=self.checkbox_value_save_report.get(),
             use_mirror=self.checkbox_value_use_mirror.get(),
             increment_mirror=not self.checkbox_value_build_mirror.get(),
             rebuild_mirror=self.checkbox_value_build_mirror.get(),

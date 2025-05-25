@@ -7,6 +7,7 @@ import tkinter as tk
 import winsound
 
 import pandas as pd
+import datetime
 
 from core.file import CstmPath, CstmPathType, File
 from core.mirror import MirrorDatabase
@@ -31,7 +32,7 @@ class CompareDirs:
         mirror: MirrorDatabase,
         dirs: list[DirectoryPair],
         exclusions: list[str],
-        save_report_path='',
+        save_report: bool = False,
         comparison_method: CompareMethod = CompareMethod.METADATA,
         care_about_moved_files=True,
         use_mirror=False,
@@ -42,11 +43,12 @@ class CompareDirs:
         logger.info('Initializing comparison')
         logger.info('Directories:\n  ' + '\n  '.join([f'{d1}  -->  {d2}' for d1, d2 in dirs]))
         start_time = time.time()
+        timestamp_str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        self.save_report_path = os.path.join(logger.log_dir, 'compare_report_' + timestamp_str + '.xlsx')
 
         self.mirror = mirror
         self.dirs = dirs
         self.exclusions = exclusions
-        self.save_report_path = save_report_path
         self.comparison_method = comparison_method
 
         # Initialize comparison variables
@@ -193,7 +195,7 @@ class CompareDirs:
         self.files_to_delete = list(sorted([f.target for f in self.linked_files if f.only_target]))
 
     def save_report(self):
-        if self.save_report_path.endswith('.xlsx'):
+        if self.save_report:
             logger.info('Loading data to create comparison report')
 
             # Load all linked files and store as a dataframe where columns are file attributes
