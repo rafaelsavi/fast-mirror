@@ -200,6 +200,8 @@ class File:
 
     @property
     def modified(self) -> bool:
+        if not self.in_both:
+            return False
         if self._same is None:
             raise CustomException('Comparison has not been performed yet.')
         return not self._same
@@ -219,7 +221,7 @@ class File:
                     self.source, self.target, comparison_method=compare_method
                 )
             else:
-                raise CustomException(f'Cannot compare files {self.source} and {self.target}. One of them is None.')
+                raise CustomException(f'Cannot compare files <{self.source}> and <{self.target}>. One of them is None.')
 
 
 def compare_files(

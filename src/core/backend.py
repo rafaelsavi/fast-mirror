@@ -49,7 +49,6 @@ class CompareDirs:
         self.mirror = mirror
         self.dirs = dirs
         self.exclusions = exclusions
-        self.save_report = save_report
         self.comparison_method = comparison_method
 
         # Initialize comparison variables
@@ -74,7 +73,8 @@ class CompareDirs:
         self.get_files_to_delete()
 
         self.print_results()
-        self._save_report()
+        if save_report:
+            self._save_report()
 
         # Estimate synchronization actions
         logger.info(f'Finished comparing directories in {format_elapsed_time(start_time)}')
@@ -196,33 +196,32 @@ class CompareDirs:
         self.files_to_delete = list(sorted([f.target for f in self.linked_files if f.only_target]))
 
     def _save_report(self):
-        if self.save_report:
-            logger.info('Loading data to create comparison report')
+        logger.info('Loading data to create comparison report')
 
-            # Load all linked files and store as a dataframe where columns are file attributes
-            df = pd.DataFrame(
-                [
-                    {
-                        'source': str(file.source) if file.source else '-',
-                        'target': str(file.target) if file.target else '-',
-                        'in both': 'X' if file.in_both else '',
-                        'modified': 'X' if file.modified else '',
-                        'only source': 'X' if file.only_source else '',
-                        'only target': 'X' if file.only_target else '',
-                        'size (source)': file.source.get_st_size(as_str=True) if file.source else '',
-                        'size (target)': file.target.get_st_size(as_str=True) if file.target else '',
-                        'modified (source)': file.source.get_st_mtime(as_date_str=True) if file.source else '',
-                        'modified (target)': file.target.get_st_mtime(as_date_str=True) if file.target else '',
-                        'compare error': file.compare_error,
-                    }
-                    for file in self.linked_files
-                ]
-            )
+        # Load all linked files and store as a dataframe where columns are file attributes
+        df = pd.DataFrame(
+            [
+                {
+                    'source': str(file.source) if file.source else '-',
+                    'target': str(file.target) if file.target else '-',
+                    'in both': 'X' if file.in_both else '',
+                    'modified': 'X' if file.in_both and file.modified else '',
+                    'only source': 'X' if file.only_source else '',
+                    'only target': 'X' if file.only_target else '',
+                    'size (source)': file.source.get_st_size(as_str=True) if file.source else '',
+                    'size (target)': file.target.get_st_size(as_str=True) if file.target else '',
+                    'modified (source)': file.source.get_st_mtime(as_date_str=True) if file.source else '',
+                    'modified (target)': file.target.get_st_mtime(as_date_str=True) if file.target else '',
+                    'compare error': file.compare_error,
+                }
+                for file in self.linked_files
+            ]
+        )
 
-            logger.info('Starting to write comparison report')
-            os.makedirs(os.path.dirname(self.save_report_path), exist_ok=True)
-            df.to_excel(self.save_report_path, index=False)
-            logger.info(f'Comparison report was saved to <{self.save_report_path}>')
+        logger.info('Starting to write comparison report')
+        os.makedirs(os.path.dirname(self.save_report_path), exist_ok=True)
+        df.to_excel(self.save_report_path, index=False)
+        logger.info(f'Comparison report was saved to <{self.save_report_path}>')
 
     def print_results(self):
         logger.info('-------------------------')
