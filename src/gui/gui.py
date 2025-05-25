@@ -564,7 +564,7 @@ class Gui:
         )
 
         if also_sync:
-            default_actions = self.check_box_value_default_actions.get()
+            default_actions = self.check_box_value_default_actions.get_as_actions()
             SyncDirs(
                 files_to_copy=compare.files_to_copy,
                 files_to_move=compare.files_to_move,

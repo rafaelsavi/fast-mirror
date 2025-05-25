@@ -124,6 +124,9 @@ class DefaultActions:
     def get(self) -> list[str]:
         return [k.value for k, v in self._data.items() if v]
 
+    def get_as_actions(self) -> list[Action]:
+        return [k for k, v in self._data.items() if v]
+
     def get_tk(self, k: Action | str) -> tk.BooleanVar:
         if isinstance(k, str):
             k = Action.from_str(k)

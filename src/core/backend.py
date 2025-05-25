@@ -49,6 +49,7 @@ class CompareDirs:
         self.mirror = mirror
         self.dirs = dirs
         self.exclusions = exclusions
+        self.save_report = save_report
         self.comparison_method = comparison_method
 
         # Initialize comparison variables
@@ -73,7 +74,7 @@ class CompareDirs:
         self.get_files_to_delete()
 
         self.print_results()
-        self.save_report()
+        self._save_report()
 
         # Estimate synchronization actions
         logger.info(f'Finished comparing directories in {format_elapsed_time(start_time)}')
@@ -194,7 +195,7 @@ class CompareDirs:
         """
         self.files_to_delete = list(sorted([f.target for f in self.linked_files if f.only_target]))
 
-    def save_report(self):
+    def _save_report(self):
         if self.save_report:
             logger.info('Loading data to create comparison report')
 
