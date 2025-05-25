@@ -16,8 +16,9 @@ from core.backend import CompareDirs, SyncDirs
 from core.file import CustomException
 from core.mirror import MirrorDatabase
 from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgStatus
+from utils.constants import ROOT_DIR
 from utils.logger import logger
-from utils.utils import ROOT_DIR, CompareMethod, Counter, DirectoryPair, round_time_to_minutes
+from utils.utils import CompareMethod, Counter, DirectoryPair, round_time_to_minutes
 
 
 class KillableThread(threading.Thread):

@@ -6,8 +6,6 @@ from enum import Enum
 
 from utils.logger import logger
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
-
 
 class CompareMethod(Enum):
     METADATA = 'metadata'

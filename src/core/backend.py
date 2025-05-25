@@ -543,7 +543,7 @@ def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> Directo
 
 
 if __name__ == '__main__':
-    from utils.utils import ROOT_DIR
+    from utils.constants import ROOT_DIR
 
     # Example usage CompareDirs
     compare_dirs = CompareDirs(

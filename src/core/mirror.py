@@ -6,8 +6,9 @@ from collections.abc import Iterable
 from sqlitedict import SqliteDict
 
 from core.file import CstmPathType, StatHash, get_encoded_stats
+from utils.constants import ROOT_DIR
 from utils.logger import logger
-from utils.utils import ROOT_DIR, is_list_of_substr_in_str, log_progress
+from utils.utils import is_list_of_substr_in_str, log_progress
 
 local_mirror_path = os.path.join(ROOT_DIR, 'local_mirror.db')
 

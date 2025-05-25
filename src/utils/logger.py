@@ -3,7 +3,7 @@ import os
 import queue
 from datetime import datetime
 
-from utils.utils import ROOT_DIR
+from utils.constants import ROOT_DIR
 
 log_dir = os.path.join(ROOT_DIR, 'logs')
 
