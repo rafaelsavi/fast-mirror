@@ -15,7 +15,7 @@ from tkinter.scrolledtext import ScrolledText
 from core.backend import CompareDirs, SyncDirs
 from core.file import CustomException
 from core.mirror import MirrorDatabase
-from gui.enums import BackendThreadStatus, Relief
+from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgStatus
 from utils.logger import logger
 from utils.utils import CompareMethod, Counter, DirectoryPair, round_time_to_minutes
 
@@ -82,7 +82,7 @@ class Gui:
         self._backend_thread_holder: KillableThread | None = None
         self._backend_thread_status = BackendThreadStatus.STANDBY
         self.toggle_auto_scroll = tk.BooleanVar()
-        self.config_path = os.path.join(os.path.dirname(__file__), '../config.json')
+        self.config_path = os.path.join(os.path.dirname(__file__), '../../config.json')
         self.check_box_value_default_actions = DefaultActions({})
         self.checkbox_value_use_mirror = tk.BooleanVar()
         self.checkbox_value_build_mirror = tk.BooleanVar()
@@ -115,11 +115,11 @@ class Gui:
     def set_gui_enable_state(self, general_state: bool, leave_sunken_enabled=False):
         def convert_child_state(child_, b: bool):
             with contextlib.suppress(Exception):
-                child_.configure(state={False: 'disable', True: 'normal'}.get(b))
+                child_.configure(state=TkinterCfgStatus.from_bool(b))
 
         def is_sunken_button(child_):
             try:
-                return isinstance(child_, tk.Button) and child_.config('relief')[-1] == Relief.SUNKEN.value
+                return isinstance(child_, tk.Button) and child_.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
             except:
                 return False
 
@@ -175,30 +175,32 @@ class Gui:
 
     @property
     def toggle_state_schedule(self):
-        return self.button_schedule_sync.config('relief')[-1] == Relief.SUNKEN.value
+        return self.button_schedule_sync.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
 
     @toggle_state_schedule.setter
     def toggle_state_schedule(self, value: bool):
         self.button_schedule_sync.config(
-            relief=Relief.SUNKEN.value if value else Relief.RAISED.value,
+            relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value,
             text={True: 'Schedule (ON)', False: 'Schedule (OFF)'}.get(value),
         )
 
     @property
     def toggle_state_quick_compare(self):
-        return self.button_quick_compare.config('relief')[-1] == Relief.SUNKEN.value
+        return self.button_quick_compare.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
 
     @toggle_state_quick_compare.setter
     def toggle_state_quick_compare(self, value: bool):
-        self.button_quick_compare.config(relief=Relief.SUNKEN.value if value else Relief.RAISED.value)
+        self.button_quick_compare.config(
+            relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value
+        )
 
     @property
     def toggle_state_sync_now(self):
-        return self.button_sync_now.config('relief')[-1] == Relief.SUNKEN.value
+        return self.button_sync_now.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
 
     @toggle_state_sync_now.setter
     def toggle_state_sync_now(self, value: bool):
-        self.button_sync_now.config(relief=Relief.SUNKEN.value if value else Relief.RAISED.value)
+        self.button_sync_now.config(relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value)
 
     def create_widgets(self):
         # START FRAME OF STATUS (UP-LEFT)
@@ -287,7 +289,7 @@ class Gui:
         self.button_schedule_sync = tk.Button(
             self.frame_buttons,
             text='Schedule (OFF)',
-            relief=Relief.RAISED.value,
+            relief=TkinterCfgRelief.RAISED.value,
             command=self.button_action_schedule_sync,
         )
         self.button_schedule_sync.grid(row=row_counter.get(increment=False), column=2, sticky='nwe')
@@ -408,7 +410,7 @@ class Gui:
         frame_log = tk.Frame(self.root)
         frame_log.grid(row=1, column=1, sticky='nsw', padx=10, pady=10)
 
-        self.text_logger = TextLogger(frame_log, state='disabled', height=31, width=140)
+        self.text_logger = TextLogger(frame_log, state=TkinterCfgStatus.DISABLED.value, height=31, width=140)
         self.text_logger.set_log_levels(self.log_levels.get())
         self.text_logger.grid(row=0, column=0, sticky='nsew')
 
@@ -692,9 +694,9 @@ class TextLogger(ScrolledText):
         message, tag = args
         self.lines.append((message, tag))
         if tag in self.log_levels:
-            self.configure(state='normal')
+            self.configure(state=TkinterCfgStatus.NORMAL.value)
             super().insert(tk.END, message + '\n', tag)
-            self.configure(state='disabled')
+            self.configure(state=TkinterCfgStatus.DISABLED.value)
             self._check_num_lines()
 
     def _check_num_lines(self):
@@ -704,12 +706,12 @@ class TextLogger(ScrolledText):
             self._rewrite()
 
     def _rewrite(self):
-        self.configure(state='normal')
+        self.configure(state=TkinterCfgStatus.NORMAL.value)
         self.delete('1.0', tk.END)
         for message, tag in self.lines[-self.limit_lines :]:
             if tag in self.log_levels:
                 super().insert(tk.END, message + '\n', tag)
-        self.configure(state='disabled')
+        self.configure(state=TkinterCfgStatus.DISABLED.value)
 
 
 class LogLevels:

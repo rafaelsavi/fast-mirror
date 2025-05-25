@@ -7,6 +7,16 @@ class BackendThreadStatus(Enum):
     STOPPING = 'Stopping'
 
 
-class Relief(Enum):
+class TkinterCfgRelief(Enum):
     SUNKEN = 'sunken'
     RAISED = 'raised'
+
+
+class TkinterCfgStatus(Enum):
+    NORMAL = 'normal'
+    DISABLED = 'disabled'
+    HIDDEN = 'hidden'
+
+    @classmethod
+    def from_bool(cls, value: bool) -> str:
+        return cls.NORMAL.value if value else cls.DISABLED.value
