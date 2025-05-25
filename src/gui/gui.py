@@ -17,7 +17,7 @@ from core.file import CustomException
 from core.mirror import MirrorDatabase
 from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgStatus
 from utils.logger import logger
-from utils.utils import CompareMethod, Counter, DirectoryPair, round_time_to_minutes
+from utils.utils import ROOT_DIR, CompareMethod, Counter, DirectoryPair, round_time_to_minutes
 
 
 class KillableThread(threading.Thread):
@@ -82,7 +82,7 @@ class Gui:
         self._backend_thread_holder: KillableThread | None = None
         self._backend_thread_status = BackendThreadStatus.STANDBY
         self.toggle_auto_scroll = tk.BooleanVar()
-        self.config_path = os.path.join(os.path.dirname(__file__), '../../config.json')
+        self.config_path = os.path.join(ROOT_DIR, 'config.json')
         self.check_box_value_default_actions = DefaultActions({})
         self.checkbox_value_use_mirror = tk.BooleanVar()
         self.checkbox_value_build_mirror = tk.BooleanVar()

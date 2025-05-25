@@ -3,7 +3,9 @@ import os
 import queue
 from datetime import datetime
 
-log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../log'))
+from utils.utils import ROOT_DIR
+
+log_dir = os.path.join(ROOT_DIR, 'logs')
 
 
 class QueueHandler(logging.Handler):

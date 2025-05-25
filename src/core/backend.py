@@ -543,15 +543,17 @@ def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> Directo
 
 
 if __name__ == '__main__':
+    from utils.utils import ROOT_DIR
+
     # Example usage CompareDirs
     compare_dirs = CompareDirs(
         dirs=[
             DirectoryPair(
-                source=os.path.normpath(os.path.join(os.path.dirname(__file__), '../tests/TestData/Source')),
-                target=os.path.normpath(os.path.join(os.path.dirname(__file__), '../tests/TestData/Target')),
+                source=os.path.join(ROOT_DIR, 'tests/TestData/Source'),
+                target=os.path.join(ROOT_DIR, 'tests/TestData/Target'),
             )
         ],
-        mirror=MirrorDatabase(path=os.path.join(__file__, '../tests/TestData/mirror.db')),
+        mirror=MirrorDatabase(path=os.path.join(ROOT_DIR, 'tests/TestData/mirror.db')),
         exclusions=['.DS_Store', 'Thumbs.db', '__pycache__'],
         comparison_method=CompareMethod.METADATA,
         use_mirror=False,
