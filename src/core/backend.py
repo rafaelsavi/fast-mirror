@@ -36,7 +36,6 @@ class CompareDirs:
         exclusions: list[str],
         save_report: bool = False,
         comparison_method: CompareMethod = CompareMethod.METADATA,
-        care_about_moved_files=True,
         use_mirror=False,
         increment_mirror=True,
         rebuild_mirror=False,
@@ -69,9 +68,8 @@ class CompareDirs:
         self.compare_files()
 
         self.get_files_to_copy()
+        self.get_files_to_move()
         self.get_files_to_delete()
-        if care_about_moved_files:
-            self.get_files_to_move()
 
         self.print_results()
         if save_report:

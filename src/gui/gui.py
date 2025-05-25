@@ -46,7 +46,6 @@ class Gui:
         self.checkbox_var_use_mirror = tk.BooleanVar()
         self.checkbox_var_build_mirror = tk.BooleanVar()
         self.checkbox_var_metadata_comparison = tk.BooleanVar()
-        self.checkbox_var_eval_moved_files = tk.BooleanVar()
         self.checkbox_var_save_report = tk.BooleanVar()
         self.text_var_status = tk.StringVar()
         self.text_var_next_appointment = tk.StringVar()
@@ -285,11 +284,6 @@ class Gui:
         )
         checkbox_metadata_comparison.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
-        checkbox_check_moved_files = tk.Checkbutton(
-            self.frame_buttons, text='Try to guess moved files', variable=self.checkbox_var_eval_moved_files
-        )
-        checkbox_check_moved_files.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
-        # ---
         label_default_actions = tk.Label(self.frame_buttons, text='Default actions')
         label_default_actions.grid(row=row_counter.get(increment=True), column=0, sticky='w')
         # ---
@@ -375,7 +369,7 @@ class Gui:
         frame_log = tk.Frame(self.root)
         frame_log.grid(row=1, column=1, sticky='nsw', padx=10, pady=10)
 
-        self.text_logger = TextLogger(frame_log, state=TkinterCfgState.DISABLED.value, height=31, width=140)
+        self.text_logger = TextLogger(frame_log, state=TkinterCfgState.DISABLED.value, height=32, width=140)
         self.text_logger.set_log_levels(self.log_levels.get())
         self.text_logger.grid(row=0, column=0, sticky='nsew')
 
@@ -403,7 +397,6 @@ class Gui:
                 self.checkbox_var_use_mirror,
                 self.checkbox_var_build_mirror,
                 self.checkbox_var_metadata_comparison,
-                self.checkbox_var_eval_moved_files,
                 self.checkbox_var_save_report,
             ]:
                 checkbox.set(False)
@@ -430,7 +423,6 @@ class Gui:
                 'checkbox_var_use_mirror',
                 'checkbox_var_build_mirror',
                 'checkbox_var_metadata_comparison',
-                'checkbox_var_eval_moved_files',
                 'checkbox_var_save_report',
             ]
             config_vars = {name: getattr(self, name).get() for name in config_var_names}
@@ -559,7 +551,6 @@ class Gui:
             comparison_method=CompareMethod.METADATA
             if self.checkbox_var_metadata_comparison.get()
             else CompareMethod.CONTENT,
-            care_about_moved_files=self.checkbox_var_eval_moved_files.get(),
             save_report=self.checkbox_var_save_report.get(),
             use_mirror=self.checkbox_var_use_mirror.get(),
             increment_mirror=not self.checkbox_var_build_mirror.get(),
