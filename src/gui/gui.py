@@ -14,10 +14,10 @@ from tkinter.scrolledtext import ScrolledText
 
 from backend import CompareDirs, SyncDirs
 from file import CustomException
+from gui.enums import BackendThreadStatus, Relief
 from logger import logger
 from mirror import MirrorDatabase
 from utils import CompareMethod, Counter, DirectoryPair, round_time_to_minutes
-from .enums import BackendThreadStatus
 
 
 class KillableThread(threading.Thread):
@@ -119,7 +119,7 @@ class Gui:
 
         def is_sunken_button(child_):
             try:
-                return isinstance(child_, tk.Button) and child_.config('relief')[-1] == 'sunken'
+                return isinstance(child_, tk.Button) and child_.config('relief')[-1] == Relief.SUNKEN.value
             except:
                 return False
 
@@ -175,30 +175,30 @@ class Gui:
 
     @property
     def toggle_state_schedule(self):
-        return self.button_schedule_sync.config('relief')[-1] == 'sunken'
+        return self.button_schedule_sync.config('relief')[-1] == Relief.SUNKEN.value
 
     @toggle_state_schedule.setter
     def toggle_state_schedule(self, value: bool):
         self.button_schedule_sync.config(
-            relief={True: 'sunken', False: 'raised'}.get(value),
+            relief=Relief.SUNKEN.value if value else Relief.RAISED.value,
             text={True: 'Schedule (ON)', False: 'Schedule (OFF)'}.get(value),
         )
 
     @property
     def toggle_state_quick_compare(self):
-        return self.button_quick_compare.config('relief')[-1] == 'sunken'
+        return self.button_quick_compare.config('relief')[-1] == Relief.SUNKEN.value
 
     @toggle_state_quick_compare.setter
     def toggle_state_quick_compare(self, value: bool):
-        self.button_quick_compare.config(relief={True: 'sunken', False: 'raised'}.get(value))
+        self.button_quick_compare.config(relief=Relief.SUNKEN.value if value else Relief.RAISED.value)
 
     @property
     def toggle_state_sync_now(self):
-        return self.button_sync_now.config('relief')[-1] == 'sunken'
+        return self.button_sync_now.config('relief')[-1] == Relief.SUNKEN.value
 
     @toggle_state_sync_now.setter
     def toggle_state_sync_now(self, value: bool):
-        self.button_sync_now.config(relief={True: 'sunken', False: 'raised'}.get(value))
+        self.button_sync_now.config(relief=Relief.SUNKEN.value if value else Relief.RAISED.value)
 
     def create_widgets(self):
         # START FRAME OF STATUS (UP-LEFT)
@@ -285,7 +285,10 @@ class Gui:
         self.toggle_state_sync_now = False
         # ---
         self.button_schedule_sync = tk.Button(
-            self.frame_buttons, text='Schedule (OFF)', relief='raised', command=self.button_action_schedule_sync
+            self.frame_buttons,
+            text='Schedule (OFF)',
+            relief=Relief.RAISED.value,
+            command=self.button_action_schedule_sync,
         )
         self.button_schedule_sync.grid(row=row_counter.get(increment=False), column=2, sticky='nwe')
         self.toggle_state_schedule = False
@@ -584,8 +587,8 @@ class Gui:
 
     def backend_thread(self, also_sync: bool, timestamp: datetime.datetime):
         if self.checkbox_value_save_report.get():
-            timestamp = timestamp.strftime('%Y-%m-%d_%H-%M-%S')
-            save_path = os.path.join(logger.log_dir, 'compare_report_' + timestamp + '.xlsx')
+            timestamp_str = timestamp.strftime('%Y-%m-%d_%H-%M-%S')
+            save_path = os.path.join(logger.log_dir, 'compare_report_' + timestamp_str + '.xlsx')
         else:
             save_path = ''
 

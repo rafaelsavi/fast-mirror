@@ -33,7 +33,7 @@ class TrayableTk(tk.Tk):
         self.tk.call(
             'package', 'require', 'Winico'
         )  # use the tcl "winico", make sure the folder of "winico" is in the same path.
-        icon = self.tk.call('winico', 'createfrom', 'src/smiley.ico')  # this is the icon on the system tray.
+        icon = self.tk.call('winico', 'createfrom', 'src/gui/smiley.ico')  # this is the icon on the system tray.
         self.tk.call(
             'winico',
             'taskbar',

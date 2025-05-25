@@ -11,6 +11,6 @@ if (
 ):
     os.execv(venv_path, [venv_path] + sys.argv)
 
-from gui import Gui
+from gui.gui import Gui
 
 gui = Gui()

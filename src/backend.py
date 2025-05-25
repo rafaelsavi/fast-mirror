@@ -8,7 +8,7 @@ import winsound
 
 import pandas as pd
 
-from custom_gui import CustomCheckboxTreeView
+from gui.custom_gui import CustomCheckboxTreeView
 from file import CstmPath, CstmPathType, File
 from logger import logger
 from mirror import MirrorDatabase
