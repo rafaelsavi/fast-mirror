@@ -2,6 +2,7 @@ import logging
 import os
 import queue
 from datetime import datetime
+from logging import LogRecord
 
 from utils.constants import ROOT_DIR
 
@@ -11,11 +12,11 @@ log_dir = os.path.join(ROOT_DIR, 'logs')
 class QueueHandler(logging.Handler):
     """Class to send logging records to a queue. It can be used from different threads"""
 
-    def __init__(self, log_queue):
+    def __init__(self, log_queue: queue.Queue):
         super().__init__()
         self.log_queue = log_queue
 
-    def emit(self, record):
+    def emit(self, record: LogRecord):
         self.log_queue.put(record)
 
 

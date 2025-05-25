@@ -3,71 +3,17 @@ import datetime
 import json
 import os
 import queue
-import sys
-import threading
-import time
 import tkinter as tk
-import traceback
-from copy import deepcopy
 from tkinter import filedialog, messagebox
-from tkinter.scrolledtext import ScrolledText
 
 from core.backend import CompareDirs, SyncDirs
-from core.file import CustomException
 from core.mirror import MirrorDatabase
 from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgStatus
+from gui.threading import KillableThread
+from gui.widgets import DefaultActions, DefaultAction, EntryExclusions, EntryPaths, EntryTimes, LogLevels, TextLogger, WeekDays
 from utils.constants import ROOT_DIR
 from utils.logger import logger
 from utils.utils import CompareMethod, Counter, DirectoryPair, round_time_to_minutes
-
-
-class KillableThread(threading.Thread):
-    """A subclass of threading.Thread, with a kill() method."""
-
-    def __init__(self, *args, **keywords):
-        threading.Thread.__init__(self, *args, **keywords)
-        self.killed = False
-
-    def start(self):
-        """Start the thread."""
-        self.__run_backup = self.run
-        self.run = self.__run  # Force the Thread to install our trace.
-        threading.Thread.start(self)
-
-    def __run(self):
-        """Hacked run function, which installs the trace."""
-        self.exc = None
-        try:
-            sys.settrace(self.globaltrace)
-            self.__run_backup()
-            self.run = self.__run_backup
-        except CustomException as e:
-            logger.critical(f'Processing thread was stopped abruptly because of exception: {e}')
-        except Exception:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            msg = ''.join(traceback.format_tb(exc_tb))
-            logger.critical(f'Processing thread was stopped abruptly because of exception {exc_type}:\n{msg}')
-
-    def globaltrace(self, frame, why, arg):
-        if why == 'call':
-            return self.localtrace
-        else:
-            return None
-
-    def localtrace(self, frame, why, arg):
-        if self.killed and why == 'line':
-            global gui
-            logger.warning('Background process was stopped')
-            raise SystemExit()
-        return self.localtrace
-
-    def kill(self):
-        self.killed = True
-
-    def join(self, *args):
-        threading.Thread.join(self, *args)
-        if self.exc:
-            raise self.exc
 
 
 class Gui:
@@ -77,14 +23,15 @@ class Gui:
         self.root.iconbitmap(os.path.join(os.path.dirname(__file__), 'smiley.ico'))
         self.root.title('Automatic Backup Tool')
 
-        # Initialize variables
+        self.config_path = os.path.join(ROOT_DIR, 'config.json')
+
+        # State variables
         self._gui_initialized = False
         self.last_realized_sync = None
         self._backend_thread_holder: KillableThread | None = None
         self._backend_thread_status = BackendThreadStatus.STANDBY
         self.toggle_auto_scroll = tk.BooleanVar()
-        self.config_path = os.path.join(ROOT_DIR, 'config.json')
-        self.check_box_value_default_actions = DefaultActions({})
+        self.check_box_value_default_actions = DefaultActions()
         self.checkbox_value_use_mirror = tk.BooleanVar()
         self.checkbox_value_build_mirror = tk.BooleanVar()
         self.checkbox_value_metadata_comparison = tk.BooleanVar()
@@ -94,7 +41,7 @@ class Gui:
         self.log_levels = LogLevels()
         self.entry_paths = EntryPaths()
         self.entry_exclusions = EntryExclusions()
-        self.entry_times: EntryTimes()
+        self.entry_times = EntryTimes()
         self.text_logger = TextLogger()
         self.text_var_status = tk.StringVar()
         self.text_var_next_appointment = tk.StringVar()
@@ -182,7 +129,7 @@ class Gui:
     def toggle_state_schedule(self, value: bool):
         self.button_schedule_sync.config(
             relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value,
-            text={True: 'Schedule (ON)', False: 'Schedule (OFF)'}.get(value),
+            text='Schedule (ON)' if value else 'Schedule (OFF)',
         )
 
     @property
@@ -336,20 +283,18 @@ class Gui:
         self.frame_default_actions = tk.Frame(self.frame_buttons)
         self.frame_default_actions.grid(row=row_counter.get(increment=False), column=1, columnspan=2)
         # ---
-        self.check_box_value_default_actions = DefaultActions({'copy': True, 'move': False, 'delete': False})
-        # ---
         checkbox_default_action_copy = tk.Checkbutton(
-            self.frame_default_actions, text='Copy', variable=self.check_box_value_default_actions.get_tk('copy')
+            self.frame_default_actions, text='Copy', variable=self.check_box_value_default_actions.get_tk(DefaultAction.COPY)
         )
         checkbox_default_action_copy.grid(row=0, column=0, sticky='w')
         # ---
         checkbox_default_action_move = tk.Checkbutton(
-            self.frame_default_actions, text='Move', variable=self.check_box_value_default_actions.get_tk('move')
+            self.frame_default_actions, text='Move', variable=self.check_box_value_default_actions.get_tk(DefaultAction.MOVE)
         )
         checkbox_default_action_move.grid(row=0, column=1, sticky='w')
         # ---
         checkbox_default_action_delete = tk.Checkbutton(
-            self.frame_default_actions, text='Delete', variable=self.check_box_value_default_actions.get_tk('delete')
+            self.frame_default_actions, text='Delete', variable=self.check_box_value_default_actions.get_tk(DefaultAction.DELETE)
         )
         checkbox_default_action_delete.grid(row=0, column=2, sticky='w')
         # ---
@@ -393,14 +338,14 @@ class Gui:
         self.frame_buttons_level = tk.Frame(self.frame_buttons)
         self.frame_buttons_level.grid(row=row_counter.get(increment=False), column=1, sticky='nw')
         # ---
-        check_box_log_level = {}
-
-        def set_log_levels():
-            self.text_logger.set_log_levels(self.log_levels.get())
+        check_box_log_level: dict[str, tk.Checkbutton] = {}
 
         for i, level in enumerate(self.log_levels.options):
             check_box_log_level[level] = tk.Checkbutton(
-                self.frame_buttons_level, text=level, command=set_log_levels, variable=self.log_levels.checkboxes[level]
+                self.frame_buttons_level,
+                text=level,
+                command=lambda: self.text_logger.set_log_levels(self.log_levels.get()),
+                variable=self.log_levels.checkboxes[level],
             )
             check_box_log_level[level].grid(row=i, column=0, sticky='w')
 
@@ -418,6 +363,11 @@ class Gui:
         # FINISH FRAME OF LOG (DOWN-RIGHT)
 
         self._gui_initialized = True
+
+        # Example: set default actions using the enum
+        self.check_box_value_default_actions[DefaultAction.COPY] = True
+        self.check_box_value_default_actions[DefaultAction.MOVE] = False
+        self.check_box_value_default_actions[DefaultAction.DELETE] = False
 
     def button_action_reset_config(self, ask_confirmation=True):
         if ask_confirmation:
@@ -672,205 +622,6 @@ class Gui:
                     self.text_logger.yview(tk.END)
 
         self.root.after(1000, self.log_queue_watchdog)
-
-
-class TextLogger(ScrolledText):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.lines = []
-        self.log_levels = []
-        self.limit_lines = 50000
-        self.configure(font='TkFixedFont')
-        self.tag_config('DEBUG', foreground='gray')
-        self.tag_config('INFO', foreground='black')
-        self.tag_config('WARNING', foreground='orange')
-        self.tag_config('ERROR', foreground='red')
-        self.tag_config('CRITICAL', foreground='red', underline=1)
-
-    def set_log_levels(self, levels: list[str]):
-        self.log_levels = levels
-        self._rewrite()
-
-    def insert(self, *args, **kwargs):
-        message, tag = args
-        self.lines.append((message, tag))
-        if tag in self.log_levels:
-            self.configure(state=TkinterCfgStatus.NORMAL.value)
-            super().insert(tk.END, message + '\n', tag)
-            self.configure(state=TkinterCfgStatus.DISABLED.value)
-            self._check_num_lines()
-
-    def _check_num_lines(self):
-        # Remove excessive lines
-        lines = self.get('1.0', tk.END).splitlines()
-        if len(lines) > self.limit_lines * 1.1:
-            self._rewrite()
-
-    def _rewrite(self):
-        self.configure(state=TkinterCfgStatus.NORMAL.value)
-        self.delete('1.0', tk.END)
-        for message, tag in self.lines[-self.limit_lines :]:
-            if tag in self.log_levels:
-                super().insert(tk.END, message + '\n', tag)
-        self.configure(state=TkinterCfgStatus.DISABLED.value)
-
-
-class LogLevels:
-    options = 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
-
-    def __init__(self):
-        self.checkboxes = {option: tk.BooleanVar() for option in self.options}
-        self.reset()
-
-    def reset(self):
-        for k, _v in self.checkboxes.items():
-            if k in ['DEBUG']:
-                self.checkboxes[k].set(False)
-            else:
-                self.checkboxes[k].set(True)
-
-    def set(self, values: list[str]):
-        for value, _status in self.checkboxes.items():
-            self.checkboxes[value].set(True) if value in values else self.checkboxes[value].set(False)
-
-    def get(self) -> list[str]:
-        return [value for value, status in self.checkboxes.items() if status.get()]
-
-
-class WeekDays:
-    options = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
-
-    def __init__(self):
-        self.checkboxes = {day: tk.BooleanVar() for day in self.options}
-
-    def set(self, values: list[str]):
-        for value, _status in self.checkboxes.items():
-            self.checkboxes[value].set(True) if value in values else self.checkboxes[value].set(False)
-
-    def get(self) -> list[str]:
-        return [value for value, status in self.checkboxes.items() if status.get()]
-
-    def get_as_numbers(self) -> list[int]:
-        return [self.options.index(day) for day in self.get()]
-
-
-class EntryTimes(ScrolledText):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def get(self, *args, **kwargs):
-        raw: str
-        raw = super().get('1.0', tk.END)
-        times = raw.splitlines()
-        times = [t for t in times if self.is_hh_mm(t)]
-        return times
-
-    def set(self, times):
-        times = [t for t in times if self.is_hh_mm(t)]
-        raw = '\n'.join(times)
-        super().delete('1.0', tk.END)  # delete current text
-        super().insert('1.0', raw)  # add at line 1, col 0
-
-    @staticmethod
-    def is_hh_mm(t):
-        try:
-            time.strptime(t, '%H:%M')
-        except:
-            if t.strip() != '':
-                logger.warning(f'Time entry "{t}" was ignored because it does not match the format hh:mm')
-            return False
-        else:
-            return True
-
-
-class EntryExclusions(tk.Entry):
-    def __init__(self, *args, **kwargs):
-        self.var = tk.StringVar()
-        super().__init__(*args, textvariable=self.var, **kwargs)
-        self.reset()
-
-    def get(self, *args, **kwargs) -> list[str]:
-        raw = self.var.get()
-        exclusions = list({x.strip().replace('/', '\\') for x in raw.split(',') if x.strip() != ''})
-        return exclusions
-
-    def set(self, exclusions: list[str]):
-        raw = ','.join(exclusions)
-        self.var.set(raw)
-
-    def reset(self):
-        self.set([r'D:\$RECYCLE.BIN', r'\~$'])
-
-
-class EntryPaths(ScrolledText):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def get(self, *args, **kwargs) -> list[tuple[str, str]]:
-        raw: str
-        raw = super().get('1.0', tk.END)
-        lines = raw.splitlines()
-        paths = list({self.parse_line(line) for line in lines})
-        paths = [pair for pair in paths if pair is not None]
-        return paths
-
-    def get_as_dir_pairs(self) -> list[DirectoryPair]:
-        return [DirectoryPair(source=pair[0], target=pair[1]) for pair in self.get()]
-
-    def add(self, pair: tuple[str, str]):
-        self.set(self.get() + [pair])
-
-    def set(self, paths: list[tuple[str, str]] | list[DirectoryPair]):
-        paths = [(pair.source, pair.target) if isinstance(pair, DirectoryPair) else pair for pair in paths]
-        raw = '\n'.join([f'{pair[0]} -> {pair[1]}' for pair in paths])
-        super().delete('1.0', tk.END)  # delete current text
-        super().insert('1.0', raw)  # add at line 1, col 0
-
-    @staticmethod
-    def parse_line(raw: str) -> None | tuple[str, str]:
-        try:
-            source, target = raw.split(' -> ')
-            if os.path.isdir(source) and os.path.isdir(target):
-                return (os.path.realpath(source), os.path.realpath(target))
-            else:
-                return None
-        except:
-            return None
-
-
-class DefaultActions:
-    def __init__(self, d):
-        self.data = deepcopy(d)
-        self.data_as_tkinter = {k: tk.BooleanVar() for k, v in self.data.items()}
-        self._set_tkinter_data()
-
-    def get(self):
-        for k, _v in self.data_as_tkinter.items():
-            self.data[k] = self.data_as_tkinter[k].get()
-        return self.data
-
-    def get_tk(self, k):
-        return self.data_as_tkinter[k]
-
-    def __setitem__(self, k, v):
-        self.data[k] = v
-        self._set_tkinter_data()
-
-    def set(self, obj):
-        self.data = obj
-        self._set_tkinter_data()
-
-    def _set_tkinter_data(self):
-        for k, v in self.data.items():
-            self.data_as_tkinter[k].set(v)
-
-    def get_actions(self) -> list[str]:
-        return [k for k, v in self.get().items() if v]
-
-    def reset(self):
-        self['copy'] = True
-        self['move'] = False
-        self['delete'] = False
 
 
 if __name__ == '__main__':
