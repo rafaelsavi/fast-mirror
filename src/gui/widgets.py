@@ -5,7 +5,7 @@ from tkinter.scrolledtext import ScrolledText
 import os
 from enum import Enum
 
-from gui.enums import TkinterCfgStatus
+from gui.enums import TkinterCfgState
 from utils.logger import logger
 from utils.utils import DirectoryPair
 
@@ -214,9 +214,9 @@ class TextLogger(ScrolledText):
         message, tag = args
         self.lines.append((message, tag))
         if tag in self.log_levels:
-            self.configure(state=TkinterCfgStatus.NORMAL.value)
+            self.configure(state=TkinterCfgState.NORMAL.value)
             super().insert(tk.END, message + '\n', tag)
-            self.configure(state=TkinterCfgStatus.DISABLED.value)
+            self.configure(state=TkinterCfgState.DISABLED.value)
             self._check_num_lines()
 
     def _check_num_lines(self):
@@ -226,9 +226,9 @@ class TextLogger(ScrolledText):
             self._rewrite()
 
     def _rewrite(self):
-        self.configure(state=TkinterCfgStatus.NORMAL.value)
+        self.configure(state=TkinterCfgState.NORMAL.value)
         self.delete('1.0', tk.END)
         for message, tag in self.lines[-self.limit_lines :]:
             if tag in self.log_levels:
                 super().insert(tk.END, message + '\n', tag)
-        self.configure(state=TkinterCfgStatus.DISABLED.value)
+        self.configure(state=TkinterCfgState.DISABLED.value)

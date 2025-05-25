@@ -12,7 +12,7 @@ class TkinterCfgRelief(Enum):
     RAISED = 'raised'
 
 
-class TkinterCfgStatus(Enum):
+class TkinterCfgState(Enum):
     NORMAL = 'normal'
     DISABLED = 'disabled'
     HIDDEN = 'hidden'

@@ -1,6 +1,7 @@
 import contextlib
 import datetime
 import json
+from logging import LogRecord
 import os
 import queue
 import tkinter as tk
@@ -8,7 +9,7 @@ from tkinter import filedialog, messagebox
 
 from core.backend import CompareDirs, SyncDirs
 from core.mirror import MirrorDatabase
-from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgStatus
+from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgState
 from gui.threading import KillableThread
 from gui.widgets import (
     Action,
@@ -70,15 +71,15 @@ class Gui:
         self.root.mainloop()
 
     def set_gui_enable_state(self, general_state: bool, leave_sunken_enabled=False):
-        def convert_child_state(child_, b: bool):
+        def convert_child_state(child_: tk.Widget, b: bool):
             with contextlib.suppress(Exception):
-                child_.configure(state=TkinterCfgStatus.from_bool(b))
+                child_.configure(state=TkinterCfgState.from_bool(b))  # type: ignore
 
         def is_sunken_button(child_):
             try:
                 return isinstance(child_, tk.Button) and child_.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
-            except:
-                return False
+            except Exception as e:
+                raise ValueError(f'Could not check if {child_} is a sunken button. Exception: {e}') from e
 
         all_childs = [
             *self.frame_paths.winfo_children(),
@@ -103,20 +104,20 @@ class Gui:
         return self._backend_thread_status
 
     @backend_thread_status.setter
-    def backend_thread_status(self, value):
-        self._backend_thread_status = value
-        self.text_var_status.set(value.value if isinstance(value, BackendThreadStatus) else str(value))
+    def backend_thread_status(self, status: BackendThreadStatus):
+        self._backend_thread_status = status
+        self.text_var_status.set(status.value)
 
         # If thread is running, disable all unused buttons
-        if value == BackendThreadStatus.STANDBY:
+        if status == BackendThreadStatus.STANDBY:
             self.set_gui_enable_state(general_state=True)
             # Release triggers when backend is done
             self.toggle_state_quick_compare = False
             self.toggle_state_sync_now = False
             self.toggle_state_schedule = False
-        elif value == BackendThreadStatus.RUNNING:
+        elif status == BackendThreadStatus.RUNNING:
             self.set_gui_enable_state(general_state=False, leave_sunken_enabled=True)
-        elif value == BackendThreadStatus.STOPPING:
+        elif status == BackendThreadStatus.STOPPING:
             self.set_gui_enable_state(general_state=False, leave_sunken_enabled=False)
 
     @property
@@ -371,7 +372,7 @@ class Gui:
         frame_log = tk.Frame(self.root)
         frame_log.grid(row=1, column=1, sticky='nsw', padx=10, pady=10)
 
-        self.text_logger = TextLogger(frame_log, state=TkinterCfgStatus.DISABLED.value, height=31, width=140)
+        self.text_logger = TextLogger(frame_log, state=TkinterCfgState.DISABLED.value, height=31, width=140)
         self.text_logger.set_log_levels(self.log_levels.get())
         self.text_logger.grid(row=0, column=0, sticky='nsew')
 
@@ -620,7 +621,7 @@ class Gui:
         """Check every 100ms if there is a new message in the queue to be displayed"""
         while True:
             try:
-                record = logger.log_queue.get(block=False)
+                record: LogRecord = logger.log_queue.get(block=False)
             except queue.Empty:
                 break
             else:
