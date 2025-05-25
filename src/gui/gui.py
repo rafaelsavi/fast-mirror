@@ -43,22 +43,23 @@ class Gui:
 
         # GUI elements
         self.toggle_auto_scroll = tk.BooleanVar()
-        self.check_box_value_default_actions = DefaultActions()
-        self.checkbox_value_use_mirror = tk.BooleanVar()
-        self.checkbox_value_build_mirror = tk.BooleanVar()
-        self.checkbox_value_metadata_comparison = tk.BooleanVar()
-        self.checkbox_value_eval_moved_files = tk.BooleanVar()
-        self.checkbox_value_save_report = tk.BooleanVar()
+        self.checkbox_var_use_mirror = tk.BooleanVar()
+        self.checkbox_var_build_mirror = tk.BooleanVar()
+        self.checkbox_var_metadata_comparison = tk.BooleanVar()
+        self.checkbox_var_eval_moved_files = tk.BooleanVar()
+        self.checkbox_var_save_report = tk.BooleanVar()
+        self.text_var_status = tk.StringVar()
+        self.text_var_next_appointment = tk.StringVar()
+
+        # Custom widgets
+        self.checkbox_default_actions = DefaultActions()
+        self.text_logger = TextLogger()
         self.week_days = WeekDays()
         self.log_levels = LogLevels()
         self.entry_paths = EntryPaths()
         self.entry_exclusions = EntryExclusions()
         self.entry_times = EntryTimes()
-        self.text_logger = TextLogger()
-        self.text_var_status = tk.StringVar()
-        self.text_var_next_appointment = tk.StringVar()
 
-        # Create widgets
         self.create_widgets()
 
         # Start parallel threads
@@ -71,6 +72,27 @@ class Gui:
 
         # Run GUI
         self.root.mainloop()
+
+    @property
+    def backend_thread_status(self):
+        return self._backend_thread_status
+
+    @backend_thread_status.setter
+    def backend_thread_status(self, status: BackendThreadStatus):
+        self._backend_thread_status = status
+        self.text_var_status.set(status.value)
+
+        # If thread is running, disable all unused buttons
+        if status == BackendThreadStatus.STANDBY:
+            self.set_gui_enable_state(general_state=True)
+            # Release triggers when backend is done
+            self.toggle_state_quick_compare = False
+            self.toggle_state_sync_now = False
+            self.toggle_state_schedule = False
+        elif status == BackendThreadStatus.RUNNING:
+            self.set_gui_enable_state(general_state=False, leave_sunken_enabled=True)
+        elif status == BackendThreadStatus.STOPPING:
+            self.set_gui_enable_state(general_state=False, leave_sunken_enabled=False)
 
     def set_gui_enable_state(self, general_state: bool, leave_sunken_enabled=False):
         def convert_child_state(child_: tk.Widget, b: bool):
@@ -100,27 +122,6 @@ class Gui:
             convert_child_state(child, general_state)
             if leave_sunken_enabled and is_sunken_button(child):
                 convert_child_state(child, True)
-
-    @property
-    def backend_thread_status(self):
-        return self._backend_thread_status
-
-    @backend_thread_status.setter
-    def backend_thread_status(self, status: BackendThreadStatus):
-        self._backend_thread_status = status
-        self.text_var_status.set(status.value)
-
-        # If thread is running, disable all unused buttons
-        if status == BackendThreadStatus.STANDBY:
-            self.set_gui_enable_state(general_state=True)
-            # Release triggers when backend is done
-            self.toggle_state_quick_compare = False
-            self.toggle_state_sync_now = False
-            self.toggle_state_schedule = False
-        elif status == BackendThreadStatus.RUNNING:
-            self.set_gui_enable_state(general_state=False, leave_sunken_enabled=True)
-        elif status == BackendThreadStatus.STOPPING:
-            self.set_gui_enable_state(general_state=False, leave_sunken_enabled=False)
 
     @property
     def backend_thread_holder(self):
@@ -256,14 +257,14 @@ class Gui:
         self.toggle_state_schedule = False
         # ---
         checkbox_check_save_report = tk.Checkbutton(
-            self.frame_buttons, text='Save detailed report', variable=self.checkbox_value_save_report
+            self.frame_buttons, text='Save detailed report', variable=self.checkbox_var_save_report
         )
         checkbox_check_save_report.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
         checkbox_build_local_mirror = tk.Checkbutton(
             self.frame_buttons,
             text='Rebuild local mirror',
-            variable=self.checkbox_value_build_mirror,
+            variable=self.checkbox_var_build_mirror,
             command=lambda: checkbox_use_local_mirror.deselect(),
         )
         checkbox_build_local_mirror.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
@@ -271,21 +272,21 @@ class Gui:
         checkbox_use_local_mirror = tk.Checkbutton(
             self.frame_buttons,
             text='Use fast scan based on local mirror',
-            variable=self.checkbox_value_use_mirror,
+            variable=self.checkbox_var_use_mirror,
             command=lambda: checkbox_build_local_mirror.deselect(),
         )
         checkbox_use_local_mirror.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
-        self.checkbox_value_metadata_comparison.set(True)
+        self.checkbox_var_metadata_comparison.set(True)
         checkbox_metadata_comparison = tk.Checkbutton(
             self.frame_buttons,
             text='Use fast comparison based on metadata',
-            variable=self.checkbox_value_metadata_comparison,
+            variable=self.checkbox_var_metadata_comparison,
         )
         checkbox_metadata_comparison.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
         checkbox_check_moved_files = tk.Checkbutton(
-            self.frame_buttons, text='Try to guess moved files', variable=self.checkbox_value_eval_moved_files
+            self.frame_buttons, text='Try to guess moved files', variable=self.checkbox_var_eval_moved_files
         )
         checkbox_check_moved_files.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
@@ -298,21 +299,21 @@ class Gui:
         checkbox_default_action_copy = tk.Checkbutton(
             self.frame_default_actions,
             text='Copy',
-            variable=self.check_box_value_default_actions.get_tk(Action.COPY),
+            variable=self.checkbox_default_actions.get_var(Action.COPY),
         )
         checkbox_default_action_copy.grid(row=0, column=0, sticky='w')
         # ---
         checkbox_default_action_move = tk.Checkbutton(
             self.frame_default_actions,
             text='Move',
-            variable=self.check_box_value_default_actions.get_tk(Action.MOVE),
+            variable=self.checkbox_default_actions.get_var(Action.MOVE),
         )
         checkbox_default_action_move.grid(row=0, column=1, sticky='w')
         # ---
         checkbox_default_action_delete = tk.Checkbutton(
             self.frame_default_actions,
             text='Delete',
-            variable=self.check_box_value_default_actions.get_tk(Action.DELETE),
+            variable=self.checkbox_default_actions.get_var(Action.DELETE),
         )
         checkbox_default_action_delete.grid(row=0, column=2, sticky='w')
         # ---
@@ -396,14 +397,14 @@ class Gui:
             self.entry_exclusions.reset()
             self.week_days.set([])
             self.entry_times.set([])
-            self.check_box_value_default_actions.reset()
+            self.checkbox_default_actions.reset()
             self.log_levels.reset()
             for checkbox in [
-                self.checkbox_value_use_mirror,
-                self.checkbox_value_build_mirror,
-                self.checkbox_value_metadata_comparison,
-                self.checkbox_value_eval_moved_files,
-                self.checkbox_value_save_report,
+                self.checkbox_var_use_mirror,
+                self.checkbox_var_build_mirror,
+                self.checkbox_var_metadata_comparison,
+                self.checkbox_var_eval_moved_files,
+                self.checkbox_var_save_report,
             ]:
                 checkbox.set(False)
             with contextlib.suppress(Exception):
@@ -423,14 +424,14 @@ class Gui:
                 'entry_paths',
                 'week_days',
                 'entry_times',
-                'check_box_value_default_actions',
                 'entry_exclusions',
                 'log_levels',
-                'checkbox_value_use_mirror',
-                'checkbox_value_build_mirror',
-                'checkbox_value_metadata_comparison',
-                'checkbox_value_eval_moved_files',
-                'checkbox_value_save_report',
+                'checkbox_default_actions',
+                'checkbox_var_use_mirror',
+                'checkbox_var_build_mirror',
+                'checkbox_var_metadata_comparison',
+                'checkbox_var_eval_moved_files',
+                'checkbox_var_save_report',
             ]
             config_vars = {name: getattr(self, name).get() for name in config_var_names}
             with open(self.config_path, 'w') as f:
@@ -484,9 +485,7 @@ class Gui:
             logger.info(f'Opening {last_filepath}')
             os.startfile(last_filepath)
         else:
-            logger.error(
-                f'Could not open last report because no report was found in directory {os.path.realpath(logger.log_dir)}'
-            )
+            logger.error(f'Could not open last report because no it was not found in directory <{logger.log_dir}>')
 
     def button_action_quick_compare(self):
         self.toggle_state_quick_compare = not self.toggle_state_quick_compare
@@ -558,17 +557,17 @@ class Gui:
             dirs=self.entry_paths.get_as_dir_pairs(),
             exclusions=self.entry_exclusions.get(),
             comparison_method=CompareMethod.METADATA
-            if self.checkbox_value_metadata_comparison.get()
+            if self.checkbox_var_metadata_comparison.get()
             else CompareMethod.CONTENT,
-            care_about_moved_files=self.checkbox_value_eval_moved_files.get(),
-            save_report=self.checkbox_value_save_report.get(),
-            use_mirror=self.checkbox_value_use_mirror.get(),
-            increment_mirror=not self.checkbox_value_build_mirror.get(),
-            rebuild_mirror=self.checkbox_value_build_mirror.get(),
+            care_about_moved_files=self.checkbox_var_eval_moved_files.get(),
+            save_report=self.checkbox_var_save_report.get(),
+            use_mirror=self.checkbox_var_use_mirror.get(),
+            increment_mirror=not self.checkbox_var_build_mirror.get(),
+            rebuild_mirror=self.checkbox_var_build_mirror.get(),
         )
 
         if also_sync:
-            default_actions = self.check_box_value_default_actions.get_as_actions()
+            default_actions = self.checkbox_default_actions.get_as_actions()
             SyncDirs(
                 files_to_copy=compare.files_to_copy,
                 files_to_move=compare.files_to_move,
@@ -577,7 +576,7 @@ class Gui:
                 root_gui=self.root,
                 dirs=self.entry_paths.get_as_dir_pairs(),
                 default_actions=default_actions,
-                increment_mirror=not self.checkbox_value_build_mirror.get(),
+                increment_mirror=not self.checkbox_var_build_mirror.get(),
             )
 
         logger.debug('Processing thread was properly closed')
