@@ -174,3 +174,4 @@ cython_debug/
 .pypirc
 /tests/TestData/Destination
 /logs
+local_mirror.db
