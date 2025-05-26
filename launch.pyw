@@ -14,6 +14,6 @@ if (
 ):
     os.execv(venv_pythonw, [venv_pythonw] + sys.argv)
 
-from gui.gui import Gui
+from gui.gui import Gui  # noqa: E402
 
 gui = Gui()
