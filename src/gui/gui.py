@@ -23,7 +23,17 @@ from gui.widgets import (
 )
 from utils.constants import ROOT_DIR
 from utils.logger import logger
-from utils.utils import CompareMethod, Counter, DirectoryPair, round_time_to_minutes
+from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
+
+
+class Counter:
+    def __init__(self, init_value=-1):
+        self.v = init_value
+
+    def get(self, increment=True) -> int:
+        if increment:
+            self.v += 1
+        return self.v
 
 
 class Gui:

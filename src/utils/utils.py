@@ -75,16 +75,6 @@ def format_elapsed_time(start_time: float) -> str:
     return ' '.join(parts)
 
 
-class Counter:
-    def __init__(self, init_value=-1):
-        self.v = init_value
-
-    def get(self, increment=True) -> int:
-        if increment:
-            self.v += 1
-        return self.v
-
-
 def check_length(p):
     return f'File path of source and/or target is too long ({len(str(p))})' if len(str(p)) > 259 else ''
 
