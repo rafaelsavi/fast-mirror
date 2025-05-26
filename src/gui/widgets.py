@@ -9,6 +9,63 @@ from utils.logger import logger
 from utils.utils import DirectoryPair, sanitize_path
 
 
+class EntryPaths(ScrolledText):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def get(self, *args, **kwargs) -> list[tuple[str, str]]:
+        raw: str
+        raw = super().get('1.0', tk.END)
+        lines = raw.splitlines()
+        paths = list({self.parse_line(line) for line in lines})
+        paths = [pair for pair in paths if pair is not None]
+        paths.sort(key=lambda x: x[0])  # sort by source path
+        return paths
+
+    def get_as_dir_pairs(self) -> list[DirectoryPair]:
+        return [DirectoryPair(source=pair[0], target=pair[1]) for pair in self.get()]
+
+    def add(self, pair: tuple[str, str] | DirectoryPair):
+        pair_tuple = (pair.source, pair.target) if isinstance(pair, DirectoryPair) else pair
+        self.set(self.get() + [pair_tuple])
+
+    def set(self, paths: list[tuple[str, str]]):
+        paths.sort(key=lambda x: x[0])  # sort by source path
+        raw = '\n'.join([f'{pair[0]} -> {pair[1]}' for pair in paths])
+        super().delete('1.0', tk.END)  # delete current text
+        super().insert('1.0', raw)  # add at line 1, col 0
+
+    @staticmethod
+    def parse_line(raw: str) -> None | tuple[str, str]:
+        try:
+            source, target = raw.split(' -> ')
+            if os.path.isdir(source) and os.path.isdir(target):
+                return (os.path.realpath(source), os.path.realpath(target))
+            else:
+                return None
+        except:
+            return None
+
+
+class EntryExclusions(tk.Entry):
+    def __init__(self, *args, **kwargs):
+        self.var = tk.StringVar()
+        super().__init__(*args, textvariable=self.var, **kwargs)
+        self.reset()
+
+    def get(self, *args, **kwargs) -> list[str]:
+        raw = self.var.get()
+        exclusions = list(sorted({sanitize_path(x.strip()) for x in raw.split(',') if x.strip() != ''}))
+        return exclusions
+
+    def set(self, exclusions: list[str]):
+        raw = ','.join(list(sorted(exclusions)))
+        self.var.set(raw)
+
+    def reset(self):
+        self.set([r'D:\$RECYCLE.BIN', r'\~$'])
+
+
 class EntryTimes(ScrolledText):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -17,11 +74,11 @@ class EntryTimes(ScrolledText):
         raw: str
         raw = super().get('1.0', tk.END)
         times = raw.splitlines()
-        times = [t for t in times if self.is_hh_mm(t)]
+        times = list(sorted([t for t in times if self.is_hh_mm(t)]))
         return times
 
     def set(self, times):
-        times = [t for t in times if self.is_hh_mm(t)]
+        times = list(sorted([t for t in times if self.is_hh_mm(t)]))
         raw = '\n'.join(times)
         super().delete('1.0', tk.END)  # delete current text
         super().insert('1.0', raw)  # add at line 1, col 0
@@ -38,61 +95,6 @@ class EntryTimes(ScrolledText):
             return False
         else:
             return True
-
-
-class EntryExclusions(tk.Entry):
-    def __init__(self, *args, **kwargs):
-        self.var = tk.StringVar()
-        super().__init__(*args, textvariable=self.var, **kwargs)
-        self.reset()
-
-    def get(self, *args, **kwargs) -> list[str]:
-        raw = self.var.get()
-        exclusions = list({sanitize_path(x.strip()) for x in raw.split(',') if x.strip() != ''})
-        return exclusions
-
-    def set(self, exclusions: list[str]):
-        raw = ','.join(exclusions)
-        self.var.set(raw)
-
-    def reset(self):
-        self.set([r'D:\$RECYCLE.BIN', r'\~$'])
-
-
-class EntryPaths(ScrolledText):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def get(self, *args, **kwargs) -> list[tuple[str, str]]:
-        raw: str
-        raw = super().get('1.0', tk.END)
-        lines = raw.splitlines()
-        paths = list({self.parse_line(line) for line in lines})
-        paths = [pair for pair in paths if pair is not None]
-        return paths
-
-    def get_as_dir_pairs(self) -> list[DirectoryPair]:
-        return [DirectoryPair(source=pair[0], target=pair[1]) for pair in self.get()]
-
-    def add(self, pair: tuple[str, str] | DirectoryPair):
-        pair_tuple = (pair.source, pair.target) if isinstance(pair, DirectoryPair) else pair
-        self.set(self.get() + [pair_tuple])
-
-    def set(self, paths: list[tuple[str, str]]):
-        raw = '\n'.join([f'{pair[0]} -> {pair[1]}' for pair in paths])
-        super().delete('1.0', tk.END)  # delete current text
-        super().insert('1.0', raw)  # add at line 1, col 0
-
-    @staticmethod
-    def parse_line(raw: str) -> None | tuple[str, str]:
-        try:
-            source, target = raw.split(' -> ')
-            if os.path.isdir(source) and os.path.isdir(target):
-                return (os.path.realpath(source), os.path.realpath(target))
-            else:
-                return None
-        except:
-            return None
 
 
 class Action(Enum):

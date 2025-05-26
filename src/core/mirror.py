@@ -22,7 +22,7 @@ class MirrorDatabase:
 
     def __init__(self, path=local_mirror_path, exclusions: None | list[str] = None):
         self.path = path
-        self.exclusions = [sanitize_path(ex) for ex in exclusions] if exclusions else []
+        self.exclusions = list(sorted([sanitize_path(ex) for ex in exclusions])) if exclusions else []
         if not os.path.exists(self.path):
             self.init()
 
