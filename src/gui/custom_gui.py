@@ -1,3 +1,4 @@
+import os
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import messagebox
@@ -30,6 +31,9 @@ class TrayableTk(tk.Tk):
             self.withdraw()
 
     def add_system_tray_icon(self):
+        # Add the path to the Winico package so Tcl can find it
+        winico_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'winico'))
+        self.tk.call('lappend', 'auto_path', winico_path)
         # The work about "Winico"
         self.tk.call(
             'package', 'require', 'Winico'
