@@ -454,15 +454,15 @@ class SyncDirs:
             f_source for (f_source, _), success in self.files_moved if success
         ]
         if not removed_files:
-            logger.info('No files were removed, so no empty directories to delete')
+            logger.info('No files were removed, so no directories to delete')
             return
 
-        removed_dirs = set(os.path.dirname(f) for f in removed_files)
+        relevant_dirs = set(os.path.dirname(f) for f in removed_files)
         # Sort by length to remove subdirectories first
-        removed_dirs = sorted(removed_dirs, key=len, reverse=True)
-        logger.info('Deleting empty directories from folders where files were removed or moved from')
+        relevant_dirs = sorted(relevant_dirs, key=len, reverse=True)
+        logger.info('Deleting empty directories from folders where files were deleted or moved from')
 
-        for dir_path in removed_dirs:
+        for dir_path in relevant_dirs:
             try:
                 if not os.path.exists(dir_path):
                     logger.info(f'Directory <{dir_path}> does not exist, skipping')
