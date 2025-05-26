@@ -3,6 +3,7 @@ import os
 import queue
 from datetime import datetime
 from logging import LogRecord
+from typing import Optional
 
 from utils.constants import ROOT_DIR
 
@@ -21,7 +22,18 @@ class QueueHandler(logging.Handler):
 
 
 class Logger:
+    _instance: Optional['Logger'] = None  # Singleton instance
+    _initialized = False
+
+    def __new__(cls, log_level='DEBUG'):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, log_level='DEBUG'):
+        if Logger._initialized:
+            return
+
         # Build save path
         self.log_dir = log_dir
         os.makedirs(self.log_dir, exist_ok=True)
@@ -31,19 +43,23 @@ class Logger:
         # Initialize logger
         self.logger = logging.getLogger('self.logger')
         self.logger.setLevel(log_level)
+        self.logger.propagate = False
 
-        # Create a file handler
-        file_handler = logging.FileHandler(save_path)
-        file_formatter = logging.Formatter('%(asctime)s: %(levelname)s: %(message)s', '%Y-%m-%d %H:%M:%S')
-        file_handler.setFormatter(file_formatter)
-        self.logger.addHandler(file_handler)
+        # Prevent adding multiple handlers if re-instantiated
+        if not self.logger.handlers:
+            # Create a file handler
+            file_handler = logging.FileHandler(save_path)
+            file_formatter = logging.Formatter('%(asctime)s: %(levelname)s: %(message)s', '%Y-%m-%d %H:%M:%S')
+            file_handler.setFormatter(file_formatter)
+            self.logger.addHandler(file_handler)
 
-        # Create a logging handler using a queue
-        self.log_queue = queue.Queue()
-        self.queue_handler = QueueHandler(self.log_queue)
-        gui_formatter = logging.Formatter('%(asctime)s: %(message)s', '%Y-%m-%d %H:%M:%S')
-        self.queue_handler.setFormatter(gui_formatter)
-        self.logger.addHandler(self.queue_handler)
+            # Create a logging handler using a queue
+            self.log_queue = queue.Queue()
+            self.queue_handler = QueueHandler(self.log_queue)
+            gui_formatter = logging.Formatter('%(asctime)s: %(message)s', '%Y-%m-%d %H:%M:%S')
+            self.queue_handler.setFormatter(gui_formatter)
+            self.logger.addHandler(self.queue_handler)
+        Logger._initialized = True
 
     def debug(self, x):
         self.logger.debug(x)

@@ -232,6 +232,5 @@ class TextLogger(ScrolledText):
         self.configure(state=TkinterCfgState.NORMAL.value)
         self.delete('1.0', tk.END)
         for message, tag in self.lines[-self.limit_lines :]:
-            if tag in self.log_levels:
-                super().insert(tk.END, message + '\n', tag)
+            super().insert(tk.END, message + '\n', tag)
         self.configure(state=TkinterCfgState.DISABLED.value)

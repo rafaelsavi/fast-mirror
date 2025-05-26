@@ -9,6 +9,7 @@ from tkinter import filedialog, messagebox
 
 from core.backend import CompareDirs, SyncDirs
 from core.mirror import MirrorDatabase
+from gui.custom_gui import TrayableTk
 from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgState
 from gui.threading import KillableThread
 from gui.widgets import (
@@ -39,7 +40,7 @@ class Counter:
 class Gui:
     def __init__(self):
         # Initialize GUI
-        self.root = tk.Tk()
+        self.root = TrayableTk()
         self.root.iconbitmap(os.path.join(os.path.dirname(__file__), 'smiley.ico'))
         self.root.title('Automatic Backup Tool')
 
@@ -403,6 +404,7 @@ class Gui:
             self.entry_times.set([])
             self.checkbox_default_actions.reset()
             self.log_levels.reset()
+            self.text_logger.set_log_levels(self.log_levels.get())
             for checkbox in [
                 self.checkbox_var_use_mirror,
                 self.checkbox_var_build_mirror,
@@ -451,6 +453,8 @@ class Gui:
                 for name, value in config_vars.items():
                     gui_element = getattr(self, name)
                     gui_element.set(value)
+
+                self.text_logger.set_log_levels(self.log_levels.get())
                 if show_success_msg:
                     logger.info('Configuration was successfully loaded')
             except Exception as e:
