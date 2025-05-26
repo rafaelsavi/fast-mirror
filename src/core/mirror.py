@@ -38,7 +38,7 @@ class MirrorDatabase:
             return False
         return True
 
-    def _generate_table_name(self, root_dir: str) -> str:
+    def _generate_table_name(self, root_dir: CstmPathType) -> str:
         """
         Generate a table name based on root_dir and exclusions.
 
@@ -52,7 +52,7 @@ class MirrorDatabase:
         sanitized_exclusions = re.sub(allowed_pattern, '_', sanitized_exclusions)
         return f'{sanitized_root}__{sanitized_exclusions}'
 
-    def _get_db(self, root_dir: str) -> SqliteDict:
+    def _get_db(self, root_dir: CstmPathType) -> SqliteDict:
         table_name = self._generate_table_name(root_dir)
         try:
             logger.debug(f'Accessing database table "{table_name}"')
@@ -60,7 +60,7 @@ class MirrorDatabase:
         except Exception as e:
             raise Exception(f'Could not access database table "{table_name}". Exception: {e}') from e
 
-    def exists_table(self, root_dir: str) -> bool:
+    def exists_table(self, root_dir: CstmPathType) -> bool:
         """Check if the table for the given root_dir exists in the database and is not empty."""
         try:
             with self._get_db(root_dir) as db:
@@ -69,7 +69,7 @@ class MirrorDatabase:
             logger.warning(f'Could not check if table exists. Exception: {e}')
             return False
 
-    def exists(self, root_dir: str, path: CstmPathType) -> bool:
+    def exists(self, root_dir: CstmPathType, path: CstmPathType) -> bool:
         """Check if the given path exists in the database for the specified root_dir."""
         try:
             with self._get_db(root_dir) as mirror_db:
@@ -78,7 +78,7 @@ class MirrorDatabase:
             logger.warning(f'Could not check if path exists. Exception: {e}')
             return False
 
-    def size(self, root_dir: str) -> int:
+    def size(self, root_dir: CstmPathType) -> int:
         try:
             with self._get_db(root_dir) as mirror_db:
                 return len(mirror_db)
@@ -86,7 +86,7 @@ class MirrorDatabase:
             logger.warning(f'Could not get size of database. Exception: {e}')
             return 0
 
-    def reset(self, root_dir: str) -> bool:
+    def reset(self, root_dir: CstmPathType) -> bool:
         """Reset the database for the given root_dir."""
         try:
             with self._get_db(root_dir) as db:
@@ -100,7 +100,7 @@ class MirrorDatabase:
             logger.warning(f'Could not reset database for <{root_dir}>. Exception: {e}')
             return False
 
-    def get_table_as_dict(self, root_dir: str) -> dict[str, StatHash]:
+    def get_table_as_dict(self, root_dir: CstmPathType) -> dict[str, StatHash]:
         """Retrieve the entire table as a dictionary."""
         try:
             with self._get_db(root_dir) as db:
@@ -109,7 +109,7 @@ class MirrorDatabase:
             logger.warning(f'Could not open DB to get table. Exception: {e}')
             return {}
 
-    def get_paths(self, root_dir: str) -> set[str]:
+    def get_paths(self, root_dir: CstmPathType) -> set[str]:
         try:
             with self._get_db(root_dir) as mirror_db:
                 keys = mirror_db.keys()
@@ -122,7 +122,7 @@ class MirrorDatabase:
             return set()
 
     def get_stat_hash(
-        self, root_dir: str, path: CstmPathType | list[CstmPathType]
+        self, root_dir: CstmPathType, path: CstmPathType | list[CstmPathType]
     ) -> StatHash | None | list[StatHash | None]:
         """
         Retrieve the value(s) associated with the given path(s) from the database.
@@ -169,7 +169,7 @@ class MirrorDatabase:
         except Exception as e:
             logger.critical(f'Could not open DB to add file(s): {path} Exception: {e}')
 
-    def remove_path(self, root_dir: str, path: CstmPathType | Iterable[CstmPathType]) -> bool:
+    def remove_path(self, root_dir: CstmPathType, path: CstmPathType | Iterable[CstmPathType]) -> bool:
         def remove_single(db: SqliteDict, path_single: CstmPathType) -> bool:
             try:
                 if path_single in db:
@@ -191,7 +191,7 @@ class MirrorDatabase:
             logger.warning(f'Could not open DB to remove file(s): {path} Exception: {e}')
             return False
 
-    def replace_path(self, root_dir: str, path: CstmPathType, new_path: CstmPathType):
+    def replace_path(self, root_dir: CstmPathType, path: CstmPathType, new_path: CstmPathType):
         """Remove path and add new_path to the database."""
         self.remove_path(root_dir, path)
         self.add_path(root_dir, new_path)

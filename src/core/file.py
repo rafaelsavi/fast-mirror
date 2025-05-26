@@ -211,6 +211,8 @@ class File:
 
     @property
     def same(self) -> bool:
+        if not self.in_both:
+            return False
         if self._same is None:
             raise CustomException('Comparison has not been performed yet.')
         return self._same

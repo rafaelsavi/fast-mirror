@@ -264,6 +264,7 @@ class CompareDirs:
                     'source': str(file.source) if file.source else '-',
                     'target': str(file.target) if file.target else '-',
                     'in both': 'X' if file.in_both else '',
+                    'same': 'X' if file.same else '',
                     'moved': 'X' if file.moved else '',
                     'modified': 'X' if file.in_both and file.modified else '',
                     'only source': 'X' if file.only_source else '',

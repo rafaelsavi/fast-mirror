@@ -2,10 +2,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Run main.pyw",
+            "name": "Python: Run launch.pyw",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}\\main.pyw",
+            "program": "${workspaceFolder}\\launch.pyw",
             "pythonPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
         }
     ]
