@@ -164,7 +164,7 @@ class MirrorDatabase:
                     number_files = len(path)
                     for i, path_single in enumerate(path):
                         add_single(db, path_single)
-                        log_progress(i, number_files, start_time, interval=10000)
+                        log_progress('Added', i, number_files, start_time, interval=10_000)
                 else:
                     add_single(db, path)
         except Exception as e:

@@ -112,7 +112,7 @@ class CompareDirs:
 
             if use_mirror and not mirror_exists:
                 logger.warning(
-                    f'Mirror does not exist for target directory <{dir_pair.target}>. Using file system instead'
+                    f'Mirror does not exist for target directory <{dir_pair.target}>. Using file system instead.'
                 )
 
             logger.info(f'Using file system to scan target directory <{dir_pair.target}>')
@@ -147,8 +147,9 @@ class CompareDirs:
             linked_files: list[File] = []
             target_rel_paths = {f.rel_to_root: f for f in files_in_target}
 
+            n_files = len(files_in_source)
             for i, source_file in enumerate(copy(files_in_source), 1):
-                log_progress(i, len(files_in_source), start_time, interval=10000)
+                log_progress('Linked', i, n_files, start_time, interval=10_000)
                 target_file = target_rel_paths.get(source_file.rel_to_root, None)
                 if target_file is not None:
                     linked_files.append(File(source=source_file, target=target_file))
@@ -173,8 +174,9 @@ class CompareDirs:
                 if target_name_counts[f.name] == 1 and source_name_counts.get(f.name, 0) == 1
             }
 
+            n_files = len(files_in_source)
             for i, source_file in enumerate(copy(files_in_source), 1):
-                log_progress(i, len(files_in_source), start_time, interval=10000)
+                log_progress('Linked', i, n_files, start_time, interval=10_000)
                 # Check if the file name exists in both source and target
                 if source_file.name in target_filenames:
                     target_file = target_filenames[source_file.name]
@@ -209,15 +211,15 @@ class CompareDirs:
     def compare_files(self):
         """Compare files that exist in both places and check for newer versions in the source"""
         files_in_both = [f for f in self.linked_files if f.in_both and not f.moved]
-        number_files = len(files_in_both)
-        if not number_files:
+        n_files = len(files_in_both)
+        if not n_files:
             logger.info('Not comparing any file since there are no files existing in both directories')
             return
 
         start_time = time.time()
-        logger.info(f'Comparing {number_files:,} files that exist in both directories')
+        logger.info(f'Comparing {n_files:,} files that exist in both directories')
         for i, file in enumerate(files_in_both):
-            log_progress(i, number_files, start_time, interval=1000)
+            log_progress('Compared', i, n_files, start_time, interval=1000)
             file.compare(self.comparison_method)
 
     def get_files_to_copy(self):
@@ -392,9 +394,8 @@ class SyncDirs:
                 dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.add_path(root_dir=dir_pair.target, path=target)
                 counter_size += size
-                log_progress(i, n_files, start_time, interval=10, speed_type='copy')
-                if i % 10 == 0:
-                    logger.debug(f'Avg. copy speed: {format_size(counter_size / (time.time() - start_time))}/s')
+                copy_speed = f'Avg. copy speed: {format_size(counter_size / (time.time() - start_time))}/s'
+                log_progress('Copied', i, n_files, start_time, interval=10, cstm_msg=copy_speed)
                 success = True
             except Exception as e:
                 error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
@@ -437,7 +438,7 @@ class SyncDirs:
                 os.remove(path)
                 dir_pair = get_dirs_from_path(path, self.dirs)
                 self.mirror.remove_path(root_dir=dir_pair.target, path=path)
-                log_progress(i, n_files, start_time, interval=10, speed_type='delete')
+                log_progress('Deleted', i, n_files, start_time, interval=10)
                 success = True
             except Exception as e:
                 error_msg = check_length(path)

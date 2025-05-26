@@ -79,22 +79,27 @@ def check_length(p):
     return f'File path of source and/or target is too long ({len(str(p))})' if len(str(p)) > 259 else ''
 
 
-def log_progress(progress: int, total: int | None, start_time: float, interval=1000, speed_type=''):
-    if speed_type:
-        speed_type += ' '
+def log_progress(
+    action: str, progress: int, total: int | None, start_time: float, interval=10000, cstm_msg: str | None = None
+):
+    if progress == 0 or progress % interval != 0:
+        return
 
-    if progress > 0 and progress % interval == 0:
-        speed_files_p_min = int(60 * progress / (time.time() - start_time))
-        msgs = []
-        if total is not None:
-            msgs.append(f'{progress:,} of {total:,} files so far.')
-        else:
-            msgs.append(f'{progress:,} files so far.')
+    if action:
+        action += ' '
+    total_str = f' of {total:,}' if total is not None else ''
 
-        msgs.append(f'Average {speed_type}speed: {speed_files_p_min:,} files/min.')
-        if total is not None:
-            msgs.append(f'ETL: {int((total - progress) / speed_files_p_min):,} min')
-        logger.debug(' '.join(msgs))
+    speed_files_p_min = int(60 * progress / (time.time() - start_time))
+    msgs = []
+    msgs.append(f'{action}{progress:,}{total_str} files so far.')
+    msgs.append(f'Average speed: {speed_files_p_min:,} files/min.')
+    if cstm_msg:
+        msgs.append(cstm_msg)
+
+    if total is not None:
+        msgs.append(f'ETL: {int((total - progress) / speed_files_p_min):,} min')
+
+    logger.debug(' '.join(msgs))
 
 
 def is_list_of_substr_in_str(l: list[str], s: str) -> bool:

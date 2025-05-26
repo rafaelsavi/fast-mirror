@@ -116,7 +116,7 @@ class CstmPath(Path):
                     abs_path = Path(root) / file
                     if not is_list_of_substr_in_str(exclude, str(abs_path)):
                         all_paths.add(CstmPath(abs_path, root_dir=dir_path))
-                        log_progress(len(all_paths), None, t1, interval=5000)
+                        log_progress('Scanned', len(all_paths), None, t1, interval=10_000)
         logger.info(f'Finished scanning {dir_path} with {len(all_paths):,} files in {format_elapsed_time(t1)}.')
         return all_paths
 
