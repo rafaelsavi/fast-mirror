@@ -148,7 +148,7 @@ class MirrorDatabase:
             logger.warning(f'Could not open DB to get keys {path}. Exception: {e}')
             return None
 
-    def add_path(self, root_dir: str, path: Iterable[CstmPathType] | CstmPathType):
+    def add_path(self, root_dir: CstmPathType, path: Iterable[CstmPathType] | CstmPathType):
         def add_single(db: SqliteDict, path_single: CstmPathType):
             try:
                 encoded_stats = get_encoded_stats(path_single)
