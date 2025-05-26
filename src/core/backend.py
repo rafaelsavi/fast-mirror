@@ -350,6 +350,7 @@ class SyncDirs:
             self.copy_files()
             self.move_files()
             self.delete_files()
+            self.delete_empty_dirs()
             logger.info('Finished synchronizing directories')
             self.print_errors()
         else:
@@ -445,16 +446,32 @@ class SyncDirs:
                 error_msg = e if error_msg == '' else error_msg
                 logger.error(f'There was an error while deleting file <{path}>. Exception: {error_msg}')
 
-            # If the folder of the deleted file is left empty, delete it
-            dir_name = os.path.dirname(path)
-            if success and len(os.listdir(dir_name)) == 0:
-                try:
-                    os.removedirs(dir_name)
-                    logger.info(f'Also removed empty directory <{dir_name}>')
-                except Exception as e:
-                    logger.info(f'Could not remove empty directory <{dir_name}>. Exception: {e}')
-
             self.files_deleted.append((path, success))
+
+    def delete_empty_dirs(self):
+        """Delete empty directories from folders where files were deleted or moved from"""
+        removed_files = [f for f, success in self.files_deleted if success] + [
+            f_source for (f_source, _), success in self.files_moved if success
+        ]
+        if not removed_files:
+            logger.info('No files were removed, so no empty directories to delete')
+            return
+
+        removed_dirs = set(os.path.dirname(f) for f in removed_files)
+        # Sort by length to remove subdirectories first
+        removed_dirs = sorted(removed_dirs, key=len, reverse=True)
+        logger.info('Deleting empty directories from folders where files were removed or moved from')
+
+        for dir_path in removed_dirs:
+            try:
+                if not os.path.exists(dir_path):
+                    logger.info(f'Directory <{dir_path}> does not exist, skipping')
+                    continue
+                if not os.listdir(dir_path):
+                    os.rmdir(dir_path)
+                    logger.info(f'Removed empty directory <{dir_path}>')
+            except Exception as e:
+                logger.error(f'Could not remove empty directory <{dir_path}>. Exception: {e}')
 
     def print_errors(self):
         failed_copy = [p for p, success in self.files_copied if not success]
