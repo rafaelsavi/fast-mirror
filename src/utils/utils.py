@@ -3,6 +3,7 @@ import os
 import time
 from collections.abc import Iterator
 from enum import Enum
+from os import PathLike
 
 from utils.logger import logger
 
@@ -108,3 +109,7 @@ def log_progress(progress: int, total: int | None, start_time: float, interval=1
 
 def is_list_of_substr_in_str(l: list[str], s: str) -> bool:
     return any(substr in s for substr in l)
+
+
+def sanitize_path(path: str | PathLike) -> str:
+    return str(path).replace('/', '\\')

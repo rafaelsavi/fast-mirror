@@ -1,4 +1,4 @@
-from copy import copy
+import datetime
 import filecmp
 import os
 import shutil
@@ -6,10 +6,10 @@ import stat
 import time
 import tkinter as tk
 import winsound
+from collections import Counter
+from copy import copy
 
 import pandas as pd
-from collections import Counter
-import datetime
 
 from core.file import CstmPath, CstmPathType, File, compare_files
 from core.mirror import MirrorDatabase
@@ -25,6 +25,7 @@ from utils.utils import (
     get_size,
     get_size_as_str,
     log_progress,
+    sanitize_path,
 )
 
 
@@ -601,12 +602,10 @@ class ActionSelection:
 
 def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> DirectoryPair:
     """Find the corresponding source and target directories for a given path."""
-
-    def uniform(p_: CstmPathType) -> str:
-        return str(p_).replace('/', '\\')
+    sanized_path = sanitize_path(path)
 
     for source, target in dirs:
-        if uniform(source) in uniform(path) or uniform(target) in uniform(path):
+        if sanitize_path(source) in sanized_path or sanitize_path(target) in sanized_path:
             return DirectoryPair(source, target)
     raise FileNotFoundError(f'Could not identify root folders of path <{path}>. Dirs: {dirs}')
 

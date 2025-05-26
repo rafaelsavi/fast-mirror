@@ -1,6 +1,7 @@
 import os
 import re
 import time
+from os import PathLike
 from collections.abc import Iterable
 
 from sqlitedict import SqliteDict
@@ -9,12 +10,9 @@ from core.file import CstmPathType, StatsHash, get_stats_hash
 from utils.constants import ROOT_DIR
 from utils.logger import logger
 from utils.utils import is_list_of_substr_in_str, log_progress
+from utils.utils import sanitize_path
 
 local_mirror_path = os.path.join(ROOT_DIR, 'local_mirror.db')
-
-
-def sanitize_path(path: str | CstmPathType) -> str:
-    return str(path).replace('/', '\\')
 
 
 class MirrorDatabase:
@@ -38,7 +36,7 @@ class MirrorDatabase:
             return False
         return True
 
-    def _generate_table_name(self, root_dir: CstmPathType) -> str:
+    def _generate_table_name(self, root_dir: PathLike) -> str:
         """
         Generate a table name based on root_dir and exclusions.
 
@@ -52,7 +50,7 @@ class MirrorDatabase:
         sanitized_exclusions = re.sub(allowed_pattern, '_', sanitized_exclusions)
         return f'{sanitized_root}__{sanitized_exclusions}'
 
-    def _get_db(self, root_dir: CstmPathType) -> SqliteDict:
+    def _get_db(self, root_dir: PathLike) -> SqliteDict:
         table_name = self._generate_table_name(root_dir)
         try:
             logger.debug(f'Accessing database table "{table_name}"')
@@ -60,7 +58,7 @@ class MirrorDatabase:
         except Exception as e:
             raise Exception(f'Could not access database table "{table_name}". Exception: {e}') from e
 
-    def exists_table(self, root_dir: CstmPathType) -> bool:
+    def exists_table(self, root_dir: PathLike) -> bool:
         """Check if the table for the given root_dir exists in the database and is not empty."""
         try:
             with self._get_db(root_dir) as db:
@@ -69,7 +67,7 @@ class MirrorDatabase:
             logger.warning(f'Could not check if table exists. Exception: {e}')
             return False
 
-    def exists(self, root_dir: CstmPathType, path: CstmPathType) -> bool:
+    def exists(self, root_dir: PathLike, path: CstmPathType) -> bool:
         """Check if the given path exists in the database for the specified root_dir."""
         try:
             with self._get_db(root_dir) as mirror_db:
@@ -78,7 +76,7 @@ class MirrorDatabase:
             logger.warning(f'Could not check if path exists. Exception: {e}')
             return False
 
-    def size(self, root_dir: CstmPathType) -> int:
+    def size(self, root_dir: PathLike) -> int:
         try:
             with self._get_db(root_dir) as mirror_db:
                 return len(mirror_db)
@@ -86,7 +84,7 @@ class MirrorDatabase:
             logger.warning(f'Could not get size of database. Exception: {e}')
             return 0
 
-    def reset(self, root_dir: CstmPathType) -> bool:
+    def reset(self, root_dir: PathLike) -> bool:
         """Reset the database for the given root_dir."""
         try:
             with self._get_db(root_dir) as db:
@@ -100,7 +98,7 @@ class MirrorDatabase:
             logger.warning(f'Could not reset database for <{root_dir}>. Exception: {e}')
             return False
 
-    def get_table_as_dict(self, root_dir: CstmPathType) -> dict[str, StatsHash]:
+    def get_table_as_dict(self, root_dir: PathLike) -> dict[str, StatsHash]:
         """Retrieve the entire table as a dictionary."""
         try:
             with self._get_db(root_dir) as db:
@@ -109,7 +107,7 @@ class MirrorDatabase:
             logger.warning(f'Could not open DB to get table. Exception: {e}')
             return {}
 
-    def get_paths(self, root_dir: CstmPathType) -> set[str]:
+    def get_paths(self, root_dir: PathLike) -> set[str]:
         try:
             with self._get_db(root_dir) as mirror_db:
                 keys = mirror_db.keys()
@@ -122,7 +120,7 @@ class MirrorDatabase:
             return set()
 
     def get_stat_hash(
-        self, root_dir: CstmPathType, path: CstmPathType | list[CstmPathType]
+        self, root_dir: PathLike, path: CstmPathType | list[CstmPathType]
     ) -> StatsHash | None | list[StatsHash | None]:
         """
         Retrieve the value(s) associated with the given path(s) from the database.
@@ -148,7 +146,7 @@ class MirrorDatabase:
             logger.warning(f'Could not open DB to get keys {path}. Exception: {e}')
             return None
 
-    def add_path(self, root_dir: CstmPathType, path: Iterable[CstmPathType] | CstmPathType):
+    def add_path(self, root_dir: PathLike, path: Iterable[CstmPathType] | CstmPathType):
         def add_single(db: SqliteDict, path_single: CstmPathType):
             try:
                 stats_hash = get_stats_hash(path_single)
@@ -169,7 +167,7 @@ class MirrorDatabase:
         except Exception as e:
             logger.critical(f'Could not open DB to add file(s): {path} Exception: {e}')
 
-    def remove_path(self, root_dir: CstmPathType, path: CstmPathType | Iterable[CstmPathType]) -> bool:
+    def remove_path(self, root_dir: PathLike, path: CstmPathType | Iterable[CstmPathType]) -> bool:
         def remove_single(db: SqliteDict, path_single: CstmPathType) -> bool:
             try:
                 if path_single in db:
@@ -191,7 +189,7 @@ class MirrorDatabase:
             logger.warning(f'Could not open DB to remove file(s): {path} Exception: {e}')
             return False
 
-    def replace_path(self, root_dir: CstmPathType, path: CstmPathType, new_path: CstmPathType):
+    def replace_path(self, root_dir: PathLike, path: CstmPathType, new_path: CstmPathType):
         """Remove path and add new_path to the database."""
         self.remove_path(root_dir, path)
         self.add_path(root_dir, new_path)

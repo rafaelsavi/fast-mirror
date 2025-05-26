@@ -6,7 +6,7 @@ from tkinter.scrolledtext import ScrolledText
 
 from gui.enums import TkinterCfgState
 from utils.logger import logger
-from utils.utils import DirectoryPair
+from utils.utils import DirectoryPair, sanitize_path
 
 
 class EntryTimes(ScrolledText):
@@ -48,7 +48,7 @@ class EntryExclusions(tk.Entry):
 
     def get(self, *args, **kwargs) -> list[str]:
         raw = self.var.get()
-        exclusions = list({x.strip().replace('/', '\\') for x in raw.split(',') if x.strip() != ''})
+        exclusions = list({sanitize_path(x.strip()) for x in raw.split(',') if x.strip() != ''})
         return exclusions
 
     def set(self, exclusions: list[str]):
