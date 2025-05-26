@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 import pytest
 from sqlitedict import SqliteDict
 
-from core.file import CstmPathType, StatHash
+from core.file import CstmPathType, StatsHash
 from core.mirror import MirrorDatabase
 
 

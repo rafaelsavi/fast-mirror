@@ -5,7 +5,7 @@ from collections.abc import Iterable
 
 from sqlitedict import SqliteDict
 
-from core.file import CstmPathType, StatHash, get_encoded_stats
+from core.file import CstmPathType, StatsHash, get_stats_hash
 from utils.constants import ROOT_DIR
 from utils.logger import logger
 from utils.utils import is_list_of_substr_in_str, log_progress
@@ -20,7 +20,7 @@ def sanitize_path(path: str | CstmPathType) -> str:
 class MirrorDatabase:
     """
     A class to manage a local mirror database using SQLite.
-    The database behaves like a dictionary, where keys are string paths and values are encoded stats as strings.
+    The database behaves like a dictionary, where keys are string paths and values are encoded stats (hash) as strings.
     """
 
     def __init__(self, path=local_mirror_path, exclusions: None | list[str] = None):
@@ -100,7 +100,7 @@ class MirrorDatabase:
             logger.warning(f'Could not reset database for <{root_dir}>. Exception: {e}')
             return False
 
-    def get_table_as_dict(self, root_dir: CstmPathType) -> dict[str, StatHash]:
+    def get_table_as_dict(self, root_dir: CstmPathType) -> dict[str, StatsHash]:
         """Retrieve the entire table as a dictionary."""
         try:
             with self._get_db(root_dir) as db:
@@ -123,7 +123,7 @@ class MirrorDatabase:
 
     def get_stat_hash(
         self, root_dir: CstmPathType, path: CstmPathType | list[CstmPathType]
-    ) -> StatHash | None | list[StatHash | None]:
+    ) -> StatsHash | None | list[StatsHash | None]:
         """
         Retrieve the value(s) associated with the given path(s) from the database.
 
@@ -132,7 +132,7 @@ class MirrorDatabase:
         :return: A single value, None, or a set of values/None for multiple paths.
         """
 
-        def get_single(db: SqliteDict, path_single: CstmPathType) -> StatHash | None:
+        def get_single(db: SqliteDict, path_single: CstmPathType) -> StatsHash | None:
             try:
                 return db[sanitize_path(path_single)]
             except KeyError:
@@ -151,8 +151,8 @@ class MirrorDatabase:
     def add_path(self, root_dir: CstmPathType, path: Iterable[CstmPathType] | CstmPathType):
         def add_single(db: SqliteDict, path_single: CstmPathType):
             try:
-                encoded_stats = get_encoded_stats(path_single)
-                db[sanitize_path(path_single)] = encoded_stats
+                stats_hash = get_stats_hash(path_single)
+                db[sanitize_path(path_single)] = stats_hash
             except Exception as e:
                 logger.error(f'Could not add file {path} to local mirror. Exception: {e}')
 

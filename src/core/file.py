@@ -19,43 +19,43 @@ from utils.utils import (
 )
 
 CstmPathType = Union[str, PathLike[str], 'CstmPath']
-StatHash = NewType('StatHash', str)
-StableStats = namedtuple('StableStats', ['st_size', 'st_mtime'])
+StatsHash = NewType('StatsHash', str)
+Stats = namedtuple('StableStats', ['st_size', 'st_mtime'])
 
 
 class CustomException(Exception):
     pass
 
 
-def _encode_stats(stats: StableStats) -> StatHash:
-    return StatHash(hashlib.blake2b(str(stats).encode(), digest_size=8).hexdigest())
+def _encode_stats(stats: Stats) -> StatsHash:
+    return StatsHash(hashlib.blake2b(str(stats).encode(), digest_size=8).hexdigest())
 
 
-def _get_stats(path: CstmPathType) -> StableStats:
+def _get_stats(path: CstmPathType) -> Stats:
     try:
         stats = os.stat(path)
     except Exception as e:
         # logger.warning(f'Could not get stats of {path}. Exception: {e}')
         raise e
 
-    stable_stats = StableStats(stats.st_size, stats.st_mtime)
+    stable_stats = Stats(stats.st_size, stats.st_mtime)
     return stable_stats
 
 
-def get_encoded_stats(path: CstmPathType) -> StatHash:
+def get_stats_hash(path: CstmPathType) -> StatsHash:
     return _encode_stats(_get_stats(path))
 
 
 class CstmPath(Path):
-    def __init__(self, *paths: CstmPathType, root_dir: CstmPathType | None = None):
+    def __init__(self, *paths: CstmPathType, root_dir: CstmPathType | None = None, stats_hash: StatsHash | None = None):
         super().__init__(*paths)
         self.root_dir = Path(root_dir) if root_dir else None
         self._rel_to_root = Path(self).relative_to(self.root_dir) if self.root_dir else None
 
         if self.root_dir and self.root_dir not in self.parents:
             raise CustomException(f'Root directory {self.root_dir} is not a parent of {self}')
-        self._stats: None | StableStats = None  # Cached stats
-        self._encoded_stats: None | StatHash = None  # Cached encoded stats
+        self._stats: Stats | None = None  # Cached stats
+        self._stats_hash: StatsHash | None = stats_hash  # Cached encoded stats
 
     def check_length(self) -> str:
         return f'File path is too long ({len(str(self))}): {self}' if len(str(self)) > 255 else ''
@@ -65,7 +65,7 @@ class CstmPath(Path):
         return str(self._rel_to_root)
 
     @property
-    def stats(self) -> StableStats:
+    def stats(self) -> Stats:
         if self._stats is None:
             try:
                 self._stats = _get_stats(self)
@@ -75,10 +75,10 @@ class CstmPath(Path):
         return self._stats
 
     @property
-    def encoded_stats(self) -> StatHash:
-        if self._encoded_stats is None:
-            self._encoded_stats = _encode_stats(self.stats)
-        return self._encoded_stats
+    def stats_hash(self) -> StatsHash:
+        if self._stats_hash is None:
+            self._stats_hash = _encode_stats(self.stats)
+        return self._stats_hash
 
     def get_st_size(self, as_str=False) -> str | int:
         size_ = self.stats.st_size
@@ -251,7 +251,7 @@ def compare_files(
 
     try:
         if comparison_method == CompareMethod.METADATA:
-            same = f1.stats == f2.stats
+            same = f1.stats_hash == f2.stats_hash
         elif comparison_method == CompareMethod.CONTENT:
             same = filecmp.cmp(f1, f2, False)
         else:
