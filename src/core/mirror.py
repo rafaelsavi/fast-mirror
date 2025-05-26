@@ -52,7 +52,7 @@ class MirrorDatabase:
     def _get_db(self, root_dir: str | PathLike[str]) -> SqliteDict:
         table_name = self._generate_table_name(root_dir)
         try:
-            logger.debug(f'Accessing database table "{table_name}"')
+            # logger.debug(f'Accessing database table "{table_name}"')
             return SqliteDict(self.path, tablename=table_name, autocommit=True)
         except Exception as e:
             raise Exception(f'Could not access database table "{table_name}". Exception: {e}') from e
