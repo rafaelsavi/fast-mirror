@@ -6,11 +6,10 @@ from collections.abc import Iterable
 
 from sqlitedict import SqliteDict
 
-from core.file import CstmPathType, StatsHash, get_stats_hash
+from core.file import CstmPath, CstmPathType, StatsHash, get_stats_hash
 from utils.constants import ROOT_DIR
 from utils.logger import logger
-from utils.utils import is_list_of_substr_in_str, log_progress
-from utils.utils import sanitize_path
+from utils.utils import log_progress, sanitize_path
 
 local_mirror_path = os.path.join(ROOT_DIR, 'local_mirror.db')
 
@@ -71,7 +70,7 @@ class MirrorDatabase:
         """Check if the given path exists in the database for the specified root_dir."""
         try:
             with self._get_db(root_dir) as mirror_db:
-                return sanitize_path(path) in mirror_db
+                return sanitize_path(path) in mirror_db.keys()
         except Exception as e:
             logger.warning(f'Could not check if path exists. Exception: {e}')
             return False
@@ -107,14 +106,18 @@ class MirrorDatabase:
             logger.warning(f'Could not open DB to get table. Exception: {e}')
             return {}
 
-    def get_paths(self, root_dir: str | PathLike[str]) -> set[str]:
+    def get_paths(self, root_dir: str | PathLike[str]) -> set[CstmPath]:
         try:
             with self._get_db(root_dir) as mirror_db:
-                keys = mirror_db.keys()
-                if self.exclusions is not None:
-                    return {k for k in keys if not is_list_of_substr_in_str(self.exclusions, k)}
-                else:
-                    return set(keys)
+                paths = {
+                    CstmPath(
+                        path,
+                        root_dir=root_dir,
+                        stats_hash=stats_hash,
+                    )
+                    for path, stats_hash in mirror_db.items()
+                }
+                return paths
         except Exception as e:
             logger.warning(f'Could not open DB to get keys. Exception: {e}')
             return set()

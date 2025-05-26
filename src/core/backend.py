@@ -107,9 +107,7 @@ class CompareDirs:
                 logger.info(
                     f'Using mirror for <{dir_pair.target}>. Table has {self.mirror.size(dir_pair.target):,} entries'
                 )
-                self.files_in_target[dir_pair.target] = {
-                    CstmPath(p, root_dir=dir_pair.target) for p in self.mirror.get_paths(root_dir=dir_pair.target)
-                }
+                self.files_in_target[dir_pair.target] = self.mirror.get_paths(root_dir=dir_pair.target)
                 continue
 
             if use_mirror and not mirror_exists:
