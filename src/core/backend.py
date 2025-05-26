@@ -193,7 +193,7 @@ class CompareDirs:
 
             ################################
             logger.info('Searching for files that exist only in source directory')
-            linked_files: list[File] = [
+            linked_files = [
                 File(source=source_file, target=None, missing_target_root_dir=dir_pair.target)
                 for source_file in files_in_source
             ]
@@ -202,7 +202,7 @@ class CompareDirs:
 
             ################################
             logger.info('Searching for files that exist only in target directory')
-            linked_files: list[File] = [File(source=None, target=target_file) for target_file in files_in_target]
+            linked_files = [File(source=None, target=target_file) for target_file in files_in_target]
             logger.info(f'Found {len(linked_files):,} files that exist only in target directory')
             self.linked_files += linked_files
 
@@ -219,7 +219,7 @@ class CompareDirs:
         start_time = time.time()
         logger.info(f'Comparing {n_files:,} files that exist in both directories')
         for i, file in enumerate(files_in_both):
-            log_progress('Compared', i, n_files, start_time, interval=1000)
+            log_progress('Compared', i, n_files, start_time, interval=5_000)
             file.compare(self.comparison_method)
 
     def get_files_to_copy(self):
@@ -382,8 +382,8 @@ class SyncDirs:
 
     def copy_files(self):
         n_files = len(self.files_requested_to_copy)
-        counter_size = 0
         start_time = time.time()
+        counter_size = 0
 
         for i, (source, target) in enumerate(self.files_requested_to_copy, 1):
             success = False
@@ -407,7 +407,7 @@ class SyncDirs:
 
     def move_files(self):
         n_files = len(self.files_requested_to_move)
-        t1 = time.time()
+        start_time = time.time()
 
         for i, (source, target) in enumerate(self.files_requested_to_move, 1):
             success = False
@@ -417,8 +417,7 @@ class SyncDirs:
                 shutil.move(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
-                if i % 10 == 0:
-                    logger.debug(f'Avg. move speed: {int(60 * i / (time.time() - t1)):,} files/min')
+                log_progress('Moved', i, n_files, start_time, interval=1000)
                 success = True
             except Exception as e:
                 error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
@@ -478,13 +477,13 @@ class SyncDirs:
         if failed_copy:
             logger.warning(
                 'Summary of files that failed to be copied:\n    '
-                + '\n    '.join([f'<{s}> -> <{d}>' for s, d in failed_copy])
+                + '\n    '.join([f'<{s}> -> <{t}>' for s, t in failed_copy])
             )
         failed_move = [p for p, success in self.files_moved if not success]
         if failed_move:
             logger.warning(
                 'Summary of files that failed to be moved:\n    '
-                + '\n    '.join([f'<{s}> -> <{d}>' for s, d in failed_move])
+                + '\n    '.join([f'<{s}> -> <{t}>' for s, t in failed_move])
             )
         failed_delete = [p for p, success in self.files_deleted if not success]
         if failed_delete:

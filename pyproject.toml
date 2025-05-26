@@ -9,6 +9,7 @@ dependencies = [
     "ipykernel",
     "ruff",
     "pytest",
+    "mypy",
 ]
 
 [build-system]
