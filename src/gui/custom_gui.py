@@ -126,9 +126,9 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                 values = self.get_row(*args)
                 self._data[action_str][f'{action_str}::{values["source"]}::{values["target"]}'] = values
 
-        for action, rows in self._data.items():
-            tag = 'checked' if action in default_active else 'unchecked'
-            group_item = self.insert(parent='', index='end', iid=action, text=action, tags=(tag,))
+        for action_str, rows in self._data.items():
+            tag = 'checked' if action_str in default_active else 'unchecked'
+            group_item = self.insert(parent='', index='end', iid=action_str, text=action_str, tags=(tag,))
             for key, row in rows.items():
                 self.insert(
                     parent=group_item,
