@@ -8,19 +8,20 @@ from os import PathLike
 from pathlib import Path
 from typing import NewType, Union
 
+import pathspec
+
 from utils.logger import logger
 from utils.utils import (
     CompareMethod,
     check_length,
     format_elapsed_time,
     format_size,
-    is_list_of_substr_in_str,
     log_progress,
 )
 
 CstmPathType = Union[str, PathLike[str], 'CstmPath']
 StatsHash = NewType('StatsHash', str)
-Stats = namedtuple('StableStats', ['st_size', 'st_mtime'])
+Stats = namedtuple('Stats', ['st_size', 'st_mtime'])
 
 
 class CustomException(Exception):
@@ -105,19 +106,27 @@ class CstmPath(Path):
         else:
             return datetime.datetime.fromtimestamp(timestamp).strftime('%Y/%m/%d %H:%M:%S')
 
-    @classmethod
-    def get_from_dir(cls, dir_path: CstmPathType, exclude: list[str]) -> set['CstmPath']:
+    @staticmethod
+    def get_from_dir(dir_path: CstmPathType, exclude: list[str]) -> set['CstmPath']:
         logger.info(f'Scanning files from {dir_path}. This may take a while')
+        spec = pathspec.PathSpec.from_lines('gitwildmatch', exclude)
         all_paths = set()
-        t1 = time.time()
-        for root, _dirs, files in os.walk(dir_path):
-            if not is_list_of_substr_in_str(exclude, root):
-                for file in files:
-                    abs_path = Path(root) / file
-                    if not is_list_of_substr_in_str(exclude, str(abs_path)):
-                        all_paths.add(CstmPath(abs_path, root_dir=dir_path))
-                        log_progress('Scanned', len(all_paths), None, t1, interval=10_000)
-        logger.info(f'Finished scanning {dir_path} with {len(all_paths):,} files in {format_elapsed_time(t1)}.')
+        start_time = time.time()
+
+        for root, dirs, files in os.walk(dir_path):
+            rel_root = Path(root).relative_to(dir_path)
+
+            # Improve walk efficiency prune in-place directories that match ignore patterns
+            dirs[:] = [d for d in dirs if not spec.match_file(str(rel_root / d))]
+
+            for f in files:
+                rel_path = rel_root / f
+                if not spec.match_file(str(rel_path)):
+                    full_path = Path(root) / f
+                    all_paths.add(CstmPath(full_path, root_dir=dir_path))
+                    log_progress('Scanned', len(all_paths), None, start_time, interval=10_000)
+
+        logger.info(f'Finished scanning {dir_path} with {len(all_paths):,} files in {format_elapsed_time(start_time)}.')
         return all_paths
 
     def __truediv__(self, other: CstmPathType) -> 'CstmPath':

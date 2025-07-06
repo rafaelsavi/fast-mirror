@@ -102,9 +102,5 @@ def log_progress(
     logger.debug(' '.join(msgs))
 
 
-def is_list_of_substr_in_str(l: list[str], s: str) -> bool:
-    return any(substr in s for substr in l)
-
-
 def sanitize_path(path: str | PathLike) -> str:
     return str(path).replace('/', '\\')
