@@ -63,7 +63,7 @@ class EntryExclusions(tk.Entry):
         self.var.set(raw)
 
     def reset(self):
-        self.set([r'D:\$RECYCLE.BIN', r'\~$'])
+        self.set(['$RECYCLE.BIN', r'\~$'])
 
 
 class EntryTimes(ScrolledText):
@@ -71,8 +71,7 @@ class EntryTimes(ScrolledText):
         super().__init__(*args, **kwargs)
 
     def get(self, *args, **kwargs):
-        raw: str
-        raw = super().get('1.0', tk.END)
+        raw: str = super().get('1.0', tk.END)
         times = raw.splitlines()
         times = list(sorted([t for t in times if self.is_hh_mm(t)]))
         return times

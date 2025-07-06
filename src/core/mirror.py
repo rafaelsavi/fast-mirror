@@ -1,8 +1,8 @@
 import os
 import re
 import time
-from os import PathLike
 from collections.abc import Iterable
+from os import PathLike
 
 from sqlitedict import SqliteDict
 
