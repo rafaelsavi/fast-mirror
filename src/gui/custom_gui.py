@@ -109,7 +109,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             selected_number = len(selected_lines)
             size_list = [self._data[Action.from_str(action_str)][x]['size in bytes'] for x in selected_lines]
             if not all(isinstance(size, int | float) for size in size_list):
-                raise TypeError('All elements in size_list must be floats.')
+                raise TypeError('All elements in size_list must be numbers')
             selected_size = format_size(sum(size_list))  # type: ignore
             # Update group item
             self.item(action_str, text=f'{action_str} {selected_size} ({selected_number} of {n_children})')

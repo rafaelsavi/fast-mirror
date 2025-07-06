@@ -389,14 +389,14 @@ class SyncDirs:
             success = False
             try:
                 size = get_size(source)
-                logger.info(f'Copying file {i:,} of {n_files:,}: <{source}> -> <{target}> ({format_size(size)})')
+                logger.debug(f'Copying file {i:,} of {n_files:,}: <{source}> -> <{target}> ({format_size(size)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copy2(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.add_path(root_dir=dir_pair.target, path=target)
                 counter_size += size
                 copy_speed = f'Avg. copy speed: {format_size(counter_size / (time.time() - start_time))}/s'
-                log_progress('Copied', i, n_files, start_time, interval=10, cstm_msg=copy_speed)
+                log_progress('Copied', i, n_files, start_time, interval=100, cstm_msg=copy_speed)
                 success = True
             except Exception as e:
                 error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
@@ -412,7 +412,7 @@ class SyncDirs:
         for i, (source, target) in enumerate(self.files_requested_to_move, 1):
             success = False
             try:
-                logger.info(f'Moving file {i:,} of {n_files:,}: <{source}> -> <{target}> ({get_size_as_str(source)})')
+                logger.debug(f'Moving file {i:,} of {n_files:,}: <{source}> -> <{target}> ({get_size_as_str(source)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.move(source, target)
                 dir_pair = get_dirs_from_path(target, self.dirs)
@@ -433,12 +433,12 @@ class SyncDirs:
         for i, path in enumerate(self.files_requested_to_delete, 1):
             success = False
             try:
-                logger.info(f'Deleting file {i:,} of {n_files:,}: <{path}> ({get_size_as_str(path)})')
+                logger.debug(f'Deleting file {i:,} of {n_files:,}: <{path}> ({get_size_as_str(path)})')
                 os.chmod(path, stat.S_IWRITE)
                 os.remove(path)
                 dir_pair = get_dirs_from_path(path, self.dirs)
                 self.mirror.remove_path(root_dir=dir_pair.target, path=path)
-                log_progress('Deleted', i, n_files, start_time, interval=10)
+                log_progress('Deleted', i, n_files, start_time, interval=1000)
                 success = True
             except Exception as e:
                 error_msg = check_length(path)
@@ -464,10 +464,10 @@ class SyncDirs:
         for dir_path in relevant_dirs:
             try:
                 if not os.path.exists(dir_path):
-                    logger.info(f'Directory <{dir_path}> does not exist, skipping')
+                    logger.info(f'Directory <{dir_path}> does not exist anymore, skipping')
                     continue
                 if not os.listdir(dir_path):
-                    os.rmdir(dir_path)
+                    os.removedirs(dir_path)
                     logger.info(f'Removed empty directory <{dir_path}>')
             except Exception as e:
                 logger.error(f'Could not remove empty directory <{dir_path}>. Exception: {e}')
