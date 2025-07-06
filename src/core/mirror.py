@@ -70,7 +70,7 @@ class MirrorDatabase:
         """Check if the given path exists in the database for the specified root_dir."""
         try:
             with self._get_db(root_dir) as mirror_db:
-                return sanitize_path(path) in mirror_db.keys()
+                return sanitize_path(path) in mirror_db.keys()  # noqa: SIM118
         except Exception as e:
             logger.warning(f'Could not check if path exists. Exception: {e}')
             return False
