@@ -109,7 +109,8 @@ class CstmPath(Path):
     @staticmethod
     def get_from_dir(dir_path: CstmPathType, exclude: list[str]) -> set['CstmPath']:
         logger.info(f'Scanning files from {dir_path}. This may take a while')
-        spec = pathspec.PathSpec.from_lines('gitwildmatch', exclude)
+        # pathspec needs frontslashes
+        spec = pathspec.PathSpec.from_lines('gitwildmatch', map(lambda x: x.replace('\\', '/'), exclude))
         all_paths = set()
         start_time = time.time()
 
