@@ -319,6 +319,7 @@ class SyncDirs:
         dirs: list[DirectoryPair],
         default_actions: list[Action] | None = None,
         increment_mirror=True,
+        confirm_sync=True,
     ):
         logger.info('---------------------------')
         logger.info('Initializing synchronization')
@@ -345,16 +346,20 @@ class SyncDirs:
             logger.info('No files to synchronize')
             return
 
-        # Confirm actions
-        if self.open_confirmation_popup():
-            self.copy_files()
-            self.move_files()
-            self.delete_files()
-            self.delete_empty_dirs()
-            logger.info('Finished synchronizing directories')
-            self.print_errors()
+        if confirm_sync:
+            if not self.open_confirmation_popup():
+                logger.warning('Popup did not end well')
         else:
-            logger.warning('Popup did not end well')
+            self.files_requested_to_copy = [(str(f1), str(f2)) for f1, f2 in self.files_available_to_copy]
+            self.files_requested_to_move = [(str(f1), str(f2)) for f1, f2 in self.files_available_to_move]
+            self.files_requested_to_delete = [str(f) for f in self.files_available_to_delete]
+
+        self.copy_files()
+        self.move_files()
+        self.delete_files()
+        self.delete_empty_dirs()
+        logger.info('Finished synchronizing directories')
+        self.print_errors()
 
     def open_confirmation_popup(self):
         popup = ActionSelection(
@@ -366,7 +371,7 @@ class SyncDirs:
         )
 
         time_init = time.time()
-        while (time.time() - time_init) < 7200:
+        while (time.time() - time_init) < 20 * 3600:  # 20h
             if popup.finished:
                 self.files_requested_to_copy, self.files_requested_to_move, self.files_requested_to_delete = (
                     popup.get_outputs()
@@ -516,7 +521,7 @@ class ActionSelection:
         # Configure timer
         self.is_timer_active = True
         self.init_time = 0  # Filled in create_widgets
-        self.countdown_size = 1200
+        self.countdown_size = 12 * 3600  # 12h
 
         # Configure gui
         self.popup = tk.Toplevel(self.root_gui)

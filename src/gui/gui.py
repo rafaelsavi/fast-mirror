@@ -41,6 +41,7 @@ class Gui:
     def __init__(self):
         # Initialize GUI
         self.root = TrayableTk()
+        self.root.resizable(False, False)
         self.root.iconbitmap(os.path.join(os.path.dirname(__file__), 'smiley.ico'))
         self.root.title('Automatic Backup Tool')
 
@@ -57,6 +58,7 @@ class Gui:
         self.checkbox_var_use_mirror = tk.BooleanVar()
         self.checkbox_var_build_mirror = tk.BooleanVar()
         self.checkbox_var_metadata_comparison = tk.BooleanVar()
+        self.checkbox_var_confirm_sync = tk.BooleanVar()
         self.checkbox_var_save_report = tk.BooleanVar()
         self.text_var_status = tk.StringVar()
         self.text_var_next_appointment = tk.StringVar()
@@ -295,6 +297,11 @@ class Gui:
         )
         checkbox_metadata_comparison.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
+        checkbox_confirm_sync = tk.Checkbutton(
+            self.frame_buttons, text='Request confirmation before sync', variable=self.checkbox_var_confirm_sync
+        )
+        checkbox_confirm_sync.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
+        # ---
         label_default_actions = tk.Label(self.frame_buttons, text='Default actions')
         label_default_actions.grid(row=row_counter.get(increment=True), column=0, sticky='w')
         # ---
@@ -380,7 +387,7 @@ class Gui:
         frame_log = tk.Frame(self.root)
         frame_log.grid(row=1, column=1, sticky='nsw', padx=10, pady=10)
 
-        self.text_logger = TextLogger(frame_log, state=TkinterCfgState.DISABLED.value, height=32, width=140)
+        self.text_logger = TextLogger(frame_log, state=TkinterCfgState.DISABLED.value, height=33, width=140)
         self.text_logger.set_log_levels(self.log_levels.get())
         self.text_logger.grid(row=0, column=0, sticky='nsew')
 
@@ -582,6 +589,7 @@ class Gui:
                 dirs=self.entry_paths.get_as_dir_pairs(),
                 default_actions=default_actions,
                 increment_mirror=not self.checkbox_var_build_mirror.get(),
+                confirm_sync=self.checkbox_var_confirm_sync.get(),
             )
 
         logger.debug('Processing thread was properly closed')
