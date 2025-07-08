@@ -604,11 +604,23 @@ class ActionSelection:
             self.popup.after(1000, self.check_countdown)
 
     def create_table(self):
-        # Create blank widget
-        self.tree = CustomCheckboxTreeView(self.popup, height=30)
-        self.tree.grid(row=1, column=0, sticky='nsew')
+        # Create a frame to hold the treeview and scrollbar
+        frame_table = tk.Frame(self.popup)
+        frame_table.grid(row=1, column=0, sticky='nsew')
         self.popup.grid_rowconfigure(1, weight=1)
         self.popup.grid_columnconfigure(0, weight=1)
+        frame_table.grid_rowconfigure(0, weight=1)
+        frame_table.grid_columnconfigure(0, weight=1)
+
+        # Create the treeview
+        self.tree = CustomCheckboxTreeView(frame_table, height=30)
+        self.tree.grid(row=0, column=0, sticky='nsew')
+
+        # Add vertical scrollbar
+        vscroll = tk.Scrollbar(frame_table, orient='vertical', command=self.tree.yview)
+        vscroll.grid(row=0, column=1, sticky='ns')
+        self.tree.configure(yscrollcommand=vscroll.set)
+
         self.tree.add_file_lists(
             {
                 Action.COPY: self.files_available_to_copy,
@@ -620,7 +632,6 @@ class ActionSelection:
 
         # Display widget
         self.tree.refresh_group_stats()
-        self.tree.grid(row=1, column=0, sticky='wens')
 
     def get_outputs(self):
         return self.files_requested_to_copy, self.files_requested_to_move, self.files_requested_to_delete
