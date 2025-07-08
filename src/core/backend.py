@@ -67,6 +67,7 @@ class CompareDirs:
         self.scan_target_files(use_mirror, increment_mirror, rebuild_mirror)
         self.link_files()
         self.compare_files()
+        self.remove_compare_failures()
 
         self.get_files_to_copy()
         self.get_files_to_move()
@@ -221,6 +222,16 @@ class CompareDirs:
         for i, file in enumerate(files_in_both):
             log_progress('Compared', i, n_files, start_time, interval=5_000)
             file.compare(self.comparison_method)
+
+    def remove_compare_failures(self):
+        """
+        After all files existing in both are compared, some comparisons failed.
+        Remove such files from the repository
+        """
+        failed_files = [f for f in self.linked_files if f.in_both and f.compare_error]
+        if failed_files:
+            logger.info(f'Removing {len(failed_files):,} files with compare errors from linked_files')
+            self.linked_files = [f for f in self.linked_files if not (f.in_both and f.compare_error)]
 
     def get_files_to_copy(self):
         """
