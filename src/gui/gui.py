@@ -416,6 +416,7 @@ class Gui:
                 self.checkbox_var_use_mirror,
                 self.checkbox_var_build_mirror,
                 self.checkbox_var_metadata_comparison,
+                self.checkbox_var_confirm_sync,
                 self.checkbox_var_save_report,
             ]:
                 checkbox.set(False)
@@ -442,6 +443,7 @@ class Gui:
                 'checkbox_var_use_mirror',
                 'checkbox_var_build_mirror',
                 'checkbox_var_metadata_comparison',
+                'checkbox_var_confirm_sync',
                 'checkbox_var_save_report',
             ]
             config_vars = {name: getattr(self, name).get() for name in config_var_names}
