@@ -525,6 +525,9 @@ class ActionSelection:
 
         # Configure gui
         self.popup = tk.Toplevel(self.root_gui)
+        self.popup.resizable(True, True)
+        self.popup.grid_rowconfigure(1, weight=1)
+        self.popup.grid_columnconfigure(0, weight=1)
         self.popup.protocol('WM_DELETE_WINDOW', self.button_cancel_click)
         self.create_widgets()
 
@@ -603,6 +606,9 @@ class ActionSelection:
     def create_table(self):
         # Create blank widget
         self.tree = CustomCheckboxTreeView(self.popup, height=30)
+        self.tree.grid(row=1, column=0, sticky='nsew')
+        self.popup.grid_rowconfigure(1, weight=1)
+        self.popup.grid_columnconfigure(0, weight=1)
         self.tree.add_file_lists(
             {
                 Action.COPY: self.files_available_to_copy,
