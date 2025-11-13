@@ -361,9 +361,12 @@ class SyncDirs:
             if not self.open_confirmation_popup():
                 logger.warning('Popup did not end well')
         else:
-            self.files_requested_to_copy = [(str(f1), str(f2)) for f1, f2 in self.files_available_to_copy]
-            self.files_requested_to_move = [(str(f1), str(f2)) for f1, f2 in self.files_available_to_move]
-            self.files_requested_to_delete = [str(f) for f in self.files_available_to_delete]
+            if Action.COPY in self.default_actions:
+                self.files_requested_to_copy = [(str(f1), str(f2)) for f1, f2 in self.files_available_to_copy]
+            if Action.MOVE in self.default_actions:
+                self.files_requested_to_move = [(str(f1), str(f2)) for f1, f2 in self.files_available_to_move]
+            if Action.DELETE in self.default_actions:
+                self.files_requested_to_delete = [str(f) for f in self.files_available_to_delete]
 
         self.copy_files()
         self.move_files()

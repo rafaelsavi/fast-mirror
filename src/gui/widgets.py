@@ -120,19 +120,24 @@ class Action(Enum):
 class DefaultActions:
     def __init__(self):
         self._data: dict[Action, bool] = {k: False for k in Action.get_options()}
-        self._tkinter_vars = {k: tk.BooleanVar() for k in Action.get_options()}
+        self._tkinter_vars: dict[Action, tk.BooleanVar] = {k: tk.BooleanVar() for k in Action.get_options()}
         self.reset()
 
     def get(self) -> list[str]:
-        return [k.value for k, v in self._data.items() if v]
+        return [k.value for k, v in self._data.items() if self.get_var_value(k)]
 
     def get_as_actions(self) -> list[Action]:
-        return [k for k, v in self._data.items() if v]
+        return [k for k, v in self._data.items() if self.get_var_value(k)]
 
     def get_var(self, k: Action | str) -> tk.BooleanVar:
         if isinstance(k, str):
             k = Action.from_str(k)
         return self._tkinter_vars[k]
+
+    def get_var_value(self, k: Action | str) -> bool:
+        if isinstance(k, str):
+            k = Action.from_str(k)
+        return self._tkinter_vars[k].get()
 
     def set(self, values: list[Action | str]):
         if not isinstance(values, list):
