@@ -99,7 +99,7 @@ def log_progress(
     if total is not None:
         msgs.append(f'ETL: {int((total - progress) / speed_files_p_min):,} min')
 
-    logger.debug(' '.join(msgs))
+    logger.info(' '.join(msgs))
 
 
 def sanitize_path(path: str | PathLike) -> str:
