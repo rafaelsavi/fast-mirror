@@ -275,16 +275,29 @@ class CompareDirs:
                 {
                     'source': str(file.source) if file.source else '-',
                     'target': str(file.target) if file.target else '-',
+                    'ext': file.source.suffix.lower()
+                    if file.source
+                    else file.target.suffix.lower()
+                    if file.target
+                    else '',
                     'in both': 'X' if file.in_both else '',
                     'same': 'X' if file.same else '',
                     'moved': 'X' if file.moved else '',
                     'modified': 'X' if file.in_both and file.modified else '',
                     'only source': 'X' if file.only_source else '',
                     'only target': 'X' if file.only_target else '',
-                    'size (source)': file.source.get_st_size(as_str=True) if file.source else '',
-                    'size (target)': file.target.get_st_size(as_str=True) if file.target else '',
-                    'modified (source)': file.source.get_st_mtime(as_date_str=True) if file.source else '',
-                    'modified (target)': file.target.get_st_mtime(as_date_str=True) if file.target else '',
+                    'size (source)': file.source.get_st_size(as_str=True)
+                    if file.source is not None and file.source.exists()
+                    else '',
+                    'size (target)': file.target.get_st_size(as_str=True)
+                    if file.target is not None and file.target.exists()
+                    else '',
+                    'modified (source)': file.source.get_st_mtime(as_date_str=True)
+                    if file.source is not None and file.source.exists()
+                    else '',
+                    'modified (target)': file.target.get_st_mtime(as_date_str=True)
+                    if file.target is not None and file.target.exists()
+                    else '',
                     'compare error': file.compare_error,
                 }
                 for file in self.linked_files
