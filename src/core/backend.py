@@ -1,3 +1,4 @@
+import ctypes
 import datetime
 import filecmp
 import os
@@ -267,7 +268,7 @@ class CompareDirs:
         self.files_to_delete = list(sorted([f.target for f in self.linked_files if f.only_target]))
 
     def _save_report(self):
-        logger.info('Loading data to create comparison report')
+        logger.info('Loading data to create comparison report (ignoring files in both that are the same)')
 
         # Load all linked files and store as a dataframe where columns are file attributes
         df = pd.DataFrame(
@@ -301,6 +302,7 @@ class CompareDirs:
                     'compare error': file.compare_error,
                 }
                 for file in self.linked_files
+                if not (file.in_both and not file.moved and file.same)  # Ignore all same files
             ]
         )
 
@@ -423,7 +425,23 @@ class SyncDirs:
                 size = get_size(source)
                 logger.debug(f'Copying file {i:,} of {n_files:,}: <{source}> -> <{target}> ({format_size(size)})')
                 os.makedirs(os.path.dirname(target), exist_ok=True)
-                shutil.copy2(source, target)
+                try:
+                    shutil.copy2(source, target)
+                except PermissionError:
+                    logger.warning(
+                        f'There was a permission error while copying file <{source}>. '
+                        'Attempting to unlock target file and try again.'
+                    )
+                    FILE_ATTRIBUTE_NORMAL = 0x80
+
+                    # Clear read‑only / locked attributes
+                    res = ctypes.windll.kernel32.SetFileAttributesW(str(target), FILE_ATTRIBUTE_NORMAL)
+                    if res == 0:
+                        logger.warning(
+                            f'Windows refused to change attributes on <{target}>. Proceeding with new copy attempt anyway.'
+                        )
+                    shutil.copy2(source, target)
+
                 dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.add_path(root_dir=dir_pair.target, path=target)
                 counter_size += size
@@ -463,19 +481,26 @@ class SyncDirs:
         start_time = time.time()
 
         for i, path in enumerate(self.files_requested_to_delete, 1):
-            success = False
-            try:
-                logger.debug(f'Deleting file {i:,} of {n_files:,}: <{path}> ({get_size_as_str(path)})')
-                os.chmod(path, stat.S_IWRITE)
-                os.remove(path)
+            logger.debug(f'Deleting file {i:,} of {n_files:,}: <{path}> ({get_size_as_str(path)})')
+
+            if not os.path.isfile(path):
+                success = True
+                logger.warning(f'Skipping deletion of file because it is already missing: <{path}>')
+            else:
+                success = False
+                try:
+                    os.chmod(path, stat.S_IWRITE)
+                    os.remove(path)
+                    success = True
+                except Exception as e:
+                    error_msg = check_length(path)
+                    error_msg = e if error_msg == '' else error_msg
+                    logger.error(f'There was an error while deleting file <{path}>. Exception: {error_msg}')
+
+            if success:
+                log_progress('Deleted', i, n_files, start_time, interval=1000)
                 dir_pair = get_dirs_from_path(path, self.dirs)
                 self.mirror.remove_path(root_dir=dir_pair.target, path=path)
-                log_progress('Deleted', i, n_files, start_time, interval=1000)
-                success = True
-            except Exception as e:
-                error_msg = check_length(path)
-                error_msg = e if error_msg == '' else error_msg
-                logger.error(f'There was an error while deleting file <{path}>. Exception: {error_msg}')
 
             self.files_deleted.append((path, success))
 
