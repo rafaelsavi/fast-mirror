@@ -20,4 +20,5 @@ Please refer to the detailed guidelines and modular rules in [`.agents/`](file:/
 2. **Never perform blocking network I/O (`os.path.realpath`, `Path.resolve`) during path comparisons**.
 3. **Tkinter is single-threaded**: Dispatch all UI updates from background threads via `root_gui.after(0, callback)`.
 4. **Always close SQLite connections on Windows** using `contextlib.closing(sqlite3.connect(...))` to prevent `WinError 32` file locks.
-5. **Always verify changes** with `uv run pytest` and `uv run ruff check .`.
+5. **Never write test or agent logs to production `logs/`**: All test runs and automated agent executions are isolated via `tests/conftest.py` and `is_test_or_agent_mode()`.
+6. **Always verify changes** with `uv run pytest` and `uv run ruff check .`.

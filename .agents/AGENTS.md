@@ -38,6 +38,10 @@ Welcome to the **Automatic Backup** codebase. This repository provides automated
 2. **Never delete without confirmation**: Deletions and overwrites must respect user settings (`allow_file_deletion`, `delete_empty_dirs`, and confirmation popups).
 3. **Safe tree ascension**: When pruning empty directories (`delete_empty_dirs`), always terminate if `parent == current` to prevent infinite loops when ascending network root shares (`\\server\share\`).
 
+### E. Test & Agent Logging Isolation
+1. **Never write test or agent logs into production `logs/`**: Automated test runs (`pytest`) and agent executions must never populate the production `logs/` folder.
+2. **Context-Aware Dynamic Logger**: `src.utils.logger.Logger` automatically routes logs and reports to temporary directories when in test/agent mode (`ANTIGRAVITY_AGENT=1`, `AUTOMATIC_BACKUP_TESTING=1`, or running under `pytest`).
+
 ---
 
 ## 3. Directory Layout

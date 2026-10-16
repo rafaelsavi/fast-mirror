@@ -38,6 +38,7 @@ uv run pytest tests/test_mirror.py -v
 ### Critical Test Requirements
 - **`test_config_json_entry_paths_resolution`** must pass. This test loads every path in the real `config.json` and ensures `get_dirs_from_path` resolves all sources and targets cleanly.
 - **`test_wal_and_vacuum_close_connections`** must pass. This verifies that SQLite connections are properly closed on Windows so files can be deleted without `WinError 32`.
+- **Zero Production Log Pollution**: Test executions are automatically isolated via `tests/conftest.py` and must not add files to `logs/`.
 
 ---
 
