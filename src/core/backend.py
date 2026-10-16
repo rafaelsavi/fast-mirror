@@ -39,7 +39,6 @@ def _to_path(p: CstmPathType) -> Path | PureWindowsPath:
     return Path(p)
 
 
-
 class CompareDirs:
     def __init__(
         self,
@@ -571,8 +570,22 @@ class SyncDirs:
         # Delegate widget creation to the main GUI thread
         self.root_gui.after(0, create_popup)
 
-        while not result_event.is_set():
-            result_event.wait(0.2)
+        try:
+            while not result_event.is_set():
+                result_event.wait(0.2)
+        finally:
+            if not result_event.is_set():
+
+                def cleanup_popup():
+                    p = popup_holder.get('popup')
+                    if p and hasattr(p, 'popup'):
+                        try:
+                            if p.popup.winfo_exists():
+                                p.popup.destroy()
+                        except Exception:
+                            pass
+
+                self.root_gui.after(0, cleanup_popup)
 
         popup = popup_holder.get('popup')
         if popup and popup.finished:

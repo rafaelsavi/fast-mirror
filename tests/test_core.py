@@ -162,8 +162,6 @@ def test_config_json_entry_paths_resolution():
         assert matched_tgt.target == target
 
 
-
-
 def test_cstmpath_get_from_dir_exclusions_on_windows(tmp_path):
     root = tmp_path / 'ScanRoot'
     sub1 = root / 'SubFolder'

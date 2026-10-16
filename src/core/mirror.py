@@ -1,3 +1,4 @@
+import contextlib
 import os
 import re
 import sqlite3
@@ -41,7 +42,7 @@ class MirrorDatabase:
 
     def _enable_wal(self):
         try:
-            with sqlite3.connect(self.path) as conn:
+            with contextlib.closing(sqlite3.connect(self.path)) as conn:
                 conn.execute('PRAGMA journal_mode=WAL;')
                 conn.commit()
         except Exception as e:
@@ -51,7 +52,7 @@ class MirrorDatabase:
         """Reclaim unused disk space and defragment SQLite database file."""
         try:
             logger.info(f'Running VACUUM on database <{self.path}>')
-            with sqlite3.connect(self.path) as conn:
+            with contextlib.closing(sqlite3.connect(self.path)) as conn:
                 conn.execute('VACUUM;')
                 conn.commit()
             logger.info(f'VACUUM completed successfully on <{self.path}>')

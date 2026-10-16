@@ -107,3 +107,12 @@ def test_replace_path(mirror_db, test_data_dir):
 
 def test_vacuum(mirror_db):
     assert mirror_db.vacuum() is True
+
+
+def test_wal_and_vacuum_close_connections(tmp_path):
+    db_path = str(tmp_path / 'lock_test.db')
+    mirror = MirrorDatabase(path=db_path)
+    assert mirror.vacuum() is True
+    # If connection was leaked, os.remove on Windows would raise PermissionError [WinError 32]
+    os.remove(db_path)
+    assert not os.path.exists(db_path)
