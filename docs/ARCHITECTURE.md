@@ -249,7 +249,7 @@ The mirror manages a single SQLite database (`local_mirror.db`) backed by `sqlit
 ## GUI & Concurrency Architecture
 
 ### KillableThread & Trace Injection
-Implemented in [`src/gui/threading.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/threading.py).
+Implemented in [`src/gui/worker_thread.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/worker_thread.py).
 
 Standard Python `threading.Thread` lacks an external `stop()` or `kill()` method. `KillableThread` solves this by attaching a trace function using `sys.settrace()`:
 

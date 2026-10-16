@@ -138,7 +138,7 @@ automatic-backup/
 │   │   ├── custom_gui.py     # TrayableTk (Winico tray) & CustomCheckboxTreeView
 │   │   ├── enums.py          # Tkinter & Thread state enums
 │   │   ├── gui.py            # Main application window, watchdogs, scheduler
-│   │   ├── threading.py      # KillableThread with sys.settrace hooks
+│   │   ├── worker_thread.py  # KillableThread with sys.settrace hooks
 │   │   ├── widgets.py        # Custom Tkinter controls (Paths, Exclusions, Loggers)
 │   │   └── smiley.ico        # Application and tray icon
 │   └── utils/
