@@ -332,6 +332,157 @@ class CompareDirs:
         )
 
 
+
+def unlock_file_attributes(path: str | os.PathLike[str]) -> bool:
+    """Attempt to clear read-only / hidden / system attributes on Windows or make writable via chmod."""
+    success = False
+    path_str = str(path)
+    if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'kernel32'):
+        try:
+            file_attribute_normal = 0x80
+            res = ctypes.windll.kernel32.SetFileAttributesW(path_str, file_attribute_normal)
+            if res != 0:
+                success = True
+            else:
+                logger.debug(f'Windows refused to change attributes on <{path_str}>.')
+        except Exception as e:
+            logger.debug(f'SetFileAttributesW failed for <{path_str}>: {e}')
+
+    if os.path.exists(path_str):
+        try:
+            os.chmod(path_str, stat.S_IWRITE)
+            success = True
+        except Exception as e:
+            logger.debug(f'chmod failed for <{path_str}>: {e}')
+
+    return success
+
+
+def robust_copy(
+    source: str | os.PathLike[str],
+    target: str | os.PathLike[str],
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+) -> None:
+    """
+    Copy file from source to target with exponential backoff retries for network resilience and permission recovery.
+
+    If transient errors (e.g. network share disconnects or permission locks) occur,
+    the copy is retried up to max_retries times. If all retries fail, any incomplete or corrupted
+    target file created during the operation is cleaned up.
+    """
+    source_str = str(source)
+    target_str = str(target)
+    target_existed_initially = os.path.isfile(target_str)
+    delay = initial_delay
+
+    for attempt in range(1, max(1, max_retries) + 1):
+        try:
+            os.makedirs(os.path.dirname(target_str), exist_ok=True)
+            shutil.copy2(source_str, target_str)
+            return
+        except (OSError, PermissionError) as e:
+            unlock_file_attributes(target_str)
+
+            if attempt == max(1, max_retries):
+                if os.path.isfile(target_str):
+                    try:
+                        source_size = os.path.getsize(source_str) if os.path.isfile(source_str) else None
+                        target_size = os.path.getsize(target_str)
+                        if not target_existed_initially or (source_size is not None and target_size != source_size):
+                            unlock_file_attributes(target_str)
+                            os.remove(target_str)
+                            logger.warning(
+                                f'Cleaned up incomplete target file after failed copy attempts: <{target_str}>'
+                            )
+                    except Exception as cleanup_err:
+                        logger.debug(f'Failed to clean up partial target file <{target_str}>: {cleanup_err}')
+                raise
+
+            logger.warning(
+                f'Copy attempt {attempt}/{max_retries} for <{source_str}> -> <{target_str}> '
+                f'failed with: {e}. Retrying in {delay:.1f}s...'
+            )
+            time.sleep(delay)
+            delay *= backoff_factor
+
+
+def robust_move(
+    source: str | os.PathLike[str],
+    target: str | os.PathLike[str],
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+) -> None:
+    """Move file from source to target with exponential backoff retries and permission recovery."""
+    source_str = str(source)
+    target_str = str(target)
+    target_existed_initially = os.path.isfile(target_str)
+    delay = initial_delay
+
+    for attempt in range(1, max(1, max_retries) + 1):
+        try:
+            os.makedirs(os.path.dirname(target_str), exist_ok=True)
+            shutil.move(source_str, target_str)
+            return
+        except (OSError, PermissionError) as e:
+            unlock_file_attributes(target_str)
+            unlock_file_attributes(source_str)
+
+            if attempt == max(1, max_retries):
+                if os.path.isfile(source_str) and os.path.isfile(target_str):
+                    try:
+                        source_size = os.path.getsize(source_str)
+                        target_size = os.path.getsize(target_str)
+                        if not target_existed_initially or target_size != source_size:
+                            unlock_file_attributes(target_str)
+                            os.remove(target_str)
+                            logger.warning(
+                                f'Cleaned up incomplete target file after failed move attempts: <{target_str}>'
+                            )
+                    except Exception as cleanup_err:
+                        logger.debug(f'Failed to clean up partial target file <{target_str}>: {cleanup_err}')
+                raise
+
+            logger.warning(
+                f'Move attempt {attempt}/{max_retries} for <{source_str}> -> <{target_str}> '
+                f'failed with: {e}. Retrying in {delay:.1f}s...'
+            )
+            time.sleep(delay)
+            delay *= backoff_factor
+
+
+def robust_delete(
+    path: str | os.PathLike[str],
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+) -> None:
+    """Delete file with permission recovery and exponential backoff retries."""
+    path_str = str(path)
+    if not os.path.isfile(path_str):
+        return
+
+    delay = initial_delay
+    for attempt in range(1, max(1, max_retries) + 1):
+        try:
+            unlock_file_attributes(path_str)
+            os.remove(path_str)
+            return
+        except (OSError, PermissionError) as e:
+            unlock_file_attributes(path_str)
+            if attempt == max(1, max_retries):
+                raise
+
+            logger.warning(
+                f'Delete attempt {attempt}/{max_retries} for <{path_str}> failed with: {e}. '
+                f'Retrying in {delay:.1f}s...'
+            )
+            time.sleep(delay)
+            delay *= backoff_factor
+
+
 class SyncDirs:
     def __init__(
         self,
@@ -344,6 +495,9 @@ class SyncDirs:
         default_actions: list[Action] | None = None,
         increment_mirror=True,
         confirm_sync=True,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+        backoff_factor: float = 2.0,
     ):
         logger.info('---------------------------')
         logger.info('Initializing synchronization')
@@ -354,6 +508,9 @@ class SyncDirs:
         self.increment_mirror = increment_mirror
         self.dirs = dirs
         self.default_actions = default_actions if default_actions is not None else [Action.COPY]
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.backoff_factor = backoff_factor
 
         # Initialize variables
         self.files_available_to_copy: list[tuple[CstmPath, CstmPath]] = files_to_copy
@@ -433,24 +590,13 @@ class SyncDirs:
             try:
                 size = get_size(source)
                 logger.debug(f'Copying file {i:,} of {n_files:,}: <{source}> -> <{target}> ({format_size(size)})')
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                try:
-                    shutil.copy2(source, target)
-                except PermissionError:
-                    logger.warning(
-                        f'There was a permission error while copying file <{source}>. '
-                        'Attempting to unlock target file and try again.'
-                    )
-                    FILE_ATTRIBUTE_NORMAL = 0x80
-
-                    # Clear read‑only / locked attributes
-                    res = ctypes.windll.kernel32.SetFileAttributesW(str(target), FILE_ATTRIBUTE_NORMAL)
-                    if res == 0:
-                        logger.warning(
-                            f'Windows refused to change attributes on <{target}>. '
-                            'Proceeding with new copy attempt anyway.'
-                        )
-                    shutil.copy2(source, target)
+                robust_copy(
+                    source,
+                    target,
+                    max_retries=self.max_retries,
+                    initial_delay=self.retry_delay,
+                    backoff_factor=self.backoff_factor,
+                )
 
                 dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.add_path(root_dir=dir_pair.target, path=target)
@@ -473,8 +619,13 @@ class SyncDirs:
             success = False
             try:
                 logger.debug(f'Moving file {i:,} of {n_files:,}: <{source}> -> <{target}> ({get_size_as_str(source)})')
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                shutil.move(source, target)
+                robust_move(
+                    source,
+                    target,
+                    max_retries=self.max_retries,
+                    initial_delay=self.retry_delay,
+                    backoff_factor=self.backoff_factor,
+                )
                 dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
                 log_progress('Moved', i, n_files, start_time, interval=1000)
@@ -499,8 +650,12 @@ class SyncDirs:
             else:
                 success = False
                 try:
-                    os.chmod(path, stat.S_IWRITE)
-                    os.remove(path)
+                    robust_delete(
+                        path,
+                        max_retries=self.max_retries,
+                        initial_delay=self.retry_delay,
+                        backoff_factor=self.backoff_factor,
+                    )
                     success = True
                 except Exception as e:
                     error_msg = check_length(path)

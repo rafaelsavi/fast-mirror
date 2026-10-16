@@ -188,24 +188,34 @@ Implemented in [`src/core/backend.py`](file:///d:/Rafael/Projects/Python/automat
 
 `SyncDirs` executes user-approved operations in a specific sequence to maintain filesystem consistency:
 
-### Copy Execution & Permission Recovery
-1. Calls `os.makedirs(os.path.dirname(target), exist_ok=True)`.
-2. Calls `shutil.copy2(source, target)` to replicate data and metadata timestamps.
-3. **Windows Permission Recovery**: If `shutil.copy2` raises `PermissionError`:
-   - Invokes `ctypes.windll.kernel32.SetFileAttributesW(str(target), 0x80)` (`FILE_ATTRIBUTE_NORMAL`).
-   - Retries `shutil.copy2`.
-4. Adds the target path to `MirrorDatabase`.
-5. Logs average transfer speed in MB/s or GB/s.
+### Network Share Resilience & Retries (`robust_copy`, `robust_move`, `robust_delete`)
 
-### Move Execution
-1. Calls `os.makedirs(os.path.dirname(target), exist_ok=True)`.
-2. Calls `shutil.move(source, target)`.
-3. Calls `MirrorDatabase.replace_path(root_dir, old_path, new_path)`.
+When backing up to local network shares (SMB/CIFS / UNC paths such as `\\192.168.1.100\...`), operations are vulnerable to transient network drops (`WinError 64: network name no longer available`, `WinError 53: network path not found`, `WinError 59: unexpected network error`, `WinError 121: semaphore timeout`) and momentary file locks (`WinError 32: sharing violation`, `PermissionError: Access is denied`).
 
-### Deletion Execution
-1. Removes write protection if set (`os.chmod(path, stat.S_IWRITE)`).
-2. Calls `os.remove(path)`.
-3. Removes the path from `MirrorDatabase`.
+To ensure robustness, all filesystem mutations use retry mechanisms with exponential backoff:
+
+1. **`robust_copy(source, target, max_retries=3, initial_delay=1.0, backoff_factor=2.0)`**:
+   - Ensures the target directory exists (`os.makedirs`).
+   - Copies file and metadata timestamps via `shutil.copy2`.
+   - On transient failure (`OSError`, `PermissionError`):
+     - Automatically invokes `unlock_file_attributes(target)` to clear read-only/hidden/system attributes using `ctypes.windll.kernel32.SetFileAttributesW(0x80)` (`FILE_ATTRIBUTE_NORMAL`) and `os.chmod(stat.S_IWRITE)`.
+     - Retries with exponential backoff (`delay *= backoff_factor`).
+   - **Corrupt / Incomplete Target Cleanup**: If all retries are exhausted and the copy fails, any partial or incomplete target file created during the operation is automatically cleaned up with `os.remove` to prevent target corruption in backup repositories.
+
+2. **`robust_move(source, target, max_retries=3, initial_delay=1.0, backoff_factor=2.0)`**:
+   - Executes `shutil.move(source, target)`.
+   - On failure, unlocks attributes on both target and source and retries with backoff.
+   - If a cross-filesystem move fails during the copy phase, cleans up partial destination files before re-raising.
+
+3. **`robust_delete(path, max_retries=3, initial_delay=1.0, backoff_factor=2.0)`**:
+   - Unlocks attributes and removes file with `os.remove`.
+   - Retries on permission or lock errors.
+
+4. **Mirror Synchronization**:
+   - On copy success: adds target path and BLAKE2b hash to `MirrorDatabase`.
+   - On move success: replaces source path with target path in `MirrorDatabase`.
+   - On delete success: removes target path from `MirrorDatabase`.
+   - Calculates and logs transfer speed (`Avg. copy speed: XX MB/s`).
 
 ### Protected Empty Directory Pruning
 After files are deleted or moved, orphan empty folders can clutter the target:
