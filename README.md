@@ -6,7 +6,7 @@
 [![Type Checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue.svg)](https://mypy-lang.org/)
 [![Database: SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg)](https://sqlite.org/)
 
-**Automatic Backup Tool** is a high-performance, automated one-way directory synchronization and backup system for Windows. Built with Python and Tkinter, it provides smart change detection, fast network-drive acceleration using a local SQLite mirror index, intelligent file move/rename detection, an interactive confirmation dialog with countdown automation, and a background task scheduler that docks seamlessly into the Windows system tray.
+**Automatic Backup Tool** is a high-performance, automated one-way directory synchronization and backup system for Windows. Built with Python and Tkinter, it provides smart change detection, fast network-drive acceleration using a local SQLite mirror index, intelligent file move/rename detection, an interactive confirmation dialog for reviewing actions, and a background task scheduler that docks seamlessly into the Windows system tray.
 
 ---
 
@@ -47,7 +47,7 @@
 - **Fast One-Way Mirror Synchronization**: Backs up local folders to secondary drives, external hard drives, or remote network shares (UNC paths like `\\192.168.1.100\Backup`).
 - **Local SQLite Mirror Indexing (`sqlitedict`)**: Caches target file paths and blake2b metadata hashes in a local `local_mirror.db`. This eliminates the need to scan thousands of files across slow network links on every run.
 - **Smart Move & Rename Detection**: Recognizes when files were renamed or moved to different folders on the source side. Rather than deleting and re-uploading large files over the network, it executes local/remote file moves directly on the target.
-- **Interactive Action Review & Countdown**: An interactive treeview dialog previews proposed `COPY`, `MOVE`, and `DELETE` actions with individual file sizes, timestamps, and aggregate group volumes. Includes an automated countdown timer (default 12 hours) with Windows audio cues.
+- **Interactive Action Review**: An interactive treeview dialog previews proposed `COPY`, `MOVE`, and `DELETE` actions with individual file sizes, timestamps, and aggregate group volumes with Windows audio cues.
 - **Built-in Weekly Scheduler**: Configure specific days of the week and daily execution times for fully unattended backups.
 - **Windows System Tray Integration**: Minimizes to the Windows notification area via the bundled Winico DLL. Closing the window prompts to keep running in the background.
 - **Killable Background Thread**: Long-running comparison and synchronization jobs execute asynchronously in a cancellable thread, keeping the GUI responsive and allowing clean cancellations.
@@ -286,10 +286,8 @@ When synchronization begins with **"Request confirmation before sync"** enabled,
 
 - **Categorized Treeview**: Displays expandable groups for **copy**, **move**, and **delete** with individual file sizes, source paths, destination paths, and modification dates.
 - **Live Group Statistics**: Group headers dynamically update with the total byte size and count of selected items (e.g. `copy 1.45GB (32 of 32)`).
-- **Auto-Approval Countdown**: A 12-hour timer begins counting down. Once the timer reaches zero, the current selection is automatically applied.
 - **Controls**:
   - **Save and continue**: Immediately executes checked actions.
-  - **Wait**: Pauses the countdown timer, giving you unlimited time to inspect files.
   - **Cancel**: Aborts the operation without touching files.
 
 ---

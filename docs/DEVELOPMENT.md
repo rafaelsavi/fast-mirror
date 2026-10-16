@@ -244,7 +244,7 @@ During startup in [`TrayableTk.add_system_tray_icon()`](file:///d:/Rafael/Projec
 ### Windows API Calls
 
 The application utilizes Windows-specific functions:
-- **`winsound.PlaySound`**: Plays notification chimes (`SystemQuestion`, `SystemAsterisk`) when the confirmation popup opens or auto-executes.
+- **`winsound.PlaySound`**: Plays notification chime (`SystemQuestion`) when the confirmation popup opens.
 - **`ctypes.windll.kernel32.SetFileAttributesW`**: Resets read-only and locked attributes when copying files that would otherwise fail with `PermissionError`.
 - **`os.startfile`**: Launches the default spreadsheet viewer when clicking **Open last report**.
 

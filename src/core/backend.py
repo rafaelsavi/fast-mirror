@@ -332,7 +332,6 @@ class CompareDirs:
         )
 
 
-
 def unlock_file_attributes(path: str | os.PathLike[str]) -> bool:
     """Attempt to clear read-only / hidden / system attributes on Windows or make writable via chmod."""
     success = False
@@ -476,8 +475,7 @@ def robust_delete(
                 raise
 
             logger.warning(
-                f'Delete attempt {attempt}/{max_retries} for <{path_str}> failed with: {e}. '
-                f'Retrying in {delay:.1f}s...'
+                f'Delete attempt {attempt}/{max_retries} for <{path_str}> failed with: {e}. Retrying in {delay:.1f}s...'
             )
             time.sleep(delay)
             delay *= backoff_factor
@@ -563,9 +561,7 @@ class SyncDirs:
         # Delegate widget creation to the main GUI thread
         self.root_gui.after(0, create_popup)
 
-        time_init = time.time()
-        timeout = 20 * 3600  # 20h
-        while not result_event.is_set() and (time.time() - time_init) < timeout:
+        while not result_event.is_set():
             result_event.wait(0.2)
 
         popup = popup_holder.get('popup')
@@ -750,11 +746,6 @@ class ActionSelection:
         self.finished = False
         self.proceed = False
 
-        # Configure timer
-        self.is_timer_active = True
-        self.init_time = 0  # Filled in create_widgets
-        self.countdown_size = 12 * 3600  # 12h
-
         # Configure gui
         self.popup = tk.Toplevel(self.root_gui)
         self.popup.resizable(True, True)
@@ -762,9 +753,6 @@ class ActionSelection:
         self.popup.grid_columnconfigure(0, weight=1)
         self.popup.protocol('WM_DELETE_WINDOW', self.button_cancel_click)
         self.create_widgets()
-
-        # Init watchdog functions
-        self.check_countdown()
 
     def create_widgets(self):
         logger.info('Collecting data for selection window. This may take a while')
@@ -775,24 +763,16 @@ class ActionSelection:
         )
         self.button_save.grid(row=0, column=0, sticky='w')
 
-        def turn_timer_off():
-            self.is_timer_active = False
-
-        self.button_wait = tk.Button(frame_buttons, text='Wait', anchor='w', command=turn_timer_off)
-        self.button_wait.grid(row=0, column=1, sticky='w')
-
         self.button_cancel = tk.Button(frame_buttons, text='Cancel', anchor='w', command=self.button_cancel_click)
-        self.button_cancel.grid(row=0, column=2, sticky='w')
+        self.button_cancel.grid(row=0, column=1, sticky='w')
 
         self.create_table()
 
         frame_buttons.grid(row=0, column=0, sticky='w')
-        self.init_time = time.time()
         winsound.PlaySound('SystemQuestion', winsound.SND_ALIAS)
 
     def button_save_click(self):
         logger.info('Saving selection of actions')
-        self.is_timer_active = False
         self.files_requested_to_copy = list()
         self.files_requested_to_move = list()
         self.files_requested_to_delete = list()
@@ -816,7 +796,6 @@ class ActionSelection:
 
     def button_cancel_click(self):
         logger.info('Canceling selection of actions. No action will be taken')
-        self.is_timer_active = False
         self.files_requested_to_copy = list()
         self.files_requested_to_move = list()
         self.files_requested_to_delete = list()
@@ -824,20 +803,6 @@ class ActionSelection:
         self.popup.destroy()
         if self.on_close_callback:
             self.on_close_callback()
-
-    def get_countdown(self) -> tuple[bool, str]:
-        countdown = max(0, int(self.countdown_size + self.init_time - time.time()))
-        countdown_str = f' ({countdown}s)' if self.is_timer_active else ''
-        return self.is_timer_active and countdown <= 0, countdown_str
-
-    def check_countdown(self):
-        if not self.finished:
-            status, value = self.get_countdown()
-            self.button_save.configure(text='Save and continue' + value)
-            if status:
-                winsound.PlaySound('SystemAsterisk', winsound.SND_ALIAS)
-                self.button_save_click()
-            self.popup.after(1000, self.check_countdown)
 
     def create_table(self):
         # Create a frame to hold the treeview and scrollbar

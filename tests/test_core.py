@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 import pytest
 
 from core.backend import (
+    ActionSelection,
     CompareDirs,
     SyncDirs,
     get_dirs_from_path,
@@ -483,3 +484,103 @@ def test_compare_dirs_respects_exclusions(tmp_path):
     assert str(keep) in copy_paths
     assert str(ignored) not in copy_paths
     assert str(git_file) not in copy_paths
+
+
+def test_open_confirmation_popup_approved(monkeypatch):
+    class DummyPopup:
+        def __init__(self, *args, **kwargs):
+            self.finished = True
+            self.proceed = True
+            if 'on_close_callback' in kwargs and kwargs['on_close_callback']:
+                kwargs['on_close_callback']()
+
+        def get_outputs(self):
+            return [('s1', 't1')], [('s2', 't2')], ['t3']
+
+    class DummyRoot:
+        def after(self, delay, func):
+            func()
+
+    monkeypatch.setattr('core.backend.ActionSelection', DummyPopup)
+
+    sync = SyncDirs.__new__(SyncDirs)
+    sync.root_gui = DummyRoot()
+    sync.files_available_to_copy = []
+    sync.files_available_to_move = []
+    sync.files_available_to_delete = []
+    sync.default_actions = []
+
+    res = sync.open_confirmation_popup()
+    assert res is True
+    assert sync.files_requested_to_copy == [('s1', 't1')]
+    assert sync.files_requested_to_move == [('s2', 't2')]
+    assert sync.files_requested_to_delete == ['t3']
+
+
+def test_open_confirmation_popup_cancelled(monkeypatch):
+    class DummyPopup:
+        def __init__(self, *args, **kwargs):
+            self.finished = True
+            self.proceed = False
+            if 'on_close_callback' in kwargs and kwargs['on_close_callback']:
+                kwargs['on_close_callback']()
+
+        def get_outputs(self):
+            return [], [], []
+
+    class DummyRoot:
+        def after(self, delay, func):
+            func()
+
+    monkeypatch.setattr('core.backend.ActionSelection', DummyPopup)
+
+    sync = SyncDirs.__new__(SyncDirs)
+    sync.root_gui = DummyRoot()
+    sync.files_available_to_copy = []
+    sync.files_available_to_move = []
+    sync.files_available_to_delete = []
+    sync.default_actions = []
+
+    res = sync.open_confirmation_popup()
+    assert res is False
+    assert sync.files_requested_to_copy == []
+
+
+def test_action_selection_no_timer_and_cancel(monkeypatch):
+    import tkinter as tk
+
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    callback_called = False
+
+    def on_close():
+        nonlocal callback_called
+        callback_called = True
+
+    action_sel = ActionSelection(
+        root_gui=root,
+        files_available_to_copy=[],
+        files_available_to_move=[],
+        files_available_to_delete=[],
+        default_actions=[],
+        on_close_callback=on_close,
+    )
+
+    # Verify no timer attributes or wait buttons exist
+    assert not hasattr(action_sel, 'is_timer_active')
+    assert not hasattr(action_sel, 'countdown_size')
+    assert not hasattr(action_sel, 'button_wait')
+    assert action_sel.button_save.cget('text') == 'Save and continue'
+
+    # Test cancel
+    action_sel.button_cancel_click()
+    assert action_sel.finished is True
+    assert action_sel.proceed is False
+    assert callback_called is True
+    root.destroy()
