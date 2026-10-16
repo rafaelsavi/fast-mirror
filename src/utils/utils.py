@@ -94,14 +94,15 @@ def check_length(p):
 def log_progress(
     action: str, progress: int, total: int | None, start_time: float, interval=10000, cstm_msg: str | None = None
 ):
-    if progress == 0 or progress % interval != 0:
+    if progress == 0 or (progress % interval != 0 and (total is None or progress != total)):
         return
 
     if action:
         action += ' '
     total_str = f' of {total:,}' if total is not None else ''
 
-    speed_files_p_min = int(60 * progress / (time.time() - start_time))
+    elapsed = max(0.001, time.time() - start_time)
+    speed_files_p_min = int(60 * progress / elapsed)
     msgs = []
     msgs.append(f'{action}{progress:,}{total_str} files so far.')
     msgs.append(f'Average speed: {speed_files_p_min:,} files/min.')
@@ -109,7 +110,10 @@ def log_progress(
         msgs.append(cstm_msg)
 
     if total is not None:
-        msgs.append(f'ETL: {int((total - progress) / speed_files_p_min):,} min')
+        if speed_files_p_min > 0:
+            msgs.append(f'ETL: {int((total - progress) / speed_files_p_min):,} min')
+        else:
+            msgs.append('ETL: 0 min')
 
     logger.info(' '.join(msgs))
 

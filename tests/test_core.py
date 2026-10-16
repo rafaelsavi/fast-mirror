@@ -1130,3 +1130,58 @@ def test_cstm_path_get_from_dir_ignores_tmp_files(tmp_path):
     assert 'real_photo.jpg' in scanned_names
     assert 'video.mp4.tmp' not in scanned_names
     assert 'backup.zip.tmp.1234_1' not in scanned_names
+
+
+def test_unlock_file_attributes_non_existent_path(tmp_path):
+    missing_path = tmp_path / 'does_not_exist.txt'
+    # Must return False immediately without error or warning
+    assert unlock_file_attributes(missing_path) is False
+
+
+def test_robust_copy_and_move_fail_fast_on_missing_source(tmp_path, monkeypatch):
+    source = tmp_path / 'non_existent_source.txt'
+    target = tmp_path / 'target.txt'
+
+    # Track sleep calls to verify zero retry delays occur
+    sleep_calls = []
+    monkeypatch.setattr(time, 'sleep', lambda delay: sleep_calls.append(delay))
+
+    with pytest.raises(FileNotFoundError):
+        robust_copy(source, target, max_retries=3, initial_delay=1.0)
+    assert len(sleep_calls) == 0
+
+    with pytest.raises(FileNotFoundError):
+        robust_move(source, target, max_retries=3, initial_delay=1.0)
+    assert len(sleep_calls) == 0
+
+
+def test_move_files_purges_phantom_record(tmp_path):
+    target_dir = tmp_path / 'Target'
+    target_dir.mkdir()
+    source_file = tmp_path / 'Source' / 'ghost.txt'
+    target_file = target_dir / 'ghost.txt'
+
+    db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=db_path)
+    # Simulate a phantom entry in mirror
+    with mirror._get_db(str(target_dir)) as db:
+        db[sanitize_path(source_file)] = 'phantom_hash'
+    assert mirror.exists(str(target_dir), str(source_file))
+
+    dirs = [DirectoryPair(source=str(tmp_path / 'Source'), target=str(target_dir))]
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+    sync.files_requested_to_move = [(str(source_file), str(target_file))]
+    sync.move_files()
+
+    # Move must be recorded as failed, but phantom must be purged from mirror
+    assert len(sync.files_moved) == 1
+    assert sync.files_moved[0][1] is False
+    assert not mirror.exists(str(target_dir), str(source_file))

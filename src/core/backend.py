@@ -342,8 +342,11 @@ class CompareDirs:
 
 def unlock_file_attributes(path: str | os.PathLike[str]) -> bool:
     """Attempt to clear read-only / hidden / system attributes on Windows or make writable via chmod."""
-    success = False
     path_str = str(path)
+    if not os.path.exists(path_str):
+        return False
+
+    success = False
     if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'kernel32'):
         try:
             file_attribute_normal = 0x80
@@ -355,12 +358,11 @@ def unlock_file_attributes(path: str | os.PathLike[str]) -> bool:
         except Exception as e:
             logger.debug(f'SetFileAttributesW failed for <{path_str}>: {e}')
 
-    if os.path.exists(path_str):
-        try:
-            os.chmod(path_str, stat.S_IWRITE)
-            success = True
-        except Exception as e:
-            logger.debug(f'chmod failed for <{path_str}>: {e}')
+    try:
+        os.chmod(path_str, stat.S_IWRITE)
+        success = True
+    except Exception as e:
+        logger.debug(f'chmod failed for <{path_str}>: {e}')
 
     return success
 
@@ -385,6 +387,9 @@ def robust_copy(
     temp_target = f'{target_str}.tmp'
     delay = initial_delay
 
+    if not os.path.isfile(source_str):
+        raise FileNotFoundError(f'Source file does not exist: <{source_str}>')
+
     for attempt in range(1, max(1, max_retries) + 1):
         completed = False
         try:
@@ -403,6 +408,9 @@ def robust_copy(
             os.replace(temp_target, target_str)
             completed = True
             return
+        except FileNotFoundError:
+            # Permanent error (e.g. source disappeared) - fail fast without retries
+            raise
         except (OSError, PermissionError) as e:
             unlock_file_attributes(target_str)
 
@@ -438,11 +446,17 @@ def robust_move(
     target_existed_initially = os.path.isfile(target_str)
     delay = initial_delay
 
+    if not os.path.isfile(source_str):
+        raise FileNotFoundError(f'Source file does not exist: <{source_str}>')
+
     for attempt in range(1, max(1, max_retries) + 1):
         try:
             os.makedirs(os.path.dirname(target_str), exist_ok=True)
             shutil.move(source_str, target_str)
             return
+        except FileNotFoundError:
+            # Missing source is permanent - fail fast without retrying
+            raise
         except (OSError, PermissionError) as e:
             unlock_file_attributes(target_str)
             unlock_file_attributes(source_str)
@@ -662,7 +676,8 @@ class SyncDirs:
                 self.mirror.add_path(root_dir=dir_pair.target, path=target)
                 counter_size += size
                 copy_speed = f'Avg. copy speed: {format_size(counter_size / (time.time() - start_time))}/s'
-                log_progress('Copied', i, n_files, start_time, interval=100, cstm_msg=copy_speed)
+                log_interval = min(100, max(1, n_files // 10))
+                log_progress('Copied', i, n_files, start_time, interval=log_interval, cstm_msg=copy_speed)
                 success = True
             except Exception as e:
                 error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
@@ -674,6 +689,7 @@ class SyncDirs:
     def move_files(self):
         n_files = len(self.files_requested_to_move)
         start_time = time.time()
+        log_interval = min(100, max(1, n_files // 10))
 
         for i, (source, target) in enumerate(self.files_requested_to_move, 1):
             if hasattr(self, 'cancel_requested') and self.cancel_requested.is_set():
@@ -685,20 +701,34 @@ class SyncDirs:
                 # Pre-resolve dir_pair before any filesystem changes
                 dir_pair = get_dirs_from_path(target, self.dirs)
 
-                # JIT Self-Healing: If source is already gone and target exists, self-heal mirror
-                if not os.path.isfile(source) and os.path.isfile(target):
-                    try:
-                        logger.info(
-                            f'Source is already missing and target exists: <{target}>. Self-healing mirror entry.'
+                # JIT Self-Healing & Phantom handling
+                if not os.path.isfile(source):
+                    if os.path.isfile(target):
+                        try:
+                            logger.info(
+                                f'Source is already missing and target exists: <{target}>. Self-healing mirror entry.'
+                            )
+                            self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
+                            success = True
+                            self.files_moved.append(((source, target), success))
+                            continue
+                        except Exception as jit_err:
+                            logger.debug(f'JIT move self-heal check skipped for <{target}>: {jit_err}')
+                    else:
+                        logger.warning(
+                            f'Move skipped because file is missing at both source and target: <{source}>. '
+                            'Purging phantom mirror record.'
                         )
-                        self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
-                        success = True
+                        try:
+                            self.mirror.remove_path(root_dir=dir_pair.target, path=source)
+                        except Exception as rm_err:
+                            logger.debug(f'Could not remove phantom move source from mirror: {rm_err}')
+                        success = False
                         self.files_moved.append(((source, target), success))
                         continue
-                    except Exception as jit_err:
-                        logger.debug(f'JIT move self-heal check skipped for <{target}>: {jit_err}')
 
-                logger.debug(f'Moving file {i:,} of {n_files:,}: <{source}> -> <{target}> ({get_size_as_str(source)})')
+                size_str = get_size_as_str(source) if os.path.isfile(source) else 'N/A'
+                logger.debug(f'Moving file {i:,} of {n_files:,}: <{source}> -> <{target}> ({size_str})')
                 robust_move(
                     source,
                     target,
@@ -707,7 +737,7 @@ class SyncDirs:
                     backoff_factor=self.backoff_factor,
                 )
                 self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
-                log_progress('Moved', i, n_files, start_time, interval=1000)
+                log_progress('Moved', i, n_files, start_time, interval=log_interval)
                 success = True
             except Exception as e:
                 error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
@@ -719,6 +749,7 @@ class SyncDirs:
     def delete_files(self):
         n_files = len(self.files_requested_to_delete)
         start_time = time.time()
+        log_interval = min(100, max(1, n_files // 10))
 
         for i, path in enumerate(self.files_requested_to_delete, 1):
             if hasattr(self, 'cancel_requested') and self.cancel_requested.is_set():
@@ -752,7 +783,7 @@ class SyncDirs:
                     )
                     self.mirror.remove_path(root_dir=dir_pair.target, path=path)
                     success = True
-                    log_progress('Deleted', i, n_files, start_time, interval=1000)
+                    log_progress('Deleted', i, n_files, start_time, interval=log_interval)
                 except Exception as e:
                     error_msg = check_length(path)
                     error_msg = e if error_msg == '' else error_msg
