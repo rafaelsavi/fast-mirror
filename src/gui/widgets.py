@@ -16,9 +16,7 @@ class EntryPaths(ScrolledText):
     def get(self, *args, **kwargs) -> list[tuple[str, str]]:  # type: ignore[override]
         raw: str = super().get('1.0', tk.END)
         lines = raw.splitlines()
-        valid_paths: list[tuple[str, str]] = [
-            pair for line in lines if (pair := self.parse_line(line)) is not None
-        ]
+        valid_paths: list[tuple[str, str]] = [pair for line in lines if (pair := self.parse_line(line)) is not None]
         unique_paths = list(set(valid_paths))
         unique_paths.sort(key=lambda x: x[0])  # sort by source path
         return unique_paths
@@ -241,8 +239,13 @@ class TextLogger(ScrolledText):
             self._rewrite()
 
     def _rewrite(self):
+        yview_pos = self.yview()[0]
+        if len(self.lines) > self.limit_lines * 1.5:
+            self.lines = self.lines[-self.limit_lines :]
         self.configure(state=TkinterCfgState.NORMAL.value)
         self.delete('1.0', tk.END)
         for message, tag in self.lines[-self.limit_lines :]:
-            super().insert(tk.END, message + '\n', tag)
+            if tag in self.log_levels:
+                super().insert(tk.END, message + '\n', tag)
         self.configure(state=TkinterCfgState.DISABLED.value)
+        self.yview_moveto(yview_pos)

@@ -362,7 +362,10 @@ class Gui:
         # ---
         self.toggle_auto_scroll.set(True)
         self.checkbox_auto_scroll = tk.Checkbutton(
-            self.frame_buttons, text='Auto-scroll', variable=self.toggle_auto_scroll
+            self.frame_buttons,
+            text='Auto-scroll',
+            variable=self.toggle_auto_scroll,
+            command=self.button_action_toggle_auto_scroll,
         )
         self.checkbox_auto_scroll.grid(row=row_counter.get(increment=False), column=2, sticky='nw')
         # ---
@@ -375,7 +378,7 @@ class Gui:
             check_box_log_level[level] = tk.Checkbutton(
                 self.frame_buttons_level,
                 text=level,
-                command=lambda: self.text_logger.set_log_levels(self.log_levels.get()),
+                command=self.button_action_update_log_levels,
                 variable=self.log_levels.checkboxes[level],
             )
             check_box_log_level[level].grid(row=i, column=0, sticky='w')
@@ -510,6 +513,15 @@ class Gui:
 
     def button_action_schedule_sync(self):
         self.toggle_state_schedule = not self.toggle_state_schedule
+
+    def button_action_update_log_levels(self):
+        self.text_logger.set_log_levels(self.log_levels.get())
+        if self.toggle_auto_scroll.get():
+            self.text_logger.yview(tk.END)
+
+    def button_action_toggle_auto_scroll(self):
+        if self.toggle_auto_scroll.get():
+            self.text_logger.yview(tk.END)
 
     def backend_watchdog(self):
         # Check if backend thread finished

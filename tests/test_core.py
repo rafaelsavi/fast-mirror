@@ -2,6 +2,7 @@ import os
 import shutil
 import sys
 import time
+import tkinter as tk
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
@@ -19,7 +20,7 @@ from core.backend import (
 )
 from core.file import CstmPath, File
 from core.mirror import MirrorDatabase
-from gui.widgets import Action, EntryPaths
+from gui.widgets import Action, EntryPaths, LogLevels, TextLogger
 from utils.utils import DirectoryPair, format_elapsed_time
 
 
@@ -547,8 +548,6 @@ def test_open_confirmation_popup_cancelled(monkeypatch):
 
 
 def test_action_selection_no_timer_and_cancel(monkeypatch):
-    import tkinter as tk
-
     monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
 
     try:
@@ -583,4 +582,101 @@ def test_action_selection_no_timer_and_cancel(monkeypatch):
     assert action_sel.finished is True
     assert action_sel.proceed is False
     assert callback_called is True
+    root.destroy()
+
+
+def test_text_logger_filters_by_active_log_levels():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    logger_widget = TextLogger(root)
+    # Initially active: INFO and WARNING
+    logger_widget.set_log_levels(['INFO', 'WARNING'])
+
+    logger_widget.insert('info msg', 'INFO')
+    logger_widget.insert('debug msg', 'DEBUG')
+    logger_widget.insert('warn msg', 'WARNING')
+    logger_widget.insert('error msg', 'ERROR')
+
+    content = logger_widget.get('1.0', tk.END)
+    assert 'info msg' in content
+    assert 'warn msg' in content
+    assert 'debug msg' not in content
+    assert 'error msg' not in content
+
+    # Simulate unchecking INFO and WARNING, and checking ERROR
+    logger_widget.set_log_levels(['ERROR'])
+    content_after_filter = logger_widget.get('1.0', tk.END)
+    assert 'error msg' in content_after_filter
+    assert 'info msg' not in content_after_filter
+    assert 'warn msg' not in content_after_filter
+    assert 'debug msg' not in content_after_filter
+
+    # Simulate unchecking all levels
+    logger_widget.set_log_levels([])
+    content_empty = logger_widget.get('1.0', tk.END).strip()
+    assert content_empty == ''
+
+    # Re-enable all levels
+    logger_widget.set_log_levels(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
+    content_all = logger_widget.get('1.0', tk.END)
+    assert 'info msg' in content_all
+    assert 'debug msg' in content_all
+    assert 'warn msg' in content_all
+    assert 'error msg' in content_all
+
+    root.destroy()
+
+
+def test_text_logger_rewrite_preserves_scroll_position():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    logger_widget = TextLogger(root, height=5)
+    logger_widget.set_log_levels(['INFO'])
+    for i in range(100):
+        logger_widget.insert(f'message {i}', 'INFO')
+
+    # Scroll down to a middle position
+    logger_widget.yview_moveto(0.4)
+    pos_before = logger_widget.yview()[0]
+
+    # Re-filter should preserve scroll view position
+    logger_widget.set_log_levels(['INFO'])
+    pos_after = logger_widget.yview()[0]
+    assert abs(pos_before - pos_after) < 0.05
+
+    root.destroy()
+
+
+def test_log_levels_selection():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    log_levels = LogLevels()
+    # Default excludes DEBUG
+    assert 'DEBUG' not in log_levels.get()
+    assert 'INFO' in log_levels.get()
+    assert 'WARNING' in log_levels.get()
+    assert 'ERROR' in log_levels.get()
+    assert 'CRITICAL' in log_levels.get()
+
+    # Set custom levels
+    log_levels.set(['DEBUG', 'CRITICAL'])
+    assert sorted(log_levels.get()) == ['CRITICAL', 'DEBUG']
+
+    # Reset restores default
+    log_levels.reset()
+    assert 'DEBUG' not in log_levels.get()
+    assert 'INFO' in log_levels.get()
+
     root.destroy()

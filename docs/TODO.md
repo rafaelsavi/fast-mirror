@@ -1,1 +1,0 @@
-- hide log properly when clicking on GUI
