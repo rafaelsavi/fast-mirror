@@ -8,13 +8,16 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 import pytest
 
 from core.backend import (
+    CompareDirs,
+    SyncDirs,
     get_dirs_from_path,
     robust_copy,
     robust_delete,
     robust_move,
     unlock_file_attributes,
 )
-from core.file import CstmPath
+from core.file import CstmPath, File
+from core.mirror import MirrorDatabase
 from gui.widgets import EntryPaths
 from utils.utils import DirectoryPair, format_elapsed_time
 
@@ -234,3 +237,34 @@ def test_unlock_file_attributes(tmp_path):
     target = tmp_path / 'locked.txt'
     target.write_text('content')
     assert unlock_file_attributes(target) is True
+
+
+def test_syncdirs_execution_order(monkeypatch, tmp_path):
+    from core.backend import SyncDirs
+
+    call_order = []
+
+    monkeypatch.setattr(SyncDirs, 'move_files', lambda self: call_order.append('move'))
+    monkeypatch.setattr(SyncDirs, 'delete_files', lambda self: call_order.append('delete'))
+    monkeypatch.setattr(SyncDirs, 'copy_files', lambda self: call_order.append('copy'))
+    monkeypatch.setattr(SyncDirs, 'delete_empty_dirs', lambda self: call_order.append('prune'))
+    monkeypatch.setattr(SyncDirs, 'print_errors', lambda self: None)
+
+    source = tmp_path / 's'
+    target = tmp_path / 't'
+    source.mkdir()
+    target.mkdir()
+    f_src = CstmPath(source / 'a.txt', root_dir=source)
+    f_tgt = CstmPath(target / 'a.txt', root_dir=target)
+
+    SyncDirs(
+        files_to_copy=[(f_src, f_tgt)],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=None,  # type: ignore
+        root_gui=None,
+        dirs=[DirectoryPair(str(source), str(target))],
+        confirm_sync=False,
+    )
+
+    assert call_order == ['move', 'delete', 'copy', 'prune']

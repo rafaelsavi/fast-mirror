@@ -186,7 +186,12 @@ When enabled, builds a pandas DataFrame containing all evaluated files (filterin
 
 Implemented in [`src/core/backend.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/core/backend.py).
 
-`SyncDirs` executes user-approved operations in a specific sequence to maintain filesystem consistency:
+`SyncDirs` executes user-approved operations in an optimized four-phase sequence to maximize available storage and avoid path collisions:
+
+1. **Move Phase (`move_files`)**: Relocates existing target files to their new relative paths first. On the same destination volume, this is a metadata-only rename that consumes zero extra storage and immediately clears original paths.
+2. **Delete Phase (`delete_files`)**: Removes obsolete target files using `robust_delete()`, reclaiming disk space on the destination drive before any new data is transferred.
+3. **Copy Phase (`copy_files`)**: Transfers new and modified files using `robust_copy()`, having maximum available disk space headroom.
+4. **Pruning Phase (`delete_empty_dirs`)**: Cleans up newly-orphaned empty folders left behind by moves and deletions, with strict root protection.
 
 ### Network Share Resilience & Retries (`robust_copy`, `robust_move`, `robust_delete`)
 

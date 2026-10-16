@@ -538,9 +538,9 @@ class SyncDirs:
             if Action.DELETE in self.default_actions:
                 self.files_requested_to_delete = [str(f) for f in self.files_available_to_delete]
 
-        self.copy_files()
         self.move_files()
         self.delete_files()
+        self.copy_files()
         self.delete_empty_dirs()
         logger.info('Finished synchronizing directories')
         self.print_errors()
