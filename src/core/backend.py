@@ -11,6 +11,7 @@ import winsound
 from collections import Counter
 from collections.abc import Callable
 from copy import copy
+from pathlib import Path, PureWindowsPath
 
 import pandas as pd
 
@@ -29,6 +30,14 @@ from utils.utils import (
     get_size_as_str,
     log_progress,
 )
+
+
+def _to_path(p: CstmPathType) -> Path | PureWindowsPath:
+    p_str = str(p)
+    if os.name != 'nt' and ('\\' in p_str or (len(p_str) >= 2 and p_str[1] == ':')):
+        return PureWindowsPath(p_str)
+    return Path(p)
+
 
 
 class CompareDirs:
@@ -676,8 +685,8 @@ class SyncDirs:
             return
 
         # Protected root folders that must never be removed
-        protected_roots = {os.path.realpath(dir_pair.target).lower() for dir_pair in self.dirs}
-        protected_roots.update({os.path.realpath(dir_pair.source).lower() for dir_pair in self.dirs})
+        protected_roots = {_to_path(dir_pair.target) for dir_pair in self.dirs}
+        protected_roots.update({_to_path(dir_pair.source) for dir_pair in self.dirs})
 
         relevant_dirs = set(os.path.dirname(f) for f in removed_files)
         # Sort by length to remove subdirectories first
@@ -687,11 +696,14 @@ class SyncDirs:
         for dir_path in relevant_dirs:
             current = dir_path
             while True:
-                resolved_dir = os.path.realpath(current).lower()
-                if resolved_dir in protected_roots:
+                curr_path = _to_path(current)
+                if curr_path in protected_roots or any(curr_path == root for root in protected_roots):
                     break
                 if not os.path.exists(current):
-                    current = os.path.dirname(current)
+                    parent = os.path.dirname(current)
+                    if parent == current:
+                        break
+                    current = parent
                     continue
                 if not os.listdir(current):
                     try:
@@ -700,7 +712,10 @@ class SyncDirs:
                     except Exception as e:
                         logger.error(f'Could not remove empty directory <{current}>. Exception: {e}')
                         break
-                    current = os.path.dirname(current)
+                    parent = os.path.dirname(current)
+                    if parent == current:
+                        break
+                    current = parent
                 else:
                     break
 
@@ -848,21 +863,25 @@ class ActionSelection:
 
 def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> DirectoryPair:
     """Find the corresponding source and target directories for a given path."""
-    path_resolved = os.path.realpath(str(path)).lower()
+    p = _to_path(path)
+
+    best_pair: DirectoryPair | None = None
+    best_score = (-1, -1)
 
     for dir_pair in dirs:
-        source_resolved = os.path.realpath(dir_pair.source).lower()
-        target_resolved = os.path.realpath(dir_pair.target).lower()
+        for root_str in (dir_pair.source, dir_pair.target):
+            root = _to_path(root_str)
+            try:
+                if p == root or p.is_relative_to(root):
+                    score = (len(root.parts), len(str(root)))
+                    if score > best_score:
+                        best_score = score
+                        best_pair = dir_pair
+            except (ValueError, TypeError):
+                continue
 
-        try:
-            if (
-                os.path.commonpath([path_resolved, source_resolved]) == source_resolved
-                or os.path.commonpath([path_resolved, target_resolved]) == target_resolved
-            ):
-                return dir_pair
-        except ValueError:
-            # Raised by os.path.commonpath when paths are on different drives on Windows
-            continue
+    if best_pair is not None:
+        return best_pair
 
     raise FileNotFoundError(f'Could not identify root folders of path <{path}>. Dirs: {dirs}')
 

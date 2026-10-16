@@ -23,6 +23,17 @@ class DirectoryPair:
     def __iter__(self) -> Iterator[str]:
         return iter((self.source, self.target))
 
+    def __repr__(self) -> str:
+        return f'DirectoryPair(source={self.source!r}, target={self.target!r})'
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, DirectoryPair):
+            return self.source == other.source and self.target == other.target
+        return False
+
+    def __hash__(self) -> int:
+        return hash((self.source, self.target))
+
 
 def get_size(path: str | list[str]) -> float:
     def get_single_size(path_) -> int:

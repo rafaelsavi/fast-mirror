@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import sys
@@ -90,6 +91,77 @@ def test_get_dirs_from_path_missing_raises(tmp_path):
     dirs = [DirectoryPair(str(tmp_path / 'A'), str(tmp_path / 'B'))]
     with pytest.raises(FileNotFoundError):
         get_dirs_from_path(str(tmp_path / 'NonExistent' / 'file.txt'), dirs)
+
+
+def test_get_dirs_from_path_unc_paths():
+    dirs = [
+        DirectoryPair(r'E:\Photos', r'\\192.168.1.100\Photos'),
+        DirectoryPair(r'D:\Arquivos', r'\\192.168.1.100\Backup\D'),
+    ]
+    path = r'\\192.168.1.100\Photos\2025\Vacation\20251007_101158 [Qatar, Tanzania].mp4'
+    matched = get_dirs_from_path(path, dirs)
+    assert matched.source == r'E:\Photos'
+    assert matched.target == r'\\192.168.1.100\Photos'
+
+
+def test_get_dirs_from_path_nested_prefers_most_specific():
+    dirs = [
+        DirectoryPair('D:\\', r'\\192.168.1.100\Backup\D'),
+        DirectoryPair(r'D:\Photos', r'\\192.168.1.100\Photos'),
+    ]
+    # File in D:\Photos should match D:\Photos, not D:\
+    matched_specific = get_dirs_from_path(r'D:\Photos\sub\pic.jpg', dirs)
+    assert matched_specific.source == r'D:\Photos'
+
+    # File in other D:\ folder should match D:\
+    matched_root = get_dirs_from_path(r'D:\Other\file.txt', dirs)
+    assert matched_root.source == 'D:\\'
+
+
+def test_get_dirs_from_path_case_and_slash_variations():
+    dirs = [
+        DirectoryPair(r'E:\Photos', r'\\192.168.1.100\Photos'),
+    ]
+    # Forward slashes and lower case
+    matched = get_dirs_from_path('//192.168.1.100/photos/2025/test.mp4', dirs)
+    assert matched.source == r'E:\Photos'
+
+
+def test_directory_pair_repr_and_equality():
+    dp1 = DirectoryPair('D:\\Source', 'E:\\Target')
+    dp2 = DirectoryPair('D:\\Source', 'E:\\Target')
+    dp3 = DirectoryPair('D:\\Other', 'E:\\Target')
+
+    assert dp1 == dp2
+    assert dp1 != dp3
+    assert hash(dp1) == hash(dp2)
+    assert "source='D:\\\\Source'" in repr(dp1)
+
+
+def test_config_json_entry_paths_resolution():
+    """Verify that all real-world entry paths configured in config.json resolve without error."""
+    config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../config.json'))
+    if not os.path.isfile(config_path):
+        pytest.skip('config.json not found')
+
+    with open(config_path, encoding='utf-8') as f:
+        config = json.load(f)
+
+    raw_pairs = config.get('entry_paths', [])
+    dirs = [DirectoryPair(source, target) for source, target in raw_pairs]
+
+    for source, target in raw_pairs:
+        # Test synthetic nested file under source
+        sample_src_file = os.path.join(source, 'subfolder', 'test_sample.txt')
+        matched_src = get_dirs_from_path(sample_src_file, dirs)
+        assert matched_src.source == source
+
+        # Test synthetic nested file under target (UNC share or local drive)
+        sample_tgt_file = os.path.join(target, 'subfolder', 'test_sample.txt')
+        matched_tgt = get_dirs_from_path(sample_tgt_file, dirs)
+        assert matched_tgt.target == target
+
+
 
 
 def test_cstmpath_get_from_dir_exclusions_on_windows(tmp_path):

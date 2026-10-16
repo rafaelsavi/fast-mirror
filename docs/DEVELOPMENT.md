@@ -248,6 +248,14 @@ The application utilizes Windows-specific functions:
 - **`ctypes.windll.kernel32.SetFileAttributesW`**: Resets read-only and locked attributes when copying files that would otherwise fail with `PermissionError`.
 - **`os.startfile`**: Launches the default spreadsheet viewer when clicking **Open last report**.
 
+### Windows UNC & SMB Network Paths Gotchas
+
+When syncing to remote NAS / SMB shares (e.g. `\\192.168.1.100\Share`), keep these critical platform behaviors in mind:
+- **Never use `os.path.commonpath` with UNC root shares**: Python's `ntpath.splitdrive` treats `\\server\share` as having an empty path segment, causing `ntpath.commonpath` to view it as a relative path and raise `ValueError: Can't mix absolute and relative paths` when paired with nested files.
+- **Avoid blocking network I/O (`os.path.realpath`, `Path.resolve`) during path comparisons**: These calls query the network filesystem for reparse points and can block or hang if a network destination is unreachable or asleep. Always perform lexical matching using `pathlib.Path.is_relative_to()`.
+- **Test against real configurations**: Automated tests in `tests/test_core.py` validate all entries in `config.json` against `get_dirs_from_path`.
+
+
 ---
 
 ## Contribution Checklist
