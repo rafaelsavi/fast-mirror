@@ -375,36 +375,38 @@ def robust_copy(
     """
     Copy file from source to target with exponential backoff retries for network resilience and permission recovery.
 
-    If transient errors (e.g. network share disconnects or permission locks) occur,
-    the copy is retried up to max_retries times. If all retries fail, any incomplete or corrupted
-    target file created during the operation is cleaned up.
+    Writes to a temporary staging file in the target directory and atomically replaces the destination.
+    If transient errors, failures, or thread abortions (SystemExit) occur, incomplete files are guaranteed
+    to be cleaned up in a finally block.
     """
     source_str = str(source)
     target_str = str(target)
-    target_existed_initially = os.path.isfile(target_str)
+    target_dir = os.path.dirname(target_str)
+    temp_target = f'{target_str}.tmp'
     delay = initial_delay
 
     for attempt in range(1, max(1, max_retries) + 1):
+        completed = False
         try:
-            os.makedirs(os.path.dirname(target_str), exist_ok=True)
-            shutil.copy2(source_str, target_str)
+            os.makedirs(target_dir, exist_ok=True)
+            # Remove any stale temporary file left from an earlier crash or power loss
+            if os.path.isfile(temp_target):
+                try:
+                    unlock_file_attributes(temp_target)
+                    os.remove(temp_target)
+                except Exception as pre_clean_err:
+                    logger.debug(f'Could not remove stale temp file <{temp_target}>: {pre_clean_err}')
+
+            shutil.copy2(source_str, temp_target)
+            if os.path.isfile(target_str):
+                unlock_file_attributes(target_str)
+            os.replace(temp_target, target_str)
+            completed = True
             return
         except (OSError, PermissionError) as e:
             unlock_file_attributes(target_str)
 
             if attempt == max(1, max_retries):
-                if os.path.isfile(target_str):
-                    try:
-                        source_size = os.path.getsize(source_str) if os.path.isfile(source_str) else None
-                        target_size = os.path.getsize(target_str)
-                        if not target_existed_initially or (source_size is not None and target_size != source_size):
-                            unlock_file_attributes(target_str)
-                            os.remove(target_str)
-                            logger.warning(
-                                f'Cleaned up incomplete target file after failed copy attempts: <{target_str}>'
-                            )
-                    except Exception as cleanup_err:
-                        logger.debug(f'Failed to clean up partial target file <{target_str}>: {cleanup_err}')
                 raise
 
             logger.warning(
@@ -413,6 +415,14 @@ def robust_copy(
             )
             time.sleep(delay)
             delay *= backoff_factor
+        finally:
+            if not completed and os.path.isfile(temp_target):
+                try:
+                    unlock_file_attributes(temp_target)
+                    os.remove(temp_target)
+                    logger.warning(f'Cleaned up incomplete temporary target file after abort/failure: <{temp_target}>')
+                except Exception as cleanup_err:
+                    logger.debug(f'Failed to clean up temp file <{temp_target}>: {cleanup_err}')
 
 
 def robust_move(
@@ -517,6 +527,7 @@ class SyncDirs:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.backoff_factor = backoff_factor
+        self.cancel_requested = threading.Event()
 
         # Initialize variables
         self.files_available_to_copy: list[tuple[CstmPath, CstmPath]] = files_to_copy
@@ -599,14 +610,45 @@ class SyncDirs:
         self.files_requested_to_delete = list()
         return False
 
+    def cancel(self):
+        """Signal cooperative cancellation to stop processing after current file."""
+        self.cancel_requested.set()
+
     def copy_files(self):
         n_files = len(self.files_requested_to_copy)
         start_time = time.time()
         counter_size = 0
 
         for i, (source, target) in enumerate(self.files_requested_to_copy, 1):
+            if hasattr(self, 'cancel_requested') and self.cancel_requested.is_set():
+                logger.info('Copying aborted due to user cancellation request')
+                break
+
             success = False
             try:
+                # Pre-resolve dir_pair before any filesystem changes
+                dir_pair = get_dirs_from_path(target, self.dirs)
+
+                # JIT Self-Healing: If target file already physically exists and matches source, avoid re-copying
+                if os.path.isfile(target):
+                    try:
+                        source_stat = os.stat(source)
+                        target_stat = os.stat(target)
+                        if (
+                            source_stat.st_size == target_stat.st_size
+                            and abs(source_stat.st_mtime - target_stat.st_mtime) < 2.0
+                        ):
+                            logger.info(
+                                f'Target already exists and matches source: <{target}>. Self-healing mirror entry.'
+                            )
+                            self.mirror.add_path(root_dir=dir_pair.target, path=target)
+                            counter_size += target_stat.st_size
+                            success = True
+                            self.files_copied.append(((source, target), success))
+                            continue
+                    except Exception as jit_err:
+                        logger.debug(f'JIT self-heal check skipped for <{target}>: {jit_err}')
+
                 size = get_size(source)
                 logger.debug(f'Copying file {i:,} of {n_files:,}: <{source}> -> <{target}> ({format_size(size)})')
                 robust_copy(
@@ -617,7 +659,6 @@ class SyncDirs:
                     backoff_factor=self.backoff_factor,
                 )
 
-                dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.add_path(root_dir=dir_pair.target, path=target)
                 counter_size += size
                 copy_speed = f'Avg. copy speed: {format_size(counter_size / (time.time() - start_time))}/s'
@@ -635,8 +676,28 @@ class SyncDirs:
         start_time = time.time()
 
         for i, (source, target) in enumerate(self.files_requested_to_move, 1):
+            if hasattr(self, 'cancel_requested') and self.cancel_requested.is_set():
+                logger.info('Moving aborted due to user cancellation request')
+                break
+
             success = False
             try:
+                # Pre-resolve dir_pair before any filesystem changes
+                dir_pair = get_dirs_from_path(target, self.dirs)
+
+                # JIT Self-Healing: If source is already gone and target exists, self-heal mirror
+                if not os.path.isfile(source) and os.path.isfile(target):
+                    try:
+                        logger.info(
+                            f'Source is already missing and target exists: <{target}>. Self-healing mirror entry.'
+                        )
+                        self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
+                        success = True
+                        self.files_moved.append(((source, target), success))
+                        continue
+                    except Exception as jit_err:
+                        logger.debug(f'JIT move self-heal check skipped for <{target}>: {jit_err}')
+
                 logger.debug(f'Moving file {i:,} of {n_files:,}: <{source}> -> <{target}> ({get_size_as_str(source)})')
                 robust_move(
                     source,
@@ -645,7 +706,6 @@ class SyncDirs:
                     initial_delay=self.retry_delay,
                     backoff_factor=self.backoff_factor,
                 )
-                dir_pair = get_dirs_from_path(target, self.dirs)
                 self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
                 log_progress('Moved', i, n_files, start_time, interval=1000)
                 success = True
@@ -661,11 +721,26 @@ class SyncDirs:
         start_time = time.time()
 
         for i, path in enumerate(self.files_requested_to_delete, 1):
+            if hasattr(self, 'cancel_requested') and self.cancel_requested.is_set():
+                logger.info('Deleting aborted due to user cancellation request')
+                break
+
             logger.debug(f'Deleting file {i:,} of {n_files:,}: <{path}> ({get_size_as_str(path)})')
+
+            try:
+                dir_pair = get_dirs_from_path(path, self.dirs)
+            except Exception as e:
+                logger.error(f'Could not identify root directory for deletion target <{path}>: {e}')
+                self.files_deleted.append((path, False))
+                continue
 
             if not os.path.isfile(path):
                 success = True
                 logger.warning(f'Skipping deletion of file because it is already missing: <{path}>')
+                try:
+                    self.mirror.remove_path(root_dir=dir_pair.target, path=path)
+                except Exception as e:
+                    logger.debug(f'Could not remove phantom path from mirror: {e}')
             else:
                 success = False
                 try:
@@ -675,16 +750,13 @@ class SyncDirs:
                         initial_delay=self.retry_delay,
                         backoff_factor=self.backoff_factor,
                     )
+                    self.mirror.remove_path(root_dir=dir_pair.target, path=path)
                     success = True
+                    log_progress('Deleted', i, n_files, start_time, interval=1000)
                 except Exception as e:
                     error_msg = check_length(path)
                     error_msg = e if error_msg == '' else error_msg
                     logger.error(f'There was an error while deleting file <{path}>. Exception: {error_msg}')
-
-            if success:
-                log_progress('Deleted', i, n_files, start_time, interval=1000)
-                dir_pair = get_dirs_from_path(path, self.dirs)
-                self.mirror.remove_path(root_dir=dir_pair.target, path=path)
 
             self.files_deleted.append((path, success))
 

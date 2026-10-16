@@ -121,6 +121,8 @@ class CstmPath(Path):
             dirs[:] = [d for d in dirs if not spec.match_file((rel_root / d).as_posix())]
 
             for f in files:
+                if f.endswith('.tmp') or '.tmp.' in f:
+                    continue
                 rel_path = rel_root / f
                 if not spec.match_file(rel_path.as_posix()):
                     full_path = Path(root) / f

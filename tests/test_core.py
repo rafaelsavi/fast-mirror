@@ -4,6 +4,7 @@ import shutil
 import sys
 import time
 import tkinter as tk
+from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
@@ -24,7 +25,7 @@ from core.mirror import MirrorDatabase
 from gui.custom_gui import CustomCheckboxTreeView
 from gui.enums import BackendThreadStatus
 from gui.widgets import Action, EntryPaths, LogLevels, TextLogger
-from utils.utils import DirectoryPair, format_elapsed_time
+from utils.utils import DirectoryPair, format_elapsed_time, sanitize_path
 
 
 def test_format_elapsed_time_under_hour():
@@ -891,3 +892,241 @@ def test_gui_reset_config_restores_safe_defaults(tmp_path, monkeypatch):
     assert gui.text_var_status.get() == BackendThreadStatus.STANDBY.value
 
     gui.root.destroy()
+
+
+def test_robust_copy_cleans_up_temp_on_system_exit(tmp_path, monkeypatch):
+    source = tmp_path / 'source_abort.txt'
+    target = tmp_path / 'target_abort.txt'
+    source.write_text('important data that must not be corrupted')
+
+    def aborting_copy(src, dst):
+        with open(dst, 'w') as f:
+            f.write('partial corrupted data')
+        raise SystemExit('User aborted thread')
+
+    monkeypatch.setattr(shutil, 'copy2', aborting_copy)
+
+    with pytest.raises(SystemExit):
+        robust_copy(source, target)
+
+    # Neither the final target nor any temporary .tmp file should exist
+    assert not target.exists()
+    tmp_files = list(tmp_path.glob('*.tmp*'))
+    assert len(tmp_files) == 0
+
+
+def test_copy_files_jit_self_healing(tmp_path):
+    source_dir = tmp_path / 'Source'
+    target_dir = tmp_path / 'Target'
+    source_dir.mkdir()
+    target_dir.mkdir()
+
+    source_file = source_dir / 'photo.jpg'
+    target_file = target_dir / 'photo.jpg'
+    payload = b'image payload content'
+    source_file.write_bytes(payload)
+    target_file.write_bytes(payload)
+
+    # Ensure mtimes match
+    s_stat = os.stat(source_file)
+    os.utime(target_file, (s_stat.st_atime, s_stat.st_mtime))
+
+    db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=db_path)
+    # Ensure target is NOT yet in the mirror
+    assert not mirror.exists(str(target_dir), str(target_file))
+
+    dirs = [DirectoryPair(source=str(source_dir), target=str(target_dir))]
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+    sync.files_requested_to_copy = [(str(source_file), str(target_file))]
+
+    # Run copy_files - it should self-heal without modifying the file
+    old_target_mtime = os.stat(target_file).st_mtime
+    sync.copy_files()
+
+    assert len(sync.files_copied) == 1
+    assert sync.files_copied[0][1] is True
+    # Mirror must now have the entry
+    assert mirror.exists(str(target_dir), str(target_file))
+    # Target mtime should be unchanged (no re-copying took place)
+    assert os.stat(target_file).st_mtime == old_target_mtime
+
+
+def test_delete_files_jit_phantom_cleanup(tmp_path):
+    target_dir = tmp_path / 'Target'
+    target_dir.mkdir()
+    phantom_file = target_dir / 'deleted_externally.txt'
+
+    db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=db_path)
+
+    # Simulate phantom record: entry exists in mirror, but file is missing on disk
+    with mirror._get_db(str(target_dir)) as db:
+        db[sanitize_path(phantom_file)] = 'stats_hash_123'
+    assert mirror.exists(str(target_dir), str(phantom_file))
+
+    dirs = [DirectoryPair(source=str(tmp_path / 'Source'), target=str(target_dir))]
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+    sync.files_requested_to_delete = [str(phantom_file)]
+    sync.delete_files()
+
+    assert len(sync.files_deleted) == 1
+    assert sync.files_deleted[0][1] is True
+    # Mirror must have purged the phantom record
+    assert not mirror.exists(str(target_dir), str(phantom_file))
+
+
+def test_move_files_jit_self_healing(tmp_path):
+    target_dir = tmp_path / 'Target'
+    target_dir.mkdir()
+    old_target = target_dir / 'old_sub' / 'file.txt'
+    new_target = target_dir / 'new_sub' / 'file.txt'
+    new_target.parent.mkdir(parents=True)
+    new_target.write_text('moved file data')
+
+    db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=db_path)
+
+    # Mirror still has old path, not new path
+    mirror.add_path(str(target_dir), str(new_target))
+    # Replace entry to simulate old state
+    with mirror._get_db(str(target_dir)) as db:
+        del db[sanitize_path(new_target)]
+        db[sanitize_path(old_target)] = 'old_hash'
+
+    assert mirror.exists(str(target_dir), str(old_target))
+    assert not mirror.exists(str(target_dir), str(new_target))
+
+    dirs = [DirectoryPair(source=str(tmp_path / 'Source'), target=str(target_dir))]
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+    sync.files_requested_to_move = [(str(old_target), str(new_target))]
+    sync.move_files()
+
+    assert len(sync.files_moved) == 1
+    assert sync.files_moved[0][1] is True
+    # Mirror must have moved the key to new_target
+    assert not mirror.exists(str(target_dir), str(old_target))
+    assert mirror.exists(str(target_dir), str(new_target))
+
+
+def test_preflight_directory_pair_validation(tmp_path):
+    db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=db_path)
+    dirs = [DirectoryPair(source=str(tmp_path / 'Source'), target=str(tmp_path / 'Target'))]
+
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+
+    # An invalid target outside of configured dirs
+    invalid_target = 'Z:\\Unmapped\\outside.txt'
+    sync.files_requested_to_delete = [invalid_target]
+    sync.delete_files()
+
+    # Must fail gracefully without raising an uncaught exception
+    assert len(sync.files_deleted) == 1
+    assert sync.files_deleted[0] == (invalid_target, False)
+
+
+def test_sync_dirs_cancel_cooperative(tmp_path):
+    source_dir = tmp_path / 'Source'
+    target_dir = tmp_path / 'Target'
+    source_dir.mkdir()
+    target_dir.mkdir()
+
+    f1 = source_dir / '1.txt'
+    f2 = source_dir / '2.txt'
+    f1.write_text('1')
+    f2.write_text('2')
+
+    db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=db_path)
+    dirs = [DirectoryPair(source=str(source_dir), target=str(target_dir))]
+
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+    sync.files_requested_to_copy = [
+        (str(f1), str(target_dir / '1.txt')),
+        (str(f2), str(target_dir / '2.txt')),
+    ]
+
+    # Pre-emptively signal cancel
+    sync.cancel()
+    sync.copy_files()
+
+    # Cancel was set before starting, so 0 files were copied
+    assert len(sync.files_copied) == 0
+    assert not (target_dir / '1.txt').exists()
+    assert not (target_dir / '2.txt').exists()
+
+
+def test_robust_copy_pre_cleans_stale_temp_file(tmp_path):
+    source = tmp_path / 'source.txt'
+    target = tmp_path / 'target.txt'
+    stale_tmp = tmp_path / 'target.txt.tmp'
+
+    source.write_text('fresh clean content')
+    stale_tmp.write_text('corrupt stale content from past power cut')
+
+    # Copy should succeed, pre-cleaning the stale .tmp file and creating target.txt
+    robust_copy(source, target)
+
+    assert target.exists()
+    assert target.read_text() == 'fresh clean content'
+    assert not stale_tmp.exists()
+
+
+def test_cstm_path_get_from_dir_ignores_tmp_files(tmp_path):
+    source_dir = tmp_path / 'scan_dir'
+    source_dir.mkdir()
+    valid_file = source_dir / 'real_photo.jpg'
+    tmp_file1 = source_dir / 'video.mp4.tmp'
+    tmp_file2 = source_dir / 'backup.zip.tmp.1234_1'
+
+    valid_file.write_text('valid')
+    tmp_file1.write_text('tmp1')
+    tmp_file2.write_text('tmp2')
+
+    scanned = CstmPath.get_from_dir(source_dir, exclude=[])
+    scanned_names = {Path(p).name for p in scanned}
+
+    assert 'real_photo.jpg' in scanned_names
+    assert 'video.mp4.tmp' not in scanned_names
+    assert 'backup.zip.tmp.1234_1' not in scanned_names

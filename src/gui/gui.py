@@ -53,6 +53,7 @@ class Gui:
         self._backend_thread_holder: KillableThread | None = None
         self._backend_thread_status = BackendThreadStatus.STANDBY
         self._current_run_trigger: str | None = None
+        self._active_sync: SyncDirs | None = None
 
         # GUI elements
         self.toggle_auto_scroll = tk.BooleanVar()
@@ -577,6 +578,9 @@ class Gui:
                 if stop_requested:
                     logger.info('---------------------------------')
                     logger.info('Trying to stop background process')
+                    if hasattr(self, '_active_sync') and self._active_sync is not None:
+                        with contextlib.suppress(Exception):
+                            self._active_sync.cancel()
                     if self.backend_thread_holder is None:
                         logger.warning('There is no background process to stop')
                     else:
@@ -619,19 +623,22 @@ class Gui:
             rebuild_mirror=self.checkbox_var_build_mirror.get(),
         )
 
-        if also_sync:
-            default_actions = self.checkbox_default_actions.get_as_actions()
-            SyncDirs(
-                files_to_copy=compare.files_to_copy,
-                files_to_move=compare.files_to_move,
-                files_to_delete=compare.files_to_delete,
-                mirror=mirror,
-                root_gui=self.root,
-                dirs=dirs,
-                default_actions=default_actions,
-                increment_mirror=not self.checkbox_var_build_mirror.get(),
-                confirm_sync=self.checkbox_var_confirm_sync.get(),
-            )
+        try:
+            if also_sync:
+                default_actions = self.checkbox_default_actions.get_as_actions()
+                self._active_sync = SyncDirs(
+                    files_to_copy=compare.files_to_copy,
+                    files_to_move=compare.files_to_move,
+                    files_to_delete=compare.files_to_delete,
+                    mirror=mirror,
+                    root_gui=self.root,
+                    dirs=dirs,
+                    default_actions=default_actions,
+                    increment_mirror=not self.checkbox_var_build_mirror.get(),
+                    confirm_sync=self.checkbox_var_confirm_sync.get(),
+                )
+        finally:
+            self._active_sync = None
 
         logger.debug('Processing thread was properly closed')
 
