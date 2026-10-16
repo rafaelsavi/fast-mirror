@@ -18,7 +18,7 @@ from core.backend import (
 )
 from core.file import CstmPath, File
 from core.mirror import MirrorDatabase
-from gui.widgets import EntryPaths
+from gui.widgets import Action, EntryPaths
 from utils.utils import DirectoryPair, format_elapsed_time
 
 
@@ -268,3 +268,218 @@ def test_syncdirs_execution_order(monkeypatch, tmp_path):
     )
 
     assert call_order == ['move', 'delete', 'copy', 'prune']
+
+
+def test_file_class_properties(tmp_path):
+    root_s = tmp_path / 's'
+    root_t = tmp_path / 't'
+    root_s.mkdir()
+    root_t.mkdir()
+
+    f_s = root_s / 'file.txt'
+    f_t = root_t / 'file.txt'
+    f_s.write_text('content')
+    shutil.copy2(f_s, f_t)
+
+    cp_s = CstmPath(f_s, root_dir=root_s)
+    cp_t = CstmPath(f_t, root_dir=root_t)
+
+    # only source
+    f_only_s = File(source=cp_s, target=None)
+    assert f_only_s.only_source is True
+    assert f_only_s.only_target is False
+    assert f_only_s.in_both is False
+
+    # only target
+    f_only_t = File(source=None, target=cp_t)
+    assert f_only_t.only_source is False
+    assert f_only_t.only_target is True
+    assert f_only_t.in_both is False
+
+    # in both, same relative path
+    f_both = File(source=cp_s, target=cp_t)
+    assert f_both.in_both is True
+    assert f_both.moved is False
+    f_both.compare()
+    assert f_both.same is True
+    assert f_both.modified is False
+    assert f_both.compare_error is False
+
+    # moved (different rel_to_root)
+    f_sub = root_t / 'sub' / 'file.txt'
+    f_sub.parent.mkdir()
+    f_sub.write_text('content')
+    cp_sub = CstmPath(f_sub, root_dir=root_t)
+    f_moved = File(source=cp_s, target=cp_sub)
+    assert f_moved.in_both is True
+    assert f_moved.moved is True
+
+
+def test_compare_dirs_classifies_copy_move_delete(tmp_path):
+    source = tmp_path / 'source'
+    target = tmp_path / 'target'
+    source.mkdir()
+    target.mkdir()
+
+    # 1. Unchanged file (identical content and mtime)
+    unchanged_src = source / 'unchanged.txt'
+    unchanged_tgt = target / 'unchanged.txt'
+    unchanged_src.write_text('same')
+    shutil.copy2(unchanged_src, unchanged_tgt)
+
+    # 2. New file (source only)
+    new_src = source / 'new.txt'
+    new_src.write_text('new')
+
+    # 3. Obsolete file (target only)
+    obsolete_tgt = target / 'obsolete.txt'
+    obsolete_tgt.write_text('obsolete')
+
+    # 4. Modified file (exists in both, but content differs)
+    mod_src = source / 'modified.txt'
+    mod_tgt = target / 'modified.txt'
+    mod_src.write_text('source version v2')
+    mod_tgt.write_text('target version v1')
+    os.utime(mod_src, (time.time() - 10, time.time() - 10))
+    os.utime(mod_tgt, (time.time() - 500, time.time() - 500))
+
+    # 5. Moved file (source is in subfolder, target has same name/content in root)
+    moved_src = source / 'subfolder' / 'moved.txt'
+    moved_src.parent.mkdir()
+    moved_src.write_text('unique moved content')
+    moved_tgt = target / 'moved.txt'
+    shutil.copy2(moved_src, moved_tgt)
+
+    mirror_db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=mirror_db_path)
+
+    dirs = [DirectoryPair(str(source), str(target))]
+    compare = CompareDirs(mirror=mirror, dirs=dirs, exclusions=[])
+
+    copy_sources = [str(s) for s, _ in compare.files_to_copy]
+    assert str(new_src) in copy_sources
+    assert str(mod_src) in copy_sources
+    assert str(unchanged_src) not in copy_sources
+
+    assert len(compare.files_to_move) == 1
+    move_src, move_dst = compare.files_to_move[0]
+    assert str(move_src) == str(moved_tgt)
+    assert str(move_dst) == str(target / 'subfolder' / 'moved.txt')
+
+    delete_targets = [str(t) for t in compare.files_to_delete]
+    assert str(obsolete_tgt) in delete_targets
+    assert str(unchanged_tgt) not in delete_targets
+
+
+def test_syncdirs_end_to_end_execution(tmp_path):
+    source = tmp_path / 'source'
+    target = tmp_path / 'target'
+    source.mkdir()
+    target.mkdir()
+
+    # Create test files
+    new_src = source / 'new.txt'
+    new_src.write_text('new content')
+
+    mod_src = source / 'mod.txt'
+    mod_tgt = target / 'mod.txt'
+    mod_src.write_text('updated mod')
+    mod_tgt.write_text('old mod')
+    os.utime(mod_src, (time.time() - 10, time.time() - 10))
+    os.utime(mod_tgt, (time.time() - 500, time.time() - 500))
+
+    obs_tgt = target / 'obsolete.txt'
+    obs_tgt.write_text('old obsolete')
+
+    moved_src = source / 'sub' / 'moved.txt'
+    moved_src.parent.mkdir()
+    moved_src.write_text('moved file')
+    moved_tgt = target / 'old_sub' / 'moved.txt'
+    moved_tgt.parent.mkdir()
+    shutil.copy2(moved_src, moved_tgt)
+
+    mirror_db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=mirror_db_path)
+    dirs = [DirectoryPair(str(source), str(target))]
+
+    compare = CompareDirs(mirror=mirror, dirs=dirs, exclusions=[])
+
+    SyncDirs(
+        files_to_copy=compare.files_to_copy,
+        files_to_move=compare.files_to_move,
+        files_to_delete=compare.files_to_delete,
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        default_actions=[Action.COPY, Action.MOVE, Action.DELETE],
+        confirm_sync=False,
+    )
+
+    # Verify synchronization effects
+    assert (target / 'new.txt').is_file()
+    assert (target / 'new.txt').read_text() == 'new content'
+    assert (target / 'mod.txt').read_text() == 'updated mod'
+    assert not obs_tgt.exists()
+    assert (target / 'sub' / 'moved.txt').is_file()
+    assert not moved_tgt.exists()
+
+    # Empty old directory was pruned
+    assert not (target / 'old_sub').exists()
+    # Roots are preserved
+    assert target.is_dir()
+    assert source.is_dir()
+
+
+def test_delete_empty_dirs_preserves_root_directory(tmp_path):
+    source = tmp_path / 'source_root'
+    target = tmp_path / 'target_root'
+    source.mkdir()
+    target.mkdir()
+
+    nested = target / 'level1' / 'level2'
+    nested.mkdir(parents=True)
+
+    mirror = MirrorDatabase(path=str(tmp_path / 'mirror.db'))
+    dirs = [DirectoryPair(str(source), str(target))]
+
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+
+    sync.files_deleted = [(str(nested / 'fake_file.txt'), True)]
+    sync.delete_empty_dirs()
+
+    assert not nested.exists()
+    assert not (target / 'level1').exists()
+    assert target.is_dir()
+    assert source.is_dir()
+
+
+def test_compare_dirs_respects_exclusions(tmp_path):
+    source = tmp_path / 'source'
+    target = tmp_path / 'target'
+    source.mkdir()
+    target.mkdir()
+
+    keep = source / 'keep.txt'
+    keep.write_text('keep')
+    ignored = source / 'temp.log'
+    ignored.write_text('log')
+    git_file = source / '.git' / 'config'
+    git_file.parent.mkdir()
+    git_file.write_text('git')
+
+    mirror = MirrorDatabase(path=str(tmp_path / 'mirror.db'))
+    dirs = [DirectoryPair(str(source), str(target))]
+    compare = CompareDirs(mirror=mirror, dirs=dirs, exclusions=['*.log', '.git/*'])
+
+    copy_paths = [str(s) for s, _ in compare.files_to_copy]
+    assert str(keep) in copy_paths
+    assert str(ignored) not in copy_paths
+    assert str(git_file) not in copy_paths

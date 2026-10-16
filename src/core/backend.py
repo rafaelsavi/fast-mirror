@@ -688,18 +688,24 @@ class SyncDirs:
         logger.info('Deleting empty directories from folders where files were deleted or moved from')
 
         for dir_path in relevant_dirs:
-            try:
-                resolved_dir = os.path.realpath(dir_path).lower()
+            current = dir_path
+            while True:
+                resolved_dir = os.path.realpath(current).lower()
                 if resolved_dir in protected_roots:
+                    break
+                if not os.path.exists(current):
+                    current = os.path.dirname(current)
                     continue
-                if not os.path.exists(dir_path):
-                    logger.info(f'Directory <{dir_path}> does not exist anymore, skipping')
-                    continue
-                if not os.listdir(dir_path):
-                    os.rmdir(dir_path)
-                    logger.info(f'Removed empty directory <{dir_path}>')
-            except Exception as e:
-                logger.error(f'Could not remove empty directory <{dir_path}>. Exception: {e}')
+                if not os.listdir(current):
+                    try:
+                        os.rmdir(current)
+                        logger.info(f'Removed empty directory <{current}>')
+                    except Exception as e:
+                        logger.error(f'Could not remove empty directory <{current}>. Exception: {e}')
+                        break
+                    current = os.path.dirname(current)
+                else:
+                    break
 
     def print_errors(self):
         failed_copy = [p for p, success in self.files_copied if not success]
