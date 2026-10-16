@@ -118,11 +118,11 @@ class CstmPath(Path):
             rel_root = Path(root).relative_to(dir_path)
 
             # Improve walk efficiency prune in-place directories that match ignore patterns
-            dirs[:] = [d for d in dirs if not spec.match_file(str(rel_root / d))]
+            dirs[:] = [d for d in dirs if not spec.match_file((rel_root / d).as_posix())]
 
             for f in files:
                 rel_path = rel_root / f
-                if not spec.match_file(str(rel_path)):
+                if not spec.match_file(rel_path.as_posix()):
                     full_path = Path(root) / f
                     all_paths.add(CstmPath(full_path, root_dir=dir_path))
                     log_progress('Scanned', len(all_paths), None, start_time, interval=10_000)

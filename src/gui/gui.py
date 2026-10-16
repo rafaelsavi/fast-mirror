@@ -11,7 +11,6 @@ from core.backend import CompareDirs, SyncDirs
 from core.mirror import MirrorDatabase
 from gui.custom_gui import TrayableTk
 from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgState
-from gui.threading import KillableThread
 from gui.widgets import (
     Action,
     DefaultActions,
@@ -22,6 +21,7 @@ from gui.widgets import (
     TextLogger,
     WeekDays,
 )
+from gui.worker_thread import KillableThread
 from utils.constants import ROOT_DIR
 from utils.logger import logger
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
@@ -422,7 +422,7 @@ class Gui:
                 checkbox.set(False)
             with contextlib.suppress(Exception):
                 os.remove(self.config_path)
-            logger.info('GUI configuration was reseted')
+            logger.info('GUI configuration was reset')
 
     def button_action_save_config(self, ask_confirmation=True):
         if os.path.isfile(self.config_path):
@@ -500,7 +500,7 @@ class Gui:
             logger.info(f'Opening {last_filepath}')
             os.startfile(last_filepath)
         else:
-            logger.error(f'Could not open last report because no it was not found in directory <{logger.log_dir}>')
+            logger.error(f'Could not open last report because it was not found in directory <{logger.log_dir}>')
 
     def button_action_quick_compare(self):
         self.toggle_state_quick_compare = not self.toggle_state_quick_compare
@@ -641,7 +641,7 @@ class Gui:
                 if self.toggle_auto_scroll.get():
                     self.text_logger.yview(tk.END)
 
-        self.root.after(1000, self.log_queue_watchdog)
+        self.root.after(100, self.log_queue_watchdog)
 
 
 if __name__ == '__main__':

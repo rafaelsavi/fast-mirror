@@ -13,14 +13,15 @@ class EntryPaths(ScrolledText):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get(self, *args, **kwargs) -> list[tuple[str, str]]:
-        raw: str
-        raw = super().get('1.0', tk.END)
+    def get(self, *args, **kwargs) -> list[tuple[str, str]]:  # type: ignore[override]
+        raw: str = super().get('1.0', tk.END)
         lines = raw.splitlines()
-        paths = list({self.parse_line(line) for line in lines})
-        paths = [pair for pair in paths if pair is not None]
-        paths.sort(key=lambda x: x[0])  # sort by source path
-        return paths
+        valid_paths: list[tuple[str, str]] = [
+            pair for line in lines if (pair := self.parse_line(line)) is not None
+        ]
+        unique_paths = list(set(valid_paths))
+        unique_paths.sort(key=lambda x: x[0])  # sort by source path
+        return unique_paths
 
     def get_as_dir_pairs(self) -> list[DirectoryPair]:
         return [DirectoryPair(source=pair[0], target=pair[1]) for pair in self.get()]
@@ -38,12 +39,19 @@ class EntryPaths(ScrolledText):
     @staticmethod
     def parse_line(raw: str) -> None | tuple[str, str]:
         try:
-            source, target = raw.split(' -> ')
-            if os.path.isdir(source) and os.path.isdir(target):
-                return (os.path.realpath(source), os.path.realpath(target))
-            else:
+            if ' -> ' not in raw:
                 return None
-        except:
+            source, target = raw.split(' -> ', 1)
+            source, target = source.strip(), target.strip()
+            # Source must exist as a directory.
+            # Target can exist as a directory, or its parent directory must exist
+            # (e.g. creating a new backup target folder).
+            if os.path.isdir(source) and (
+                os.path.isdir(target) or os.path.isdir(os.path.dirname(os.path.realpath(target)))
+            ):
+                return (os.path.realpath(source), os.path.realpath(target))
+            return None
+        except Exception:
             return None
 
 
@@ -53,7 +61,7 @@ class EntryExclusions(tk.Entry):
         super().__init__(*args, textvariable=self.var, **kwargs)
         self.reset()
 
-    def get(self, *args, **kwargs) -> list[str]:
+    def get(self, *args, **kwargs) -> list[str]:  # type: ignore[override]
         raw = self.var.get()
         exclusions = list(sorted({sanitize_path(x.strip()) for x in raw.split(',') if x.strip() != ''}))
         return exclusions

@@ -1,5 +1,6 @@
 import os
 import re
+import sqlite3
 import time
 from collections.abc import Iterable
 from os import PathLike
@@ -25,15 +26,39 @@ class MirrorDatabase:
         self.exclusions = list(sorted([sanitize_path(ex) for ex in exclusions])) if exclusions else []
         if not os.path.exists(self.path):
             self.init()
+        else:
+            self._enable_wal()
 
     def init(self) -> bool:
         try:
             with SqliteDict(self.path, autocommit=True) as db:
                 db.commit()
+            self._enable_wal()
         except Exception as e:
             logger.warning(f'Could not create database. Exception: {e}')
             return False
         return True
+
+    def _enable_wal(self):
+        try:
+            with sqlite3.connect(self.path) as conn:
+                conn.execute('PRAGMA journal_mode=WAL;')
+                conn.commit()
+        except Exception as e:
+            logger.warning(f'Could not set SQLite WAL mode on {self.path}. Exception: {e}')
+
+    def vacuum(self) -> bool:
+        """Reclaim unused disk space and defragment SQLite database file."""
+        try:
+            logger.info(f'Running VACUUM on database <{self.path}>')
+            with sqlite3.connect(self.path) as conn:
+                conn.execute('VACUUM;')
+                conn.commit()
+            logger.info(f'VACUUM completed successfully on <{self.path}>')
+            return True
+        except Exception as e:
+            logger.warning(f'Could not VACUUM database <{self.path}>. Exception: {e}')
+            return False
 
     def _generate_table_name(self, root_dir: str | PathLike[str]) -> str:
         """
@@ -159,10 +184,11 @@ class MirrorDatabase:
 
         try:
             with self._get_db(root_dir) as db:
-                if isinstance(path, Iterable) and not isinstance(path, str):
+                if isinstance(path, Iterable) and not isinstance(path, str | bytes | PathLike):
+                    path_list = list(path)
                     start_time = time.time()
-                    number_files = len(path)
-                    for i, path_single in enumerate(path):
+                    number_files = len(path_list)
+                    for i, path_single in enumerate(path_list):
                         add_single(db, path_single)
                         log_progress('Added', i, number_files, start_time, interval=10_000)
                 else:
@@ -173,8 +199,9 @@ class MirrorDatabase:
     def remove_path(self, root_dir: str | PathLike[str], path: CstmPathType | Iterable[CstmPathType]) -> bool:
         def remove_single(db: SqliteDict, path_single: CstmPathType) -> bool:
             try:
-                if path_single in db:
-                    del db[sanitize_path(path_single)]
+                sanitized_key = sanitize_path(path_single)
+                if sanitized_key in db:
+                    del db[sanitized_key]
                     return True
                 else:
                     logger.warning(f'Key does not exist in database: {path_single}')
@@ -185,7 +212,7 @@ class MirrorDatabase:
 
         try:
             with self._get_db(root_dir) as db:
-                if isinstance(path, Iterable) and not isinstance(path, str | bytes):
+                if isinstance(path, Iterable) and not isinstance(path, str | bytes | PathLike):
                     return all(remove_single(db, path_single) for path_single in path)
                 return remove_single(db, path)
         except Exception as e:

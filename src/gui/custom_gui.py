@@ -31,31 +31,32 @@ class TrayableTk(tk.Tk):
             self.withdraw()
 
     def add_system_tray_icon(self):
-        # Add the path to the Winico package so Tcl can find it
-        winico_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'winico'))
-        self.tk.call('lappend', 'auto_path', winico_path)
-        # The work about "Winico"
-        self.tk.call(
-            'package', 'require', 'Winico'
-        )  # use the tcl "winico", make sure the folder of "winico" is in the same path.
-        icon = self.tk.call('winico', 'createfrom', 'src/gui/smiley.ico')  # this is the icon on the system tray.
-        self.tk.call(
-            'winico',
-            'taskbar',
-            'add',
-            icon,  # set the icon
-            '-callback',
-            (self.register(self.menu_func), '%m', '%x', '%y'),  # refer to winico documentation.
-            '-pos',
-            0,
-            '-text',
-            'Automatic Backup Tool',
-        )  # the hover text of the system tray.
+        try:
+            # Add the path to the Winico package so Tcl can find it
+            winico_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'winico'))
+            self.tk.call('lappend', 'auto_path', winico_path)
+            self.tk.call('package', 'require', 'Winico')
+            icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'smiley.ico'))
+            icon = self.tk.call('winico', 'createfrom', icon_path)
+            self.tk.call(
+                'winico',
+                'taskbar',
+                'add',
+                icon,
+                '-callback',
+                (self.register(self.menu_func), '%m', '%x', '%y'),
+                '-pos',
+                0,
+                '-text',
+                'Automatic Backup Tool',
+            )
 
-        # About menu
-        self.tray_menu = tk.Menu(self, tearoff=False)
-        self.tray_menu.add_command(label='Open', command=self.deiconify)
-        self.tray_menu.add_command(label='Quit', command=self.destroy)
+            # About menu
+            self.tray_menu = tk.Menu(self, tearoff=False)
+            self.tray_menu.add_command(label='Open', command=self.deiconify)
+            self.tray_menu.add_command(label='Quit', command=self.destroy)
+        except Exception as e:
+            logger.warning(f'Could not initialize system tray icon. Exception: {e}')
 
         # You could also add a cascade menu
         # cascadeMenu = tk.Menu(self, tearoff=False)

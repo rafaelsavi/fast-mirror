@@ -1,0 +1,301 @@
+# System Architecture & Synchronization Engine
+
+This document provides an in-depth technical analysis of the design, internal data models, threading architecture, and algorithms implemented in **Automatic Backup Tool**.
+
+---
+
+## Table of Contents
+
+1. [High-Level Architectural Overview](#high-level-architectural-overview)
+2. [Core Data Models & File Abstractions](#core-data-models--file-abstractions)
+   - [CstmPath](#cstmpath)
+   - [Metadata Stats & StatsHash](#metadata-stats--statshash)
+   - [File Class & State Machine](#file-class--state-machine)
+3. [The Comparison Engine (`CompareDirs`)](#the-comparison-engine-comparedirs)
+   - [1. Scanning Phase](#1-scanning-phase)
+   - [2. Linking Phase](#2-linking-phase)
+   - [3. Comparison Phase](#3-comparison-phase)
+   - [4. Action Categorization Phase](#4-action-categorization-phase)
+   - [5. Reporting Phase](#5-reporting-phase)
+4. [The Synchronization Engine (`SyncDirs`)](#the-synchronization-engine-syncdirs)
+   - [Copy Execution & Permission Recovery](#copy-execution--permission-recovery)
+   - [Move Execution](#move-execution)
+   - [Deletion Execution](#deletion-execution)
+   - [Protected Empty Directory Pruning](#protected-empty-directory-pruning)
+5. [The Local Mirror Database (`MirrorDatabase`)](#the-local-mirror-database-mirrordatabase)
+   - [Isolation & Table Name Derivation](#isolation--table-name-derivation)
+   - [Incremental Maintenance](#incremental-maintenance)
+6. [GUI & Concurrency Architecture](#gui--concurrency-architecture)
+   - [KillableThread & Trace Injection](#killablethread--trace-injection)
+   - [Watchdog State Machine](#watchdog-state-machine)
+   - [Thread-Safe Logging](#thread-safe-logging)
+   - [Custom TreeView with Dynamic Grouping](#custom-treeview-with-dynamic-grouping)
+   - [System Tray via Winico Tcl Extension](#system-tray-via-winico-tcl-extension)
+
+---
+
+## High-Level Architectural Overview
+
+The application is structured into three clean layers:
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   GUI Layer (Tkinter)                  │
+│  [Gui] ─── [TrayableTk] ─── [CustomCheckboxTreeView]   │
+│         │                                              │
+│         ▼                                              │
+│  [KillableThread] (Background Worker)                  │
+└─────────┬──────────────────────────────────────────────┘
+          │
+          ▼
+┌────────────────────────────────────────────────────────┐
+│                  Core Engine Layer                     │
+│  [CompareDirs] ───────────────► [SyncDirs]             │
+│        │                              │                │
+│        ▼                              ▼                │
+│  [File / CstmPath]           [File Operations]         │
+└─────────┬─────────────────────────────┬────────────────┘
+          │                             │
+          ▼                             ▼
+┌────────────────────────────────────────────────────────┐
+│               Storage & Database Layer                 │
+│  [MirrorDatabase (SqliteDict)]  [Filesystem / Network] │
+└────────────────────────────────────────────────────────┘
+```
+
+- **GUI Layer (`src/gui/`)**: Manages user interaction, preferences, background thread lifecycles, real-time log routing, and system tray minimization.
+- **Core Engine Layer (`src/core/`)**: Houses filesystem traversal, metadata extraction, file linking, move/rename detection, and disk synchronization.
+- **Storage Layer**: SQLite (`local_mirror.db`) for caching and persistent log/report files in `logs/`.
+
+---
+
+## Core Data Models & File Abstractions
+
+Implemented in [`src/core/file.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/core/file.py).
+
+### CstmPath
+
+`CstmPath` inherits from Python's standard `pathlib.Path`. It enhances the path object with root-relative context and cached stat metrics:
+
+- **`root_dir`**: Identifies the base folder under which the path was discovered. Validates that `root_dir in self.parents`.
+- **`rel_to_root`**: Cached relative path string (`Path(self).relative_to(self.root_dir)`).
+- **`as_target(dirs)`**: Maps a source path to its corresponding destination root based on configured directory pairs.
+- **Operator Overloads**: Overrides `__truediv__` (`/`) and `__rtruediv__` so that subpath division returns a `CstmPath` instance preserving `root_dir`.
+
+### Metadata Stats & StatsHash
+
+To evaluate whether two files are identical without reading their entire payload:
+
+1. `_get_stats(path)` extracts `Stats(st_size, st_mtime)`.
+2. `_encode_stats(stats)` computes an 8-byte hexadecimal hash using the fast BLAKE2b algorithm:
+   ```python
+   StatsHash(hashlib.blake2b(str(stats).encode(), digest_size=8).hexdigest())
+   ```
+3. This 16-character string provides a collision-resistant fingerprint of size and modification timestamp, compact enough to store millions of entries in SQLite with minimal overhead.
+
+### File Class & State Machine
+
+The `File` class pairs a source `CstmPath` and/or a target `CstmPath`. A file exists in one of several mutually exclusive or composite states:
+
+```
+            ┌───────────────────┐
+            │       File        │
+            └─────────┬─────────┘
+                      │
+     ┌────────────────┼────────────────┐
+     ▼                ▼                ▼
+[only_source]     [in_both]      [only_target]
+ (Source Only)        │          (Target Only)
+                      ├────────────────┐
+                      ▼                ▼
+                 [not moved]        [moved]
+                      │          (Same metadata,
+              ┌───────┴───────┐   diff rel-path)
+              ▼               ▼
+           [same]        [modified]
+       (Metadata match) (Metadata differ)
+```
+
+- **`only_source`**: Target is `None`. File will be copied to destination.
+- **`only_target`**: Source is `None`. File is obsolete and will be deleted from destination.
+- **`in_both`**: Both source and target exist.
+- **`moved`**: Both source and target exist, and their `rel_to_root` paths differ.
+- **`same`**: File content/metadata matches. No operation required.
+- **`modified`**: Metadata differs. File will be overwritten by source.
+- **`compare_error`**: File comparison failed (e.g. access denied). Skipped from action lists to prevent destructive mistakes.
+
+---
+
+## The Comparison Engine (`CompareDirs`)
+
+Implemented in [`src/core/backend.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/core/backend.py).
+
+`CompareDirs` executes a strict five-phase workflow:
+
+```mermaid
+sequenceDiagram
+    participant CD as CompareDirs
+    participant FS as Filesystem / OS
+    participant MD as MirrorDatabase
+
+    CD->>FS: 1. Scan Source Files (gitwildmatch pruning)
+    alt Use Mirror Enabled & Table Exists
+        CD->>MD: 2. Load Target Files from SQLite
+    else Use Mirror Disabled or Missing
+        CD->>FS: 2. Scan Target Files from Disk
+        CD->>MD: Save scanned entries to Mirror
+    end
+    CD->>CD: 3. Link Files (Relative paths & Move detection)
+    CD->>FS: 4. Compare Linked Files (Metadata / Content)
+    CD->>CD: 5. Generate Copy, Move, Delete lists
+    CD->>FS: 6. (Optional) Export Excel Report
+```
+
+### 1. Scanning Phase
+- Utilizes `os.walk()` combined with `pathspec.PathSpec` (gitwildmatch mode).
+- In-place directory pruning (`dirs[:] = [d for d in dirs if not spec.match_file(...)]`) prevents `os.walk` from descending into ignored directory trees (`.git`, `node_modules`, `.venv`), dramatically reducing disk I/O.
+
+### 2. Linking Phase
+File linking correlates source and target entries in 4 sequential passes:
+
+1. **Relative Path Exact Match**:
+   Iterates through source files. If `target_rel_paths.get(source_file.rel_to_root)` exists, creates a `File(source, target)`. Both are removed from unlinked sets.
+2. **Move & Rename Detection**:
+   Examines remaining unlinked files where the filename is unique within both source and target sets (`Counter(f.name) == 1`). If the filenames match and their metadata hashes match, creates a `File(source, target)` marked as `moved=True`.
+3. **Source-Only Accumulation**:
+   Remaining unlinked source files are marked as `only_source=True`.
+4. **Target-Only Accumulation**:
+   Remaining unlinked target files are marked as `only_target=True`.
+
+### 3. Comparison Phase
+For all files existing in both directories that are not moved:
+- **`CompareMethod.METADATA`**: Compares `f1.stats_hash == f2.stats_hash`.
+- **`CompareMethod.CONTENT`**: Uses `filecmp.cmp(f1, f2, shallow=False)` to verify byte-level equality.
+
+### 4. Action Categorization Phase
+- **`files_to_copy`**: Includes `only_source` files and `modified` files.
+- **`files_to_move`**: Includes `moved` files (relocating `f.target -> f.source_as_target`).
+- **`files_to_delete`**: Includes `only_target` files.
+
+### 5. Reporting Phase
+When enabled, builds a pandas DataFrame containing all evaluated files (filtering out unchanged files to save memory) and writes a timestamped spreadsheet to `logs/compare_report_YYYY-MM-DD_HH-MM-SS.xlsx`.
+
+---
+
+## The Synchronization Engine (`SyncDirs`)
+
+Implemented in [`src/core/backend.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/core/backend.py).
+
+`SyncDirs` executes user-approved operations in a specific sequence to maintain filesystem consistency:
+
+### Copy Execution & Permission Recovery
+1. Calls `os.makedirs(os.path.dirname(target), exist_ok=True)`.
+2. Calls `shutil.copy2(source, target)` to replicate data and metadata timestamps.
+3. **Windows Permission Recovery**: If `shutil.copy2` raises `PermissionError`:
+   - Invokes `ctypes.windll.kernel32.SetFileAttributesW(str(target), 0x80)` (`FILE_ATTRIBUTE_NORMAL`).
+   - Retries `shutil.copy2`.
+4. Adds the target path to `MirrorDatabase`.
+5. Logs average transfer speed in MB/s or GB/s.
+
+### Move Execution
+1. Calls `os.makedirs(os.path.dirname(target), exist_ok=True)`.
+2. Calls `shutil.move(source, target)`.
+3. Calls `MirrorDatabase.replace_path(root_dir, old_path, new_path)`.
+
+### Deletion Execution
+1. Removes write protection if set (`os.chmod(path, stat.S_IWRITE)`).
+2. Calls `os.remove(path)`.
+3. Removes the path from `MirrorDatabase`.
+
+### Protected Empty Directory Pruning
+After files are deleted or moved, orphan empty folders can clutter the target:
+1. Gathers directories containing deleted or moved files.
+2. Sorts directories in descending order of string length (`reverse=True`) so child subdirectories are deleted before parent folders.
+3. **Root Protection**: Asserts that normalized directory paths are not root source or target paths:
+   ```python
+   protected_roots = {os.path.realpath(dir_pair.target).lower() for dir_pair in self.dirs}
+   protected_roots.update({os.path.realpath(dir_pair.source).lower() for dir_pair in self.dirs})
+   ```
+4. If empty (`not os.listdir(dir_path)`), calls `os.rmdir(dir_path)`.
+
+---
+
+## The Local Mirror Database (`MirrorDatabase`)
+
+Implemented in [`src/core/mirror.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/core/mirror.py).
+
+### Isolation & Table Name Derivation
+The mirror manages a single SQLite database (`local_mirror.db`) backed by `sqlitedict`. To ensure different directories or different exclusion sets do not cross-contaminate:
+
+- Table names are generated by combining the sanitized root path with a sanitized string of sorted exclusion rules:
+  ```python
+  def _generate_table_name(self, root_dir: str | PathLike[str]) -> str:
+      sanitized_root = sanitize_path(root_dir).replace(os.sep, '_').replace(':', '_')
+      sanitized_exclusions = '_'.join(e.replace(os.sep, '_').replace(':', '_') for e in self.exclusions)
+      allowed_pattern = r'[^a-zA-Z0-9_]'
+      sanitized_root = re.sub(allowed_pattern, '_', sanitized_root)
+      sanitized_exclusions = re.sub(allowed_pattern, '_', sanitized_exclusions)
+      return f'{sanitized_root}__{sanitized_exclusions}'
+  ```
+
+### Incremental Maintenance
+- **Addition**: Key is sanitized filepath; value is `StatsHash`.
+- **Removal**: Key is deleted from table.
+- **Replacement**: Atomic remove + add.
+- **Reset**: Table is cleared (`db.clear()`) when rebuilding the mirror.
+
+---
+
+## GUI & Concurrency Architecture
+
+### KillableThread & Trace Injection
+Implemented in [`src/gui/threading.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/threading.py).
+
+Standard Python `threading.Thread` lacks an external `stop()` or `kill()` method. `KillableThread` solves this by attaching a trace function using `sys.settrace()`:
+
+```python
+def localtrace(self, frame, why, arg):
+    if self.killed and why == 'line':
+        logger.warning('Background process was stopped')
+        raise SystemExit()
+    return self.localtrace
+```
+
+When the user requests cancellation, `thread.kill()` sets `self.killed = True`. On the very next bytecode execution step, the trace callback raises `SystemExit`, terminating the thread without leaking resources or leaving the backend in an unkillable loop.
+
+### Watchdog State Machine
+Implemented in [`src/gui/gui.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/gui.py).
+
+The GUI uses a recursive Tkinter timer (`root.after()`) for non-blocking monitoring:
+- **`backend_watchdog`**: Polls every 1000ms in `STANDBY` mode (or 50ms when transitioning). Checks if a scheduled appointment has arrived, or if a manual button was pressed.
+- **State transitions**:
+  - `STANDBY`: Inputs enabled, schedule active.
+  - `RUNNING`: Inputs disabled, active action button sunken.
+  - `STOPPING`: Cancellation requested, inputs disabled until thread exits.
+
+### Thread-Safe Logging
+Implemented in [`src/utils/logger.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/utils/logger.py).
+
+Tkinter widgets cannot be safely updated from secondary threads. To ensure thread safety:
+1. `Logger` registers a custom `QueueHandler` writing to a Python `queue.Queue`.
+2. A dedicated Tkinter watchdog (`log_queue_watchdog`) polls the queue in the main thread and inserts formatted text records into `TextLogger`.
+
+### Custom TreeView with Dynamic Grouping
+Implemented in [`src/gui/custom_gui.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/custom_gui.py).
+
+`CustomCheckboxTreeView` (derived from `ttkwidgets.CheckboxTreeview`):
+- Groups proposed changes by `copy`, `move`, and `delete`.
+- Listens to checkbox toggles via `_box_click`.
+- Dynamically recalculates group header text to show real-time selection metrics:
+  ```text
+  copy 2.40GB (15 of 20)
+  ```
+
+### System Tray via Winico Tcl Extension
+Windows-native notification tray docking is provided via `winico/Winico0.7.1.dll`:
+- Loaded dynamically via Tcl:
+  ```python
+  self.tk.call('lappend', 'auto_path', winico_path)
+  self.tk.call('package', 'require', 'Winico')
+  ```
+- Subscribes to Windows messages (`WM_RBUTTONDOWN`, `WM_LBUTTONDOWN`, `WM_LBUTTONDBLCLK`) to show popup context menus or restore the main window.

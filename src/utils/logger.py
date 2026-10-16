@@ -48,7 +48,7 @@ class Logger:
         # Prevent adding multiple handlers if re-instantiated
         if not self.logger.handlers:
             # Create a file handler
-            file_handler = logging.FileHandler(save_path)
+            file_handler = logging.FileHandler(save_path, encoding='utf-8')
             file_formatter = logging.Formatter('%(asctime)s: %(levelname)s: %(message)s', '%Y-%m-%d %H:%M:%S')
             file_handler.setFormatter(file_formatter)
             self.logger.addHandler(file_handler)

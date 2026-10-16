@@ -1,0 +1,2 @@
+- disable timeout of change approval
+- hide log properly when clicking on GUI

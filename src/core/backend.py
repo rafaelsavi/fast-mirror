@@ -4,10 +4,12 @@ import filecmp
 import os
 import shutil
 import stat
+import threading
 import time
 import tkinter as tk
 import winsound
 from collections import Counter
+from collections.abc import Callable
 from copy import copy
 
 import pandas as pd
@@ -26,7 +28,6 @@ from utils.utils import (
     get_size,
     get_size_as_str,
     log_progress,
-    sanitize_path,
 )
 
 
@@ -318,15 +319,12 @@ class CompareDirs:
         logger.info(f'Files only in source: {len([f for f in self.linked_files if f.only_source]):,}')
         logger.info(f'Files in target: {len([f for f in self.linked_files if f.target]):,}')
         logger.info(f'Files only in target: {len([f for f in self.linked_files if f.only_target]):,}')
-        logger.info(
-            f'Files in both and are the same: {len([f for f in self.linked_files if f.in_both and not f.moved and f.same]):,}'
-        )
-        logger.info(
-            f'Files in both and are the same but moved: {len([f for f in self.linked_files if f.in_both and f.moved]):,}'
-        )
-        logger.info(
-            f'Files in both and are modified: {len([f for f in self.linked_files if f.in_both and not f.same]):,}'
-        )
+        same_count = len([f for f in self.linked_files if f.in_both and not f.moved and f.same])
+        logger.info(f'Files in both and are the same: {same_count:,}')
+        moved_count = len([f for f in self.linked_files if f.in_both and f.moved])
+        logger.info(f'Files in both and are the same but moved: {moved_count:,}')
+        modified_count = len([f for f in self.linked_files if f.in_both and not f.same])
+        logger.info(f'Files in both and are modified: {modified_count:,}')
         paths_compare_error = [str(f) for f in self.linked_files if f.compare_error]
         logger.info(
             f'Files with comparing error: {len(paths_compare_error)}'
@@ -391,23 +389,34 @@ class SyncDirs:
         self.print_errors()
 
     def open_confirmation_popup(self):
-        popup = ActionSelection(
-            self.root_gui,
-            self.files_available_to_copy,
-            self.files_available_to_move,
-            self.files_available_to_delete,
-            self.default_actions,
-        )
+        result_event = threading.Event()
+        popup_holder: dict[str, ActionSelection] = {}
+
+        def create_popup():
+            popup = ActionSelection(
+                self.root_gui,
+                self.files_available_to_copy,
+                self.files_available_to_move,
+                self.files_available_to_delete,
+                self.default_actions,
+                on_close_callback=result_event.set,
+            )
+            popup_holder['popup'] = popup
+
+        # Delegate widget creation to the main GUI thread
+        self.root_gui.after(0, create_popup)
 
         time_init = time.time()
-        while (time.time() - time_init) < 20 * 3600:  # 20h
-            if popup.finished:
-                self.files_requested_to_copy, self.files_requested_to_move, self.files_requested_to_delete = (
-                    popup.get_outputs()
-                )
-                return popup.proceed
-            else:
-                time.sleep(0.1)
+        timeout = 20 * 3600  # 20h
+        while not result_event.is_set() and (time.time() - time_init) < timeout:
+            result_event.wait(0.2)
+
+        popup = popup_holder.get('popup')
+        if popup and popup.finished:
+            self.files_requested_to_copy, self.files_requested_to_move, self.files_requested_to_delete = (
+                popup.get_outputs()
+            )
+            return popup.proceed
 
         self.files_requested_to_copy = list()
         self.files_requested_to_move = list()
@@ -438,7 +447,8 @@ class SyncDirs:
                     res = ctypes.windll.kernel32.SetFileAttributesW(str(target), FILE_ATTRIBUTE_NORMAL)
                     if res == 0:
                         logger.warning(
-                            f'Windows refused to change attributes on <{target}>. Proceeding with new copy attempt anyway.'
+                            f'Windows refused to change attributes on <{target}>. '
+                            'Proceeding with new copy attempt anyway.'
                         )
                     shutil.copy2(source, target)
 
@@ -513,6 +523,10 @@ class SyncDirs:
             logger.info('No files were removed, so no directories to delete')
             return
 
+        # Protected root folders that must never be removed
+        protected_roots = {os.path.realpath(dir_pair.target).lower() for dir_pair in self.dirs}
+        protected_roots.update({os.path.realpath(dir_pair.source).lower() for dir_pair in self.dirs})
+
         relevant_dirs = set(os.path.dirname(f) for f in removed_files)
         # Sort by length to remove subdirectories first
         relevant_dirs = sorted(relevant_dirs, key=len, reverse=True)
@@ -520,11 +534,14 @@ class SyncDirs:
 
         for dir_path in relevant_dirs:
             try:
+                resolved_dir = os.path.realpath(dir_path).lower()
+                if resolved_dir in protected_roots:
+                    continue
                 if not os.path.exists(dir_path):
                     logger.info(f'Directory <{dir_path}> does not exist anymore, skipping')
                     continue
                 if not os.listdir(dir_path):
-                    os.removedirs(dir_path)
+                    os.rmdir(dir_path)
                     logger.info(f'Removed empty directory <{dir_path}>')
             except Exception as e:
                 logger.error(f'Could not remove empty directory <{dir_path}>. Exception: {e}')
@@ -555,12 +572,14 @@ class ActionSelection:
         files_available_to_move: list[tuple[CstmPath, CstmPath]],
         files_available_to_delete: list[CstmPath],
         default_actions: list[Action],
+        on_close_callback: Callable[[], None] | None = None,
     ):
         # Load input variables
         self.default_actions = default_actions
         self.files_available_to_copy = files_available_to_copy
         self.files_available_to_move = files_available_to_move
         self.files_available_to_delete = files_available_to_delete
+        self.on_close_callback = on_close_callback
         self.files_requested_to_copy: list[tuple[str, str]] = list()
         self.files_requested_to_move: list[tuple[str, str]] = list()
         self.files_requested_to_delete: list[str] = list()
@@ -631,6 +650,8 @@ class ActionSelection:
         self.finished = True
         self.proceed = True
         self.popup.destroy()
+        if self.on_close_callback:
+            self.on_close_callback()
 
     def button_cancel_click(self):
         logger.info('Canceling selection of actions. No action will be taken')
@@ -640,6 +661,8 @@ class ActionSelection:
         self.files_requested_to_delete = list()
         self.finished = True
         self.popup.destroy()
+        if self.on_close_callback:
+            self.on_close_callback()
 
     def get_countdown(self) -> tuple[bool, str]:
         countdown = max(0, int(self.countdown_size + self.init_time - time.time()))
@@ -691,11 +714,22 @@ class ActionSelection:
 
 def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> DirectoryPair:
     """Find the corresponding source and target directories for a given path."""
-    sanized_path = sanitize_path(path)
+    path_resolved = os.path.realpath(str(path)).lower()
 
-    for source, target in dirs:
-        if sanitize_path(source) in sanized_path or sanitize_path(target) in sanized_path:
-            return DirectoryPair(source, target)
+    for dir_pair in dirs:
+        source_resolved = os.path.realpath(dir_pair.source).lower()
+        target_resolved = os.path.realpath(dir_pair.target).lower()
+
+        try:
+            if (
+                os.path.commonpath([path_resolved, source_resolved]) == source_resolved
+                or os.path.commonpath([path_resolved, target_resolved]) == target_resolved
+            ):
+                return dir_pair
+        except ValueError:
+            # Raised by os.path.commonpath when paths are on different drives on Windows
+            continue
+
     raise FileNotFoundError(f'Could not identify root folders of path <{path}>. Dirs: {dirs}')
 
 

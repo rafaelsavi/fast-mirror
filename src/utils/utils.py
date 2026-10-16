@@ -65,7 +65,8 @@ def round_time_to_minutes(time_: datetime.datetime) -> datetime.datetime:
 def format_elapsed_time(start_time: float) -> str:
     """Format the time difference from start_time to now, showing only nonzero hours/minutes."""
     elapsed = int(time.time() - start_time)
-    h, m, s = time.gmtime(elapsed).tm_hour, time.gmtime(elapsed).tm_min, time.gmtime(elapsed).tm_sec
+    h, rem = divmod(elapsed, 3600)
+    m, s = divmod(rem, 60)
     parts = []
     if h > 0:
         parts.append(f'{h}h')

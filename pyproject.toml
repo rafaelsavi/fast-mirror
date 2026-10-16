@@ -2,15 +2,28 @@
 name = "automatic-backup"
 version = "0.1.0"
 description = "A project for automatic backup with Python."
+requires-python = ">=3.10"
 dependencies = [
-    "ipykernel",
-    "mypy",
     "pandas[excel]",
     "pathspec",
-    "pytest",
-    "ruff",
     "sqlitedict",
     "ttkwidgets",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel",
+    "mypy",
+    "pytest",
+    "ruff",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ipykernel",
+    "mypy",
+    "pytest",
+    "ruff",
 ]
 
 [build-system]
@@ -21,6 +34,7 @@ build-backend = "setuptools.build_meta"
 line-length = 120
 target-version = "py310"
 exclude = ["**/.venv/**"]
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 select = [
@@ -43,6 +57,9 @@ select = [
 
 ignore = [
     "D100",
+    "D101",
+    "D102",
+    "D103",
     "D104",
     "D105",
     "D107",
@@ -59,3 +76,10 @@ inline-quotes = "single"
 [tool.ruff.format]
 docstring-code-format = true
 quote-style = "single"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+mypy_path = "src"
+explicit_package_bases = true
+
