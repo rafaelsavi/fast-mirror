@@ -32,9 +32,7 @@ class KillableThread(threading.Thread):
             logger.critical(f'Processing thread was stopped abruptly because of exception: {e}')
         except Exception as e:
             self.exc = e
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            msg = ''.join(traceback.format_tb(exc_tb))
-            logger.critical(f'Processing thread was stopped abruptly because of exception {exc_type}:\n{msg}')
+            logger.critical(f'Processing thread was stopped abruptly because of exception:\n{traceback.format_exc()}')
 
     def globaltrace(self, frame, why, arg):
         if why == 'call':

@@ -527,7 +527,8 @@ class SyncDirs:
 
         if confirm_sync:
             if not self.open_confirmation_popup():
-                logger.warning('Popup did not end well')
+                logger.info('Synchronization canceled by user')
+                return
         else:
             if Action.COPY in self.default_actions:
                 self.files_requested_to_copy = [(str(f1), str(f2)) for f1, f2 in self.files_available_to_copy]
@@ -748,7 +749,9 @@ class ActionSelection:
 
         # Configure gui
         self.popup = tk.Toplevel(self.root_gui)
+        self.popup.title('Automatic Backup - Confirm Actions')
         self.popup.resizable(True, True)
+        self.popup.transient(self.root_gui)
         self.popup.grid_rowconfigure(1, weight=1)
         self.popup.grid_columnconfigure(0, weight=1)
         self.popup.protocol('WM_DELETE_WINDOW', self.button_cancel_click)
@@ -820,7 +823,12 @@ class ActionSelection:
         # Add vertical scrollbar
         vscroll = tk.Scrollbar(frame_table, orient='vertical', command=self.tree.yview)
         vscroll.grid(row=0, column=1, sticky='ns')
-        self.tree.configure(yscrollcommand=vscroll.set)
+
+        # Add horizontal scrollbar
+        hscroll = tk.Scrollbar(frame_table, orient='horizontal', command=self.tree.xview)
+        hscroll.grid(row=1, column=0, sticky='ew')
+
+        self.tree.configure(yscrollcommand=vscroll.set, xscrollcommand=hscroll.set)
 
         self.tree.add_file_lists(
             {

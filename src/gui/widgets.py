@@ -28,11 +28,23 @@ class EntryPaths(ScrolledText):
         pair_tuple = (pair.source, pair.target) if isinstance(pair, DirectoryPair) else pair
         self.set(self.get() + [pair_tuple])
 
-    def set(self, paths: list[tuple[str, str]]):
-        paths.sort(key=lambda x: x[0])  # sort by source path
-        raw = '\n'.join([f'{pair[0]} -> {pair[1]}' for pair in paths])
+    def set(self, paths: list[tuple[str, str]] | list[DirectoryPair] | list[list[str]]):
+        normalized_paths: list[tuple[str, str]] = []
+        for p in paths:
+            if isinstance(p, DirectoryPair):
+                normalized_paths.append((p.source, p.target))
+            else:
+                normalized_paths.append((str(p[0]), str(p[1])))
+        normalized_paths = list(set(normalized_paths))
+        normalized_paths.sort(key=lambda x: x[0])  # sort by source path
+        raw = '\n'.join([f'{pair[0]} -> {pair[1]}' for pair in normalized_paths])
+        was_disabled = self.cget('state') == TkinterCfgState.DISABLED.value
+        if was_disabled:
+            self.configure(state=TkinterCfgState.NORMAL.value)
         super().delete('1.0', tk.END)  # delete current text
         super().insert('1.0', raw)  # add at line 1, col 0
+        if was_disabled:
+            self.configure(state=TkinterCfgState.DISABLED.value)
 
     @staticmethod
     def parse_line(raw: str) -> None | tuple[str, str]:
@@ -76,22 +88,43 @@ class EntryTimes(ScrolledText):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get(self, *args, **kwargs):
+    def get(self, *args, **kwargs) -> list[str]:  # type: ignore[override]
         raw: str = super().get('1.0', tk.END)
         times = raw.splitlines()
-        times = list(sorted([t for t in times if self.is_hh_mm(t)]))
-        return times
+        normalized = []
+        for t in times:
+            try:
+                parsed = time.strptime(t.strip(), '%H:%M')
+                normalized.append(f'{parsed.tm_hour:02d}:{parsed.tm_min:02d}')
+            except Exception as e:
+                if t.strip() != '':
+                    logger.warning(
+                        f'Time entry "{t}" was ignored because it does not match the format hh:mm. Exception: {e}'
+                    )
+        return list(sorted(set(normalized)))
 
     def set(self, times):
-        times = list(sorted([t for t in times if self.is_hh_mm(t)]))
-        raw = '\n'.join(times)
+        normalized = []
+        for t in times:
+            try:
+                parsed = time.strptime(t.strip(), '%H:%M')
+                normalized.append(f'{parsed.tm_hour:02d}:{parsed.tm_min:02d}')
+            except Exception:
+                continue
+        normalized = list(sorted(set(normalized)))
+        raw = '\n'.join(normalized)
+        was_disabled = self.cget('state') == TkinterCfgState.DISABLED.value
+        if was_disabled:
+            self.configure(state=TkinterCfgState.NORMAL.value)
         super().delete('1.0', tk.END)  # delete current text
         super().insert('1.0', raw)  # add at line 1, col 0
+        if was_disabled:
+            self.configure(state=TkinterCfgState.DISABLED.value)
 
     @staticmethod
     def is_hh_mm(t):
         try:
-            time.strptime(t, '%H:%M')
+            time.strptime(t.strip(), '%H:%M')
         except Exception as e:
             if t.strip() != '':
                 logger.warning(
@@ -148,8 +181,9 @@ class DefaultActions:
     def set(self, values: list[Action | str]):
         if not isinstance(values, list):
             raise TypeError(f'Expected list of Action, got {type(values)}.')
-        for k in values:
-            self[k] = True
+        parsed_actions = [Action.from_str(k) if isinstance(k, str) else k for k in values]
+        for action in Action.get_options():
+            self[action] = action in parsed_actions
 
     def __setitem__(self, k: Action | str, v: bool):
         if isinstance(k, str):

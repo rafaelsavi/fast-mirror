@@ -107,4 +107,3 @@ def test_replace_path(mirror_db, test_data_dir):
 
 def test_vacuum(mirror_db):
     assert mirror_db.vacuum() is True
-

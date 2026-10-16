@@ -52,6 +52,7 @@ class Gui:
         self.last_realized_sync = None
         self._backend_thread_holder: KillableThread | None = None
         self._backend_thread_status = BackendThreadStatus.STANDBY
+        self._current_run_trigger: str | None = None
 
         # GUI elements
         self.toggle_auto_scroll = tk.BooleanVar()
@@ -100,7 +101,7 @@ class Gui:
             # Release triggers when backend is done
             self.toggle_state_quick_compare = False
             self.toggle_state_sync_now = False
-            self.toggle_state_schedule = False
+            self._current_run_trigger = None
         elif status == BackendThreadStatus.RUNNING:
             self.set_gui_enable_state(general_state=False, leave_sunken_enabled=True)
         elif status == BackendThreadStatus.STOPPING:
@@ -187,7 +188,7 @@ class Gui:
         text_status = tk.Label(frame_status, anchor='w', textvariable=self.text_var_status)
         text_status.grid(row=0, column=1, sticky='w')
         # ---
-        label_next_appointment = tk.Label(frame_status, text='Next syncronization:')
+        label_next_appointment = tk.Label(frame_status, text='Next synchronization:')
         label_next_appointment.grid(row=1, column=0, sticky='w')
         # ---
         text_next_appointment = tk.Label(
@@ -244,7 +245,7 @@ class Gui:
         self.button_quick_compare = tk.Button(
             self.frame_buttons, text='Start', command=self.button_action_quick_compare
         )
-        self.button_quick_compare.grid(row=1, column=1, sticky='nwe')
+        self.button_quick_compare.grid(row=row_counter.get(increment=False), column=1, sticky='nwe')
         self.toggle_state_quick_compare = False
         # ---
         self.button_open_report = tk.Button(
@@ -252,8 +253,8 @@ class Gui:
         )
         self.button_open_report.grid(row=row_counter.get(increment=False), column=2, sticky='nwe')
         # ---
-        label_syncronization = tk.Label(self.frame_buttons, text='Syncronization')
-        label_syncronization.grid(row=row_counter.get(increment=True), column=0, sticky='w')
+        label_synchronization = tk.Label(self.frame_buttons, text='Synchronization')
+        label_synchronization.grid(row=row_counter.get(increment=True), column=0, sticky='w')
         # ---
         self.button_sync_now = tk.Button(self.frame_buttons, text='Sync now', command=self.button_action_sync_now)
         self.button_sync_now.grid(row=row_counter.get(increment=False), column=1, sticky='nwe')
@@ -281,6 +282,7 @@ class Gui:
         )
         checkbox_build_local_mirror.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
+        self.checkbox_var_use_mirror.set(True)
         checkbox_use_local_mirror = tk.Checkbutton(
             self.frame_buttons,
             text='Use fast scan based on local mirror',
@@ -297,6 +299,7 @@ class Gui:
         )
         checkbox_metadata_comparison.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
         # ---
+        self.checkbox_var_confirm_sync.set(True)
         checkbox_confirm_sync = tk.Checkbutton(
             self.frame_buttons, text='Request confirmation before sync', variable=self.checkbox_var_confirm_sync
         )
@@ -406,8 +409,7 @@ class Gui:
         else:
             confirmation = True
         if not ask_confirmation or confirmation:
-            self.text_var_next_appointment.set('')
-            self.text_var_status.set('')
+            self.text_var_status.set(self.backend_thread_status.value)
             self.entry_paths.set([])
             self.entry_exclusions.reset()
             self.week_days.set([])
@@ -415,16 +417,17 @@ class Gui:
             self.checkbox_default_actions.reset()
             self.log_levels.reset()
             self.text_logger.set_log_levels(self.log_levels.get())
-            for checkbox in [
-                self.checkbox_var_use_mirror,
-                self.checkbox_var_build_mirror,
-                self.checkbox_var_metadata_comparison,
-                self.checkbox_var_confirm_sync,
-                self.checkbox_var_save_report,
-            ]:
-                checkbox.set(False)
+            self.checkbox_var_use_mirror.set(True)
+            self.checkbox_var_build_mirror.set(False)
+            self.checkbox_var_metadata_comparison.set(True)
+            self.checkbox_var_confirm_sync.set(True)
+            self.checkbox_var_save_report.set(False)
+            self.toggle_state_schedule = False
+            self.toggle_state_quick_compare = False
+            self.toggle_state_sync_now = False
             with contextlib.suppress(Exception):
                 os.remove(self.config_path)
+            self.get_next_appointment()
             logger.info('GUI configuration was reset')
 
     def button_action_save_config(self, ask_confirmation=True):
@@ -463,8 +466,9 @@ class Gui:
                 with open(self.config_path) as f:
                     config_vars = json.load(f)
                 for name, value in config_vars.items():
-                    gui_element = getattr(self, name)
-                    gui_element.set(value)
+                    if hasattr(self, name):
+                        gui_element = getattr(self, name)
+                        gui_element.set(value)
 
                 self.text_logger.set_log_levels(self.log_levels.get())
                 if show_success_msg:
@@ -487,6 +491,10 @@ class Gui:
                 self.entry_paths.add(DirectoryPair(source=source, target=target))
 
     def button_action_open_report(self):
+        if not os.path.isdir(logger.log_dir):
+            logger.error(f'Could not open last report because directory does not exist: <{logger.log_dir}>')
+            return
+
         filenames = [
             f
             for f in os.listdir(logger.log_dir)
@@ -501,7 +509,10 @@ class Gui:
         if len(filenames) > 0:
             last_filepath = os.path.join(logger.log_dir, filenames[-1])
             logger.info(f'Opening {last_filepath}')
-            os.startfile(last_filepath)
+            try:
+                os.startfile(last_filepath)
+            except OSError as e:
+                logger.error(f'Could not open last report file <{last_filepath}>: {e}')
         else:
             logger.error(f'Could not open last report because it was not found in directory <{logger.log_dir}>')
 
@@ -513,6 +524,7 @@ class Gui:
 
     def button_action_schedule_sync(self):
         self.toggle_state_schedule = not self.toggle_state_schedule
+        self.get_next_appointment()
 
     def button_action_update_log_levels(self):
         self.text_logger.set_log_levels(self.log_levels.get())
@@ -542,28 +554,37 @@ class Gui:
                 ):
                     logger.info('-------------------------------------')
                     logger.info('Initializing scheduled synchronization')
+                    self._current_run_trigger = 'schedule'
                     self.call_backend_thread(also_sync=True, timestamp=next_appointment)
 
                 elif self.toggle_state_quick_compare:
+                    self._current_run_trigger = 'quick_compare'
                     self.call_backend_thread(also_sync=False, timestamp=now)
 
                 elif self.toggle_state_sync_now:
+                    self._current_run_trigger = 'sync_now'
                     self.call_backend_thread(also_sync=True, timestamp=now)
 
             # If backend thread is running but a stop command was requested
-            elif self.backend_thread_status == BackendThreadStatus.RUNNING and not (
-                self.toggle_state_quick_compare or self.toggle_state_sync_now or self.toggle_state_schedule
-            ):
-                logger.info('---------------------------------')
-                logger.info('Trying to stop background process')
-                if self.backend_thread_holder is None:
-                    logger.warning('There is no background process to stop')
-                else:
-                    try:
-                        self.backend_thread_holder.kill()
-                    except Exception as e:
-                        logger.error(f'Could not stop background process. Exception: {e}')
-                self.backend_thread_status = BackendThreadStatus.STOPPING
+            elif self.backend_thread_status == BackendThreadStatus.RUNNING:
+                stop_requested = (
+                    (self._current_run_trigger == 'quick_compare' and not self.toggle_state_quick_compare)
+                    or (self._current_run_trigger == 'sync_now' and not self.toggle_state_sync_now)
+                    or (self._current_run_trigger == 'schedule' and not self.toggle_state_schedule)
+                    or not (self.toggle_state_quick_compare or self.toggle_state_sync_now or self.toggle_state_schedule)
+                )
+
+                if stop_requested:
+                    logger.info('---------------------------------')
+                    logger.info('Trying to stop background process')
+                    if self.backend_thread_holder is None:
+                        logger.warning('There is no background process to stop')
+                    else:
+                        try:
+                            self.backend_thread_holder.kill()
+                        except Exception as e:
+                            logger.error(f'Could not stop background process. Exception: {e}')
+                    self.backend_thread_status = BackendThreadStatus.STOPPING
 
         delay = 1000 if self.backend_thread_status == BackendThreadStatus.STANDBY else 50
         self.root.after(delay, self.backend_watchdog)
@@ -573,15 +594,21 @@ class Gui:
         self.backend_thread_holder = KillableThread(
             target=self.backend_thread,
             args=(also_sync,),
+            daemon=True,
         )
         self.backend_thread_holder.start()
 
     def backend_thread(self, also_sync: bool):
+        dirs = self.entry_paths.get_as_dir_pairs()
+        if not dirs:
+            logger.warning('No valid directory pairs configured. Please add at least one path pair.')
+            return
+
         mirror = MirrorDatabase(exclusions=self.entry_exclusions.get())
 
         compare = CompareDirs(
             mirror=mirror,
-            dirs=self.entry_paths.get_as_dir_pairs(),
+            dirs=dirs,
             exclusions=self.entry_exclusions.get(),
             comparison_method=CompareMethod.METADATA
             if self.checkbox_var_metadata_comparison.get()
@@ -600,7 +627,7 @@ class Gui:
                 files_to_delete=compare.files_to_delete,
                 mirror=mirror,
                 root_gui=self.root,
-                dirs=self.entry_paths.get_as_dir_pairs(),
+                dirs=dirs,
                 default_actions=default_actions,
                 increment_mirror=not self.checkbox_var_build_mirror.get(),
                 confirm_sync=self.checkbox_var_confirm_sync.get(),

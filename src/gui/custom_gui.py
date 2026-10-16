@@ -14,14 +14,19 @@ from utils.utils import format_size
 class TrayableTk(tk.Tk):
     def __init__(self):
         super().__init__()
+        self._has_tray_icon = False
         self.add_system_tray_icon()
         self.protocol('WM_DELETE_WINDOW', self.on_closing)
         self.bind('<Unmap>', self.on_minimizing)
 
     def on_minimizing(self, event):
-        self.withdraw()
+        if event.widget == self and self._has_tray_icon:
+            self.withdraw()
 
     def on_closing(self):
+        if not self._has_tray_icon:
+            self.destroy()
+            return
         close_confirmation = messagebox.askyesno(
             'Warning', 'The application is still running in the system tray, are you sure you want to finalize it?'
         )
@@ -55,6 +60,7 @@ class TrayableTk(tk.Tk):
             self.tray_menu = tk.Menu(self, tearoff=False)
             self.tray_menu.add_command(label='Open', command=self.deiconify)
             self.tray_menu.add_command(label='Quit', command=self.destroy)
+            self._has_tray_icon = True
         except Exception as e:
             logger.warning(f'Could not initialize system tray icon. Exception: {e}')
 
@@ -83,8 +89,6 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         'size (target)',
         'modification date (source)',
         'modification date (target)',
-        'creation date (source)',
-        'creation date (target)',
     ]
 
     def __init__(self, *args, **kwargs):
@@ -94,10 +98,16 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         # Configure headers
         self['columns'] = self.custom_headers[1:]
-        self.column('#0', width=170, minwidth=130)
+        self.column('#0', width=220, minwidth=150)
         self.heading('#0', text=self.custom_headers[0])
         for column in self.custom_headers[1:]:
             self.heading(column, text=column)
+            if 'date' in column:
+                self.column(column, width=150, minwidth=120)
+            elif 'size' in column:
+                self.column(column, width=90, minwidth=70)
+            else:
+                self.column(column, width=300, minwidth=150)
 
     def _box_click(self, event):
         super()._box_click(event)
@@ -132,13 +142,15 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         for action, rows in self._data.items():
             tag = 'checked' if action in default_active else 'unchecked'
-            group_item = self.insert(parent='', index='end', iid=action.value, text=action.value, tags=(tag,))
+            group_item = self.insert(
+                parent='', index='end', iid=action.value, text=action.value, tags=(tag,), open=True
+            )
             for key, row in rows.items():
                 self.insert(
                     parent=group_item,
                     index='end',
                     iid=key,
-                    values=[v for k, v in row.items() if k in self.custom_headers],
+                    values=[row.get(k, '') for k in self.custom_headers[1:]],
                 )
 
     @staticmethod

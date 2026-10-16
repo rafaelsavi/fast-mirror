@@ -20,6 +20,8 @@ from core.backend import (
 )
 from core.file import CstmPath, File
 from core.mirror import MirrorDatabase
+from gui.custom_gui import CustomCheckboxTreeView
+from gui.enums import BackendThreadStatus
 from gui.widgets import Action, EntryPaths, LogLevels, TextLogger
 from utils.utils import DirectoryPair, format_elapsed_time
 
@@ -680,3 +682,142 @@ def test_log_levels_selection():
     assert 'INFO' in log_levels.get()
 
     root.destroy()
+
+
+def test_custom_checkbox_treeview_headers():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    tree = CustomCheckboxTreeView(root)
+    # Check that phantom creation date columns are removed
+    assert 'creation date (source)' not in tree.custom_headers
+    assert 'creation date (target)' not in tree.custom_headers
+    assert tree['columns'] == (
+        'source',
+        'target',
+        'size (source)',
+        'size (target)',
+        'modification date (source)',
+        'modification date (target)',
+    )
+    root.destroy()
+
+
+def test_action_selection_popup_title_and_scrollbars():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    popup = ActionSelection(root, [], [], [], [])
+    assert popup.popup.title() == 'Automatic Backup - Confirm Actions'
+
+    # Check horizontal scrollbar is attached to the treeview
+    xscroll = popup.tree.cget('xscrollcommand')
+    yscroll = popup.tree.cget('yscrollcommand')
+    assert xscroll != ''
+    assert yscroll != ''
+
+    # Cancel popup
+    popup.button_cancel_click()
+    assert popup.finished is True
+    assert popup.proceed is False
+    root.destroy()
+
+
+def test_sync_dirs_cancels_cleanly_when_popup_canceled(tmp_path, monkeypatch):
+    source = tmp_path / 'src'
+    target = tmp_path / 'dst'
+    source.mkdir()
+    target.mkdir()
+    f1 = source / 'file1.txt'
+    f1.write_text('content')
+
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    monkeypatch.setattr(SyncDirs, 'open_confirmation_popup', lambda self: False)
+
+    sync = SyncDirs(
+        files_to_copy=[(CstmPath(f1), CstmPath(target / 'file1.txt'))],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=MirrorDatabase(path=str(tmp_path / 'mirror.db')),
+        root_gui=root,
+        dirs=[DirectoryPair(source=str(source), target=str(target))],
+        confirm_sync=True,
+    )
+
+    # When canceled, no files should have been copied or moved
+    assert len(sync.files_copied) == 0
+    assert not (target / 'file1.txt').exists()
+    root.destroy()
+
+
+def test_gui_scheduler_persistence_on_standby(monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.gui import Gui
+
+    # Prevent mainloop from blocking
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'load_config', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    gui = Gui()
+    # Turn schedule on
+    gui.toggle_state_schedule = True
+    gui.toggle_state_sync_now = True
+    gui.toggle_state_quick_compare = True
+    gui._current_run_trigger = 'sync_now'
+
+    # When backend transitions to STANDBY, one-off triggers reset, but schedule remains ON
+    gui.backend_thread_status = BackendThreadStatus.STANDBY
+    assert gui.toggle_state_quick_compare is False
+    assert gui.toggle_state_sync_now is False
+    assert gui.toggle_state_schedule is True
+    assert gui._current_run_trigger is None
+
+    gui.root.destroy()
+
+
+def test_gui_reset_config_restores_safe_defaults(tmp_path, monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.gui import Gui
+
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'load_config', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    gui = Gui()
+    gui.config_path = str(tmp_path / 'config.json')
+    # Call reset
+    gui.button_action_reset_config(ask_confirmation=False)
+
+    # Critical safety defaults
+    assert gui.checkbox_var_use_mirror.get() is True
+    assert gui.checkbox_var_confirm_sync.get() is True
+    assert gui.checkbox_var_metadata_comparison.get() is True
+    assert gui.checkbox_var_build_mirror.get() is False
+    assert gui.checkbox_var_save_report.get() is False
+    assert gui.text_var_status.get() == BackendThreadStatus.STANDBY.value
+
+    gui.root.destroy()
