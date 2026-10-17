@@ -16,7 +16,8 @@ from gui.components.log_panel import LogPanel
 from gui.components.paths_panel import PathsPanel
 from gui.components.schedule_panel import SchedulePanel
 from gui.components.status_bar import StatusBar
-from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgState
+from gui.enums import BackendThreadStatus, TkinterCfgRelief
+from gui.scheduler import calculate_next_run
 from gui.tray import TrayableTk
 from gui.widgets import (
     DefaultActions,
@@ -124,37 +125,13 @@ class Gui:
             self.update_tray_status()
 
     def set_gui_enable_state(self, general_state: bool, leave_sunken_enabled=False):
-        def convert_child_state(child_: tk.Widget, b: bool):
-            with contextlib.suppress(Exception):
-                child_.configure(state=TkinterCfgState.from_bool(b))  # type: ignore
-
-        def is_sunken_button(child_):
-            try:
-                return isinstance(child_, tk.Button) and child_.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
-            except Exception:
-                return False
-
-        all_childs = [
-            *self.frame_paths.winfo_children(),
-            self.entry_paths,
-            self.entry_exclusions,
-            *self.frame_default_actions.winfo_children(),
-            *self.frame_buttons_scheduler_days.winfo_children(),
-            *self.frame_buttons.winfo_children(),
-            self.entry_times,
-        ]
-        ignore_childs = [
-            self.button_open_report,
-            self.checkbox_auto_scroll,
-            *self.frame_buttons_level.winfo_children(),
-        ]
-
-        for child in all_childs:
-            if isinstance(child, tk.Label | ttk.Label) or child in ignore_childs:
-                continue
-            convert_child_state(child, general_state)
-            if leave_sunken_enabled and is_sunken_button(child):
-                convert_child_state(child, True)
+        """Enable or disable interactive widgets across all GUI panels."""
+        if hasattr(self, 'paths_panel'):
+            self.paths_panel.set_enabled(general_state)
+        if hasattr(self, 'schedule_panel'):
+            self.schedule_panel.set_enabled(general_state)
+        if hasattr(self, 'actions_panel'):
+            self.actions_panel.set_enabled(general_state, leave_sunken_enabled=leave_sunken_enabled)
 
     @property
     def backend_thread_holder(self):
@@ -581,30 +558,29 @@ class Gui:
         logger.debug('Processing thread was properly closed')
 
     def get_next_appointment(self) -> datetime.datetime | None:
-        string = 'Schedule is not activated'
-        next_appointment = None
+        """Calculate and update the next scheduled backup appointment timestamp."""
+        if not self.toggle_state_schedule:
+            self.text_var_next_appointment.set('Schedule is not activated')
+            if self._gui_initialized:
+                self.update_tray_status()
+            return None
 
-        if self.toggle_state_schedule:
-            days = self.week_days.get_as_numbers()
-            times = self.entry_times.get()
-            now = round_time_to_minutes(datetime.datetime.now())
+        days = self.week_days.get_as_numbers()
+        times = self.entry_times.get()
+        now = datetime.datetime.now()
 
-            for i in range(60 * 24 * 7):
-                delta = datetime.timedelta(minutes=i)
-                future = now + delta
-                if (
-                    future.weekday() in days
-                    and f'{future.hour:02d}:{future.minute:02d}' in times
-                    and self.last_realized_sync != future
-                ):
-                    next_appointment = future
-                    break
+        next_appointment = calculate_next_run(
+            days=days,
+            times=times,
+            now=now,
+            last_run=self.last_realized_sync,
+        )
 
-            string = (
-                next_appointment.strftime('%Y/%m/%d %H:%M:%S (%A)') if next_appointment is not None else 'No date found'
-            )
+        display_str = (
+            next_appointment.strftime('%Y/%m/%d %H:%M:%S (%A)') if next_appointment is not None else 'No date found'
+        )
 
-        self.text_var_next_appointment.set(string)
+        self.text_var_next_appointment.set(display_str)
         if self._gui_initialized:
             self.update_tray_status()
         return next_appointment

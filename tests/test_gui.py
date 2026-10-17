@@ -466,3 +466,83 @@ def test_gui_tray_status_and_actions(monkeypatch):
     assert not gui.toggle_state_quick_compare
 
     gui.root.destroy()
+
+
+def test_calculate_next_run_edge_cases():
+    import datetime
+
+    from gui.scheduler import calculate_next_run
+
+    # Empty inputs
+    assert calculate_next_run([], ['10:00']) is None
+    assert calculate_next_run([0], []) is None
+    assert calculate_next_run([0], ['invalid_time', '99:99']) is None
+
+    # Reference time: Monday 2026-10-19 at 10:15
+    ref_monday = datetime.datetime(2026, 10, 19, 10, 15)
+
+    # 1. Later today (Monday 14:00)
+    res = calculate_next_run(days=[0], times=['09:00', '14:00'], now=ref_monday)
+    assert res == datetime.datetime(2026, 10, 19, 14, 0)
+
+    # 2. Earlier today has passed -> next scheduled day (Wednesday 08:30)
+    res2 = calculate_next_run(days=[0, 2], times=['08:30'], now=ref_monday)
+    assert res2 == datetime.datetime(2026, 10, 21, 8, 30)
+
+    # 3. Exactly now -> triggers now if not yet run
+    res3 = calculate_next_run(days=[0], times=['10:15'], now=ref_monday)
+    assert res3 == datetime.datetime(2026, 10, 19, 10, 15)
+
+    # 4. Exactly now, but already executed at this timestamp -> schedules next week
+    res4 = calculate_next_run(days=[0], times=['10:15'], now=ref_monday, last_run=ref_monday)
+    assert res4 == datetime.datetime(2026, 10, 26, 10, 15)
+
+
+def test_panels_set_enabled():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.actions_panel import ActionsPanel
+    from gui.components.paths_panel import PathsPanel
+    from gui.components.schedule_panel import SchedulePanel
+    from gui.widgets import DefaultActions
+
+    p_panel = PathsPanel(root)
+    s_panel = SchedulePanel(root)
+    a_panel = ActionsPanel(
+        root,
+        checkbox_default_actions=DefaultActions(),
+        checkbox_var_save_report=tk.BooleanVar(),
+        checkbox_var_build_mirror=tk.BooleanVar(),
+        checkbox_var_use_mirror=tk.BooleanVar(),
+        checkbox_var_metadata_comparison=tk.BooleanVar(),
+        checkbox_var_confirm_sync=tk.BooleanVar(),
+        on_reset_config=lambda: None,
+        on_save_config=lambda: None,
+        on_quick_compare=lambda: None,
+        on_open_report=lambda: None,
+        on_sync_now=lambda: None,
+        on_schedule_sync=lambda: None,
+    )
+
+    p_panel.set_enabled(False)
+    assert str(p_panel.btn_add_path.cget('state')) == 'disabled'
+    p_panel.set_enabled(True)
+    assert str(p_panel.btn_add_path.cget('state')) == 'normal'
+
+    s_panel.set_enabled(False)
+    for cb in s_panel.checkbox_week_days.values():
+        assert str(cb.cget('state')) == 'disabled'
+    s_panel.set_enabled(True)
+    for cb in s_panel.checkbox_week_days.values():
+        assert str(cb.cget('state')) == 'normal'
+
+    a_panel.set_enabled(False)
+    assert str(a_panel.button_sync_now.cget('state')) == 'disabled'
+    a_panel.set_enabled(True)
+    assert str(a_panel.button_sync_now.cget('state')) == 'normal'
+
+    root.destroy()

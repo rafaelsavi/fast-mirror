@@ -1,3 +1,4 @@
+import contextlib
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
@@ -205,3 +206,30 @@ class ActionsPanel(ttk.LabelFrame):
             variable=self.checkbox_default_actions.get_var(Action.DELETE),
         )
         cb_del.pack(side='left', padx=6)
+
+    def set_enabled(self, enabled: bool, leave_sunken_enabled: bool = False):
+        """Enable or disable interactive controls in the actions panel."""
+        state = 'normal' if enabled else 'disabled'
+        buttons = [
+            self.button_new_config,
+            self.button_save_config,
+            self.button_quick_compare,
+            self.button_sync_now,
+            self.button_schedule_sync,
+        ]
+        for btn in buttons:
+            is_sunken = False
+            if hasattr(btn, 'config'):
+                with contextlib.suppress(Exception):
+                    is_sunken = btn.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
+
+            if leave_sunken_enabled and is_sunken:
+                with contextlib.suppress(Exception):
+                    btn.configure(state='normal')
+            else:
+                with contextlib.suppress(Exception):
+                    btn.configure(state=state)
+
+        for child in self.frame_default_actions.winfo_children():
+            with contextlib.suppress(Exception):
+                child.configure(state=state)

@@ -1,5 +1,7 @@
+import contextlib
 import tkinter as tk
 from tkinter import ttk
+from typing import Literal
 
 from gui.widgets import EntryTimes, WeekDays
 
@@ -52,3 +54,11 @@ class SchedulePanel(ttk.LabelFrame):
         else:
             self.entry_times = EntryTimes(times_box, width=7, height=6)
         self.entry_times.pack(anchor='w', pady=(0, 2))
+
+    def set_enabled(self, enabled: bool):
+        """Enable or disable interactive widgets in the schedule panel."""
+        state: Literal['normal', 'disabled'] = 'normal' if enabled else 'disabled'
+        for cb in self.checkbox_week_days.values():
+            cb.configure(state=state)
+        with contextlib.suppress(Exception):
+            self.entry_times.configure(state=state)

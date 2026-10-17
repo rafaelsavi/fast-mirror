@@ -1,6 +1,8 @@
+import contextlib
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
+from typing import Literal
 
 from gui.widgets import EntryExclusions, EntryPaths
 
@@ -59,3 +61,12 @@ class PathsPanel(ttk.LabelFrame):
     def _handle_add_path(self):
         if self.on_add_path:
             self.on_add_path()
+
+    def set_enabled(self, enabled: bool):
+        """Enable or disable interactive widgets in the paths panel."""
+        state: Literal['normal', 'disabled'] = 'normal' if enabled else 'disabled'
+        self.btn_add_path.configure(state=state)
+        with contextlib.suppress(Exception):
+            self.entry_paths.configure(state=state)
+        with contextlib.suppress(Exception):
+            self.entry_exclusions.configure(state=state)
