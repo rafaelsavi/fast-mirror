@@ -314,6 +314,23 @@ def test_actions_panel_interactions():
     assert actions_called == ['reset', 'save', 'compare', 'report', 'sync', 'schedule']
     assert default_actions.get_as_actions() == [Action.COPY]
 
+    # Test mirror options mutual exclusion via reactive trace
+    var_use.set(True)
+    assert var_use.get() is True
+    var_build.set(True)
+    assert var_use.get() is False
+    var_use.set(True)
+    assert var_build.get() is False
+
+    # Test disabling options frame
+    panel.set_enabled(False)
+    assert str(panel.cb_report.cget('state')) == 'disabled'
+    assert str(panel.button_sync_now.cget('state')) == 'disabled'
+
+    panel.set_enabled(True)
+    assert str(panel.cb_report.cget('state')) == 'normal'
+    assert str(panel.button_sync_now.cget('state')) == 'normal'
+
     root.destroy()
 
 

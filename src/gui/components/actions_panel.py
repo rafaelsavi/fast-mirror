@@ -140,53 +140,54 @@ class ActionsPanel(ttk.LabelFrame):
         self.button_schedule_sync.pack(side='left', padx=3)
 
         # Section 4: Behavior Options
-        opts_frame = ttk.Frame(self)
-        opts_frame.pack(fill='x', padx=8, pady=6)
+        self.frame_options = ttk.Frame(self)
+        self.frame_options.pack(fill='x', padx=8, pady=6)
 
-        cb_report = ttk.Checkbutton(
-            opts_frame,
+        self.cb_report = ttk.Checkbutton(
+            self.frame_options,
             text='Save detailed report (.xlsx)',
             variable=self.checkbox_var_save_report,
         )
-        cb_report.pack(anchor='w', pady=1)
+        self.cb_report.pack(anchor='w', pady=1)
 
-        def _on_rebuild_mirror():
+        def _on_rebuild_mirror_changed(*args):
             if self.checkbox_var_build_mirror.get():
                 self.checkbox_var_use_mirror.set(False)
 
-        def _on_use_mirror():
+        def _on_use_mirror_changed(*args):
             if self.checkbox_var_use_mirror.get():
                 self.checkbox_var_build_mirror.set(False)
 
-        cb_rebuild = ttk.Checkbutton(
-            opts_frame,
+        self.checkbox_var_build_mirror.trace_add('write', _on_rebuild_mirror_changed)
+        self.checkbox_var_use_mirror.trace_add('write', _on_use_mirror_changed)
+
+        self.cb_rebuild = ttk.Checkbutton(
+            self.frame_options,
             text='Rebuild local mirror database',
             variable=self.checkbox_var_build_mirror,
-            command=_on_rebuild_mirror,
         )
-        cb_rebuild.pack(anchor='w', pady=1)
+        self.cb_rebuild.pack(anchor='w', pady=1)
 
-        cb_mirror = ttk.Checkbutton(
-            opts_frame,
+        self.cb_mirror = ttk.Checkbutton(
+            self.frame_options,
             text='Use fast scan based on local mirror',
             variable=self.checkbox_var_use_mirror,
-            command=_on_use_mirror,
         )
-        cb_mirror.pack(anchor='w', pady=1)
+        self.cb_mirror.pack(anchor='w', pady=1)
 
-        cb_meta = ttk.Checkbutton(
-            opts_frame,
+        self.cb_meta = ttk.Checkbutton(
+            self.frame_options,
             text='Use fast comparison based on metadata',
             variable=self.checkbox_var_metadata_comparison,
         )
-        cb_meta.pack(anchor='w', pady=1)
+        self.cb_meta.pack(anchor='w', pady=1)
 
-        cb_confirm = ttk.Checkbutton(
-            opts_frame,
+        self.cb_confirm = ttk.Checkbutton(
+            self.frame_options,
             text='Request confirmation before sync',
             variable=self.checkbox_var_confirm_sync,
         )
-        cb_confirm.pack(anchor='w', pady=1)
+        self.cb_confirm.pack(anchor='w', pady=1)
 
         # Section 5: Default Actions
         actions_frame = ttk.Frame(self)
@@ -251,6 +252,10 @@ class ActionsPanel(ttk.LabelFrame):
             else:
                 with contextlib.suppress(Exception):
                     btn.configure(state=state)
+
+        for child in self.frame_options.winfo_children():
+            with contextlib.suppress(Exception):
+                child.configure(state=state)
 
         for child in self.frame_default_actions.winfo_children():
             with contextlib.suppress(Exception):
