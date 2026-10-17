@@ -45,7 +45,6 @@ class Gui:
     def __init__(self):
         # Initialize GUI window
         self.root = TrayableTk()
-        self.root.resizable(False, False)
         icon_path = os.path.join(os.path.dirname(__file__), 'app_icon.ico')
         if os.path.isfile(icon_path):
             with contextlib.suppress(Exception):
@@ -85,6 +84,12 @@ class Gui:
 
         # Apply default theme (hardware-accelerated native theme)
         self.apply_theme(self.current_theme)
+
+        # Set minimum window bounds preserving WS_THICKFRAME for fluid DWM dragging
+        self.root.update_idletasks()
+        init_w = self.root.winfo_reqwidth()
+        init_h = self.root.winfo_reqheight()
+        self.root.minsize(init_w, init_h)
 
         # Update overview card mode labels dynamically on setting changes without remote network I/O
         self.checkbox_var_use_mirror.trace_add('write', lambda *_: self.update_mode_labels())
@@ -321,6 +326,12 @@ class Gui:
 
         if hasattr(self, 'log_panel'):
             self.log_panel.apply_theme('light')
+
+        if getattr(self, '_gui_initialized', False):
+            self.root.update_idletasks()
+            w = self.root.winfo_reqwidth()
+            h = self.root.winfo_reqheight()
+            self.root.minsize(w, h)
 
     def button_action_toggle_theme(self):
         """Toggle between hardware-accelerated native theme and Sun Valley theme."""
