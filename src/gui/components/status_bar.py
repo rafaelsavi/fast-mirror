@@ -21,19 +21,26 @@ class StatusBar(ttk.Frame):
     def _create_widgets(self):
         self.columnconfigure(1, weight=1)
 
-        # Left: App status
+        # Left: App status with colored pill badge
         status_box = ttk.Frame(self)
         status_box.grid(row=0, column=0, sticky='w', padx=(4, 16), pady=2)
 
         lbl_status_title = ttk.Label(status_box, text='Engine Status: ', font=('Segoe UI', 10, 'bold'))
         lbl_status_title.pack(side='left')
 
-        self.lbl_status_val = ttk.Label(
+        self.lbl_status_pill = tk.Label(
             status_box,
-            textvariable=self.text_var_status,
-            font=('Segoe UI', 10, 'bold'),
+            text='● Standby',
+            font=('Segoe UI', 9, 'bold'),
+            bg='#dcfce7',
+            fg='#15803d',
+            padx=8,
+            pady=2,
+            relief='solid',
+            bd=1,
         )
-        self.lbl_status_val.pack(side='left')
+        self.lbl_status_pill.pack(side='left', padx=(2, 0))
+        self.lbl_status_val = self.lbl_status_pill
 
         # Right: Next scheduled appointment
         sched_box = ttk.Frame(self)
@@ -42,12 +49,44 @@ class StatusBar(ttk.Frame):
         lbl_sched_title = ttk.Label(sched_box, text='Next Sync: ', font=('Segoe UI', 10, 'bold'))
         lbl_sched_title.pack(side='left')
 
-        lbl_sched_val = ttk.Label(
+        self.lbl_sched_val = ttk.Label(
             sched_box,
             textvariable=self.text_var_next_appointment,
             font=('Segoe UI', 9),
         )
-        lbl_sched_val.pack(side='left')
+        self.lbl_sched_val.pack(side='left')
 
         sep = ttk.Separator(self, orient='horizontal')
         sep.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(4, 0))
+
+        # Trace status changes
+        self.text_var_status.trace_add('write', self._on_status_changed)
+        self._on_status_changed()
+
+    def _on_status_changed(self, *args):
+        raw_status = self.text_var_status.get()
+        status_lower = raw_status.lower()
+        if 'running' in status_lower:
+            self.lbl_status_pill.config(
+                text=f'● {raw_status}',
+                bg='#dbeafe',
+                fg='#1d4ed8',
+                relief='solid',
+                bd=1,
+            )
+        elif 'stopping' in status_lower:
+            self.lbl_status_pill.config(
+                text=f'● {raw_status}',
+                bg='#fef3c7',
+                fg='#b45309',
+                relief='solid',
+                bd=1,
+            )
+        else:  # Standby or other
+            self.lbl_status_pill.config(
+                text=f'● {raw_status}',
+                bg='#dcfce7',
+                fg='#15803d',
+                relief='solid',
+                bd=1,
+            )
