@@ -43,7 +43,7 @@ class EntryPaths(ScrolledText):
             if ' -> ' not in line_str:
                 results.append((line_str, '', 'Invalid format: missing " -> "'))
                 continue
-            source, target = [p.strip() for p in line_str.split(' -> ', 1)]
+            source, target = [p.strip().strip('"\'') for p in line_str.split(' -> ', 1)]
             if not os.path.exists(source):
                 results.append((source, target, f'Source does not exist or disconnected: {source}'))
             elif not os.path.isdir(source):
@@ -80,7 +80,7 @@ class EntryPaths(ScrolledText):
             if ' -> ' not in raw:
                 return None
             source, target = raw.split(' -> ', 1)
-            source, target = source.strip(), target.strip()
+            source, target = source.strip().strip('"\''), target.strip().strip('"\'')
             # Source must exist as a directory.
             # Target can exist as a directory, or its parent directory must exist
             # (e.g. creating a new backup target folder).

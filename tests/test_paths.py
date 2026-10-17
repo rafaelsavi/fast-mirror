@@ -190,3 +190,24 @@ def test_entry_paths_get_raw_pairs(tmp_path):
     assert 'Invalid format' in raw_pairs[2][2]
 
     root.destroy()
+
+
+def test_entry_paths_quote_handling(tmp_path):
+    source = tmp_path / 'QuotedSource'
+    source.mkdir()
+    target = tmp_path / 'QuotedTarget'
+    target.mkdir()
+
+    # Double quotes (like Windows 11 "Copy as path")
+    line_double = f'"{source}" -> "{target}"'
+    parsed_double = EntryPaths.parse_line(line_double)
+    assert parsed_double is not None
+    assert parsed_double[0] == os.path.realpath(str(source))
+    assert parsed_double[1] == os.path.realpath(str(target))
+
+    # Single quotes
+    line_single = f"'{source}' -> '{target}'"
+    parsed_single = EntryPaths.parse_line(line_single)
+    assert parsed_single is not None
+    assert parsed_single[0] == os.path.realpath(str(source))
+    assert parsed_single[1] == os.path.realpath(str(target))

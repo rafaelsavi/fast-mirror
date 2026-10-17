@@ -237,6 +237,13 @@ def test_paths_panel_open_selected_and_source_validation(tmp_path, monkeypatch):
     paths_panel.run_target_health_check()
     assert 'Missing/Invalid Source' in paths_panel.lbl_health_status.cget('text')
 
+    # Test truncation when more than 2 missing sources
+    missing2 = tmp_path / 'MissingSourceFolder2'
+    missing3 = tmp_path / 'MissingSourceFolder3'
+    paths_panel.entry_paths.insert(tk.END, f'\n{missing2} -> {tgt}\n{missing3} -> {tgt}\n')
+    paths_panel.run_target_health_check()
+    assert 'and 1 more' in paths_panel.lbl_health_status.cget('text')
+
     root.destroy()
 
 

@@ -140,8 +140,12 @@ class PathsPanel(ttk.LabelFrame):
 
         dirs = self.entry_paths.get_as_dir_pairs()
         if source_errors:
+            if len(source_errors) > 2:
+                err_summary = f'{"; ".join(source_errors[:2])} (and {len(source_errors) - 2} more)'
+            else:
+                err_summary = '; '.join(source_errors)
             self.lbl_health_status.config(
-                text=f'🔴 Missing/Invalid Source: {"; ".join(source_errors)}',
+                text=f'🔴 Missing/Invalid Source: {err_summary}',
                 foreground='#c62828',
             )
             return
@@ -168,8 +172,12 @@ class PathsPanel(ttk.LabelFrame):
 
                 if not all_online:
                     offline_targets = [r.path for r in results if not r.is_online]
+                    if len(offline_targets) > 2:
+                        offline_summary = f'{", ".join(offline_targets[:2])} (and {len(offline_targets) - 2} more)'
+                    else:
+                        offline_summary = ', '.join(offline_targets)
                     self.lbl_health_status.config(
-                        text=f'🔴 Offline / Unreachable: {", ".join(offline_targets)}',
+                        text=f'🔴 Offline / Unreachable: {offline_summary}',
                         foreground='#c62828',
                     )
                 elif any_warning:
@@ -193,7 +201,7 @@ class PathsPanel(ttk.LabelFrame):
         """Open the currently selected path or line under cursor in Windows File Explorer."""
         selected_text = ''
         with contextlib.suppress(Exception):
-            selected_text = self.entry_paths.get_text(tk.SEL_FIRST, tk.SEL_LAST).strip()
+            selected_text = self.entry_paths.get_text(tk.SEL_FIRST, tk.SEL_LAST).strip().strip('"\'')
 
         target_to_open = ''
         if selected_text and os.path.exists(selected_text):
@@ -201,7 +209,7 @@ class PathsPanel(ttk.LabelFrame):
         else:
             line_text = self.entry_paths.get_text('insert linestart', 'insert lineend').strip()
             if ' -> ' in line_text:
-                source, target = [p.strip() for p in line_text.split(' -> ', 1)]
+                source, target = [p.strip().strip('"\'') for p in line_text.split(' -> ', 1)]
                 cursor_idx = self.entry_paths.index('insert')
                 cursor_col = int(cursor_idx.split('.')[1])
                 arrow_idx = line_text.find(' -> ')
@@ -209,8 +217,8 @@ class PathsPanel(ttk.LabelFrame):
                     target_to_open = target if os.path.exists(target) else os.path.dirname(target)
                 else:
                     target_to_open = source
-            elif os.path.exists(line_text):
-                target_to_open = line_text
+            elif os.path.exists(line_text.strip('"\'')):
+                target_to_open = line_text.strip('"\'')
 
         if target_to_open and os.path.exists(target_to_open):
             try:
