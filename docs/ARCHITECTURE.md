@@ -306,13 +306,10 @@ Implemented in [`src/gui/confirmation_popup.py`](file:///d:/Rafael/Projects/Pyth
   copy 2.40GB (15 of 20)
   ```
 
-### System Tray via Winico Tcl Extension
+### System Tray via Pystray
 Implemented in [`src/gui/tray.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/tray.py).
 
-Windows-native notification tray docking is provided via `winico/Winico0.7.1.dll`:
-- Loaded dynamically via Tcl:
-  ```python
-  self.tk.call('lappend', 'auto_path', winico_path)
-  self.tk.call('package', 'require', 'Winico')
-  ```
-- Subscribes to Windows messages (`WM_RBUTTONDOWN`, `WM_LBUTTONDOWN`, `WM_LBUTTONDBLCLK`) to show popup context menus or restore the main window.
+Windows-native notification tray docking is provided via `pystray`:
+- Pure Python using native Windows API (`Shell_NotifyIconW`) without requiring any compiled binary DLLs.
+- Supports native `.ico` icon loading via Pillow (`PIL.Image`).
+- Provides background-threaded execution (`icon.run_detached()`) with context menu options ("Open", "Quit") and double-click window restoration.

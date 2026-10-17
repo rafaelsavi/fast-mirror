@@ -153,3 +153,177 @@ def test_gui_reset_config_restores_safe_defaults(tmp_path, monkeypatch):
     assert gui.text_var_status.get() == BackendThreadStatus.STANDBY.value
 
     gui.root.destroy()
+
+
+def test_status_bar_updates_and_theme_toggle():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.status_bar import StatusBar
+
+    status_var = tk.StringVar(value='STANDBY')
+    sched_var = tk.StringVar(value='Tomorrow 10:00')
+    theme_toggled = []
+
+    bar = StatusBar(
+        root,
+        text_var_status=status_var,
+        text_var_next_appointment=sched_var,
+        on_toggle_theme=lambda: theme_toggled.append(True),
+    )
+
+    assert bar.text_var_status.get() == 'STANDBY'
+    status_var.set('RUNNING')
+    assert bar.text_var_status.get() == 'RUNNING'
+
+    bar._handle_theme_toggle()
+    assert len(theme_toggled) == 1
+
+    root.destroy()
+
+
+def test_paths_panel_interactions(tmp_path):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.paths_panel import PathsPanel
+
+    add_path_clicked = []
+    panel = PathsPanel(root, on_add_path=lambda: add_path_clicked.append(True))
+
+    panel.btn_add_path.invoke()
+    assert len(add_path_clicked) == 1
+
+    panel.entry_exclusions.set(['*.tmp', '.git'])
+    assert '*.tmp' in panel.entry_exclusions.get()
+
+    root.destroy()
+
+
+def test_schedule_panel_interactions():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.schedule_panel import SchedulePanel
+    from gui.widgets import WeekDays
+
+    week_days = WeekDays()
+    panel = SchedulePanel(root, week_days=week_days)
+
+    assert len(panel.week_days.get()) == 0
+    panel.week_days.set(['MON', 'FRI'])
+    assert sorted(panel.week_days.get()) == ['FRI', 'MON']
+
+    panel.entry_times.set(['09:30', '18:00'])
+    assert panel.entry_times.get() == ['09:30', '18:00']
+
+    root.destroy()
+
+
+def test_actions_panel_interactions():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.actions_panel import ActionsPanel
+    from gui.widgets import Action, DefaultActions
+
+    actions_called = []
+    default_actions = DefaultActions()
+    var_save = tk.BooleanVar(value=False)
+    var_build = tk.BooleanVar(value=False)
+    var_use = tk.BooleanVar(value=True)
+    var_meta = tk.BooleanVar(value=True)
+    var_confirm = tk.BooleanVar(value=True)
+
+    panel = ActionsPanel(
+        root,
+        checkbox_default_actions=default_actions,
+        checkbox_var_save_report=var_save,
+        checkbox_var_build_mirror=var_build,
+        checkbox_var_use_mirror=var_use,
+        checkbox_var_metadata_comparison=var_meta,
+        checkbox_var_confirm_sync=var_confirm,
+        on_reset_config=lambda: actions_called.append('reset'),
+        on_save_config=lambda: actions_called.append('save'),
+        on_quick_compare=lambda: actions_called.append('compare'),
+        on_open_report=lambda: actions_called.append('report'),
+        on_sync_now=lambda: actions_called.append('sync'),
+        on_schedule_sync=lambda: actions_called.append('schedule'),
+    )
+
+    panel.button_new_config.invoke()
+    panel.button_save_config.invoke()
+    panel.button_quick_compare.invoke()
+    panel.button_open_report.invoke()
+    panel.button_sync_now.invoke()
+    panel.button_schedule_sync.invoke()
+
+    assert actions_called == ['reset', 'save', 'compare', 'report', 'sync', 'schedule']
+    assert default_actions.get_as_actions() == [Action.COPY]
+
+    root.destroy()
+
+
+def test_log_panel_clear_and_theme_switching():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.log_panel import LogPanel
+
+    log_panel = LogPanel(root)
+    log_panel.text_logger.insert('info line', 'INFO')
+    assert 'info line' in log_panel.text_logger.get('1.0', tk.END)
+
+    log_panel.clear_log()
+    assert log_panel.text_logger.get('1.0', tk.END).strip() == ''
+    assert len(log_panel.text_logger.lines) == 0
+
+    log_panel.apply_theme('dark')
+    assert log_panel.text_logger.cget('bg') == '#1c1c1c'
+
+    log_panel.apply_theme('light')
+    assert log_panel.text_logger.cget('bg') == '#ffffff'
+
+    root.destroy()
+
+
+def test_gui_detect_system_theme_and_toggle(monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.gui import Gui, detect_system_theme
+
+    theme = detect_system_theme()
+    assert theme in ('light', 'dark')
+
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'load_config', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    gui = Gui()
+    initial_theme = gui.current_theme
+    gui.toggle_theme()
+    assert gui.current_theme != initial_theme
+    gui.toggle_theme()
+    assert gui.current_theme == initial_theme
+
+    gui.root.destroy()

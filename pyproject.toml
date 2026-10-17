@@ -6,7 +6,10 @@ requires-python = ">=3.10"
 dependencies = [
     "pandas[excel]",
     "pathspec",
+    "pillow>=11.2.1",
+    "pystray>=0.19.5",
     "sqlitedict",
+    "sv-ttk>=2.6.1",
     "ttkwidgets",
 ]
 

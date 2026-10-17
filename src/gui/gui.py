@@ -5,14 +5,20 @@ import os
 import queue
 import tkinter as tk
 from logging import LogRecord
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
+
+import sv_ttk
 
 from core.backend import CompareDirs, SyncDirs
 from core.mirror import MirrorDatabase
+from gui.components.actions_panel import ActionsPanel
+from gui.components.log_panel import LogPanel
+from gui.components.paths_panel import PathsPanel
+from gui.components.schedule_panel import SchedulePanel
+from gui.components.status_bar import StatusBar
 from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgState
 from gui.tray import TrayableTk
 from gui.widgets import (
-    Action,
     DefaultActions,
     EntryExclusions,
     EntryPaths,
@@ -27,53 +33,65 @@ from utils.logger import logger
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
 
 
-class Counter:
-    def __init__(self, init_value=-1):
-        self.v = init_value
+def detect_system_theme() -> str:
+    """Detect whether Windows system is currently configured for dark or light theme."""
+    try:
+        import winreg
 
-    def get(self, increment=True) -> int:
-        if increment:
-            self.v += 1
-        return self.v
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize',
+        )
+        val, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')
+        return 'light' if val == 1 else 'dark'
+    except Exception:
+        return 'dark'
 
 
 class Gui:
+    """Main application orchestrator coordinating GUI panels, scheduler watchdogs, and backend execution."""
+
     def __init__(self):
-        # Initialize GUI
+        # Initialize GUI window
         self.root = TrayableTk()
         self.root.resizable(False, False)
-        self.root.iconbitmap(os.path.join(os.path.dirname(__file__), 'app_icon.ico'))
+        icon_path = os.path.join(os.path.dirname(__file__), 'app_icon.ico')
+        if os.path.isfile(icon_path):
+            with contextlib.suppress(Exception):
+                self.root.iconbitmap(icon_path)
         self.root.title('Automatic Backup Tool')
+
+        # Apply modern Sun Valley ttk theme matching Windows preference
+        self.current_theme = detect_system_theme()
+        with contextlib.suppress(Exception):
+            sv_ttk.set_theme(self.current_theme)
 
         self.config_path = os.path.join(ROOT_DIR, 'config.json')
 
         # State variables
         self._gui_initialized = False
-        self.last_realized_sync = None
+        self.last_realized_sync: datetime.datetime | None = None
         self._backend_thread_holder: KillableThread | None = None
         self._backend_thread_status = BackendThreadStatus.STANDBY
         self._current_run_trigger: str | None = None
         self._active_sync: SyncDirs | None = None
 
-        # GUI elements
-        self.toggle_auto_scroll = tk.BooleanVar()
-        self.checkbox_var_use_mirror = tk.BooleanVar()
-        self.checkbox_var_build_mirror = tk.BooleanVar()
-        self.checkbox_var_metadata_comparison = tk.BooleanVar()
-        self.checkbox_var_confirm_sync = tk.BooleanVar()
-        self.checkbox_var_save_report = tk.BooleanVar()
-        self.text_var_status = tk.StringVar()
-        self.text_var_next_appointment = tk.StringVar()
+        # Tkinter control variables
+        self.toggle_auto_scroll = tk.BooleanVar(value=True)
+        self.checkbox_var_use_mirror = tk.BooleanVar(value=True)
+        self.checkbox_var_build_mirror = tk.BooleanVar(value=False)
+        self.checkbox_var_metadata_comparison = tk.BooleanVar(value=True)
+        self.checkbox_var_confirm_sync = tk.BooleanVar(value=True)
+        self.checkbox_var_save_report = tk.BooleanVar(value=False)
+        self.text_var_status = tk.StringVar(value=BackendThreadStatus.STANDBY.value)
+        self.text_var_next_appointment = tk.StringVar(value='Schedule is not activated')
 
-        # Custom widgets
+        # Model objects
         self.checkbox_default_actions = DefaultActions()
-        self.text_logger = TextLogger()
         self.week_days = WeekDays()
         self.log_levels = LogLevels()
-        self.entry_paths = EntryPaths()
-        self.entry_exclusions = EntryExclusions()
-        self.entry_times = EntryTimes()
 
+        # Build GUI modular components
         self.create_widgets()
 
         # Start parallel threads
@@ -81,14 +99,14 @@ class Gui:
         self.backend_watchdog()
         self.log_queue_watchdog()
 
-        # Try to load existing configuration
+        # Load existing configuration
         self.load_config()
 
-        # Run GUI
+        # Run GUI loop
         self.root.mainloop()
 
     @property
-    def backend_thread_status(self):
+    def backend_thread_status(self) -> BackendThreadStatus:
         return self._backend_thread_status
 
     @backend_thread_status.setter
@@ -96,10 +114,9 @@ class Gui:
         self._backend_thread_status = status
         self.text_var_status.set(status.value)
 
-        # If thread is running, disable all unused buttons
+        # If thread is running, disable unused buttons
         if status == BackendThreadStatus.STANDBY:
             self.set_gui_enable_state(general_state=True)
-            # Release triggers when backend is done
             self.toggle_state_quick_compare = False
             self.toggle_state_sync_now = False
             self._current_run_trigger = None
@@ -116,8 +133,8 @@ class Gui:
         def is_sunken_button(child_):
             try:
                 return isinstance(child_, tk.Button) and child_.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
-            except Exception as e:
-                raise ValueError(f'Could not check if {child_} is a sunken button. Exception: {e}') from e
+            except Exception:
+                return False
 
         all_childs = [
             *self.frame_paths.winfo_children(),
@@ -128,10 +145,14 @@ class Gui:
             *self.frame_buttons.winfo_children(),
             self.entry_times,
         ]
-        ignore_childs = [self.button_open_report, self.checkbox_auto_scroll, *self.frame_buttons_level.winfo_children()]
+        ignore_childs = [
+            self.button_open_report,
+            self.checkbox_auto_scroll,
+            *self.frame_buttons_level.winfo_children(),
+        ]
 
         for child in all_childs:
-            if isinstance(child, tk.Label) or child in ignore_childs:
+            if isinstance(child, tk.Label | ttk.Label) or child in ignore_childs:
                 continue
             convert_child_state(child, general_state)
             if leave_sunken_enabled and is_sunken_button(child):
@@ -144,12 +165,10 @@ class Gui:
     @backend_thread_holder.setter
     def backend_thread_holder(self, thread):
         self._backend_thread_holder = thread
-
-        # Update text of status widget
         self.backend_thread_status = BackendThreadStatus.RUNNING if thread is not None else BackendThreadStatus.STANDBY
 
     @property
-    def toggle_state_schedule(self):
+    def toggle_state_schedule(self) -> bool:
         return self.button_schedule_sync.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
 
     @toggle_state_schedule.setter
@@ -160,7 +179,7 @@ class Gui:
         )
 
     @property
-    def toggle_state_quick_compare(self):
+    def toggle_state_quick_compare(self) -> bool:
         return self.button_quick_compare.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
 
     @toggle_state_quick_compare.setter
@@ -170,235 +189,115 @@ class Gui:
         )
 
     @property
-    def toggle_state_sync_now(self):
+    def toggle_state_sync_now(self) -> bool:
         return self.button_sync_now.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
 
     @toggle_state_sync_now.setter
     def toggle_state_sync_now(self, value: bool):
         self.button_sync_now.config(relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value)
 
+    def toggle_theme(self):
+        """Toggle between Sun Valley dark and light themes and update text log colors."""
+        try:
+            new_theme = 'light' if sv_ttk.get_theme() == 'dark' else 'dark'
+            sv_ttk.set_theme(new_theme)
+            self.current_theme = new_theme
+            self.log_panel.apply_theme(new_theme)
+        except Exception as e:
+            logger.warning(f'Could not toggle theme: {e}')
+
     def create_widgets(self):
-        # START FRAME OF STATUS (UP-LEFT)
+        # Configure layout root grid
+        self.root.columnconfigure(0, weight=0)
+        self.root.columnconfigure(1, weight=1)
+        self.root.rowconfigure(1, weight=1)
 
-        frame_status = tk.Frame(self.root)
-        frame_status.grid(row=0, column=0, padx=10, pady=10, sticky='nsw')
-        # ---
-        label_status = tk.Label(frame_status, text='Overall status:')
-        label_status.grid(row=0, column=0, sticky='w')
-        # ---
-        text_status = tk.Label(frame_status, anchor='w', textvariable=self.text_var_status)
-        text_status.grid(row=0, column=1, sticky='w')
-        # ---
-        label_next_appointment = tk.Label(frame_status, text='Next synchronization:')
-        label_next_appointment.grid(row=1, column=0, sticky='w')
-        # ---
-        text_next_appointment = tk.Label(
-            frame_status, anchor='w', justify=tk.LEFT, textvariable=self.text_var_next_appointment
+        # 1. Top Status & Theme Bar spanning full width
+        self.status_bar = StatusBar(
+            self.root,
+            text_var_status=self.text_var_status,
+            text_var_next_appointment=self.text_var_next_appointment,
+            on_toggle_theme=self.toggle_theme,
+            padding=(8, 4),
         )
-        text_next_appointment.grid(row=1, column=1, sticky='w')
+        self.status_bar.grid(row=0, column=0, columnspan=2, sticky='ew', padx=10, pady=(8, 4))
 
-        # FINISH FRAME OF STATUS (UP-LEFT)
+        # 2. Left Column: Operations, Schedule, and Configuration
+        left_container = ttk.Frame(self.root)
+        left_container.grid(row=1, column=0, sticky='nsw', padx=(10, 5), pady=(0, 10))
 
-        # START FRAME OF PATHS (UP-RIGHT)
+        # Actions & Operations Panel
+        self.actions_panel = ActionsPanel(
+            left_container,
+            checkbox_default_actions=self.checkbox_default_actions,
+            checkbox_var_save_report=self.checkbox_var_save_report,
+            checkbox_var_build_mirror=self.checkbox_var_build_mirror,
+            checkbox_var_use_mirror=self.checkbox_var_use_mirror,
+            checkbox_var_metadata_comparison=self.checkbox_var_metadata_comparison,
+            checkbox_var_confirm_sync=self.checkbox_var_confirm_sync,
+            on_reset_config=self.button_action_reset_config,
+            on_save_config=self.button_action_save_config,
+            on_quick_compare=self.button_action_quick_compare,
+            on_open_report=self.button_action_open_report,
+            on_sync_now=self.button_action_sync_now,
+            on_schedule_sync=self.button_action_schedule_sync,
+            padding=6,
+        )
+        self.actions_panel.pack(fill='x', pady=(0, 6))
 
-        self.frame_paths = tk.Frame(self.root)
-        self.frame_paths.grid(row=0, column=1, padx=10, pady=10, sticky='we')
-        # ---
-        label_path_selection = tk.Label(self.frame_paths, text='Paths')
-        label_path_selection.grid(row=0, column=0, sticky='w')
-        # ---
-        button_add_path = tk.Button(self.frame_paths, text='Add new', command=self.button_action_add_path)
-        button_add_path.grid(row=0, column=1, sticky='nsw', padx=10)
-        # ---
-        self.entry_paths = EntryPaths(self.frame_paths, width=124, height=3)
-        self.entry_paths.grid(row=0, column=2, sticky='we', padx=10)
-        # ---
-        label_path_exclusions = tk.Label(self.frame_paths, text='Exclusions')
-        label_path_exclusions.grid(row=1, column=0, columnspan=2, sticky='w')
-        # ---
-        self.entry_exclusions = EntryExclusions(self.frame_paths, width=124)
-        self.entry_exclusions.grid(row=1, column=2, sticky='we', padx=10)
+        # Schedule Settings Panel
+        self.schedule_panel = SchedulePanel(
+            left_container,
+            week_days=self.week_days,
+            padding=6,
+        )
+        self.schedule_panel.pack(fill='x')
 
-        # FINISH FRAME OF PATHS (UP-RIGHT)
+        # 3. Right Column: Paths Panel and Activity Log Panel
+        right_container = ttk.Frame(self.root)
+        right_container.grid(row=1, column=1, sticky='nsew', padx=(5, 10), pady=(0, 10))
+        right_container.columnconfigure(0, weight=1)
+        right_container.rowconfigure(1, weight=1)
 
-        # START FRAME OF BUTTONS (DOWN-LEFT)
+        # Paths Panel
+        self.paths_panel = PathsPanel(
+            right_container,
+            on_add_path=self.button_action_add_path,
+            padding=6,
+        )
+        self.paths_panel.grid(row=0, column=0, sticky='ew', pady=(0, 6))
 
-        self.frame_buttons = tk.Frame(self.root)
-        self.frame_buttons.grid(row=1, column=0, padx=10, pady=10, sticky='nw')
-        row_counter = Counter()
-        # ---
-        label_configuration = tk.Label(self.frame_buttons, text='GUI Configuration')
-        label_configuration.grid(row=row_counter.get(increment=True), column=0, sticky='nwe')
-        # ---
-        button_new_config = tk.Button(
-            self.frame_buttons, text='Reset', command=self.button_action_reset_config, width=12
+        # Activity Log Panel
+        self.log_panel = LogPanel(
+            right_container,
+            log_levels=self.log_levels,
+            toggle_auto_scroll=self.toggle_auto_scroll,
+            on_update_log_levels=self.button_action_update_log_levels,
+            on_toggle_auto_scroll=self.button_action_toggle_auto_scroll,
+            padding=6,
         )
-        button_new_config.grid(row=row_counter.get(increment=False), column=1, sticky='nwe')
-        # ---
-        button_save_config = tk.Button(
-            self.frame_buttons, text='Save', command=self.button_action_save_config, width=12
-        )
-        button_save_config.grid(row=row_counter.get(increment=False), column=2, sticky='nwe')
-        # ---
-        label_compare = tk.Label(self.frame_buttons, text='Compare')
-        label_compare.grid(row=row_counter.get(increment=True), column=0, sticky='w')
-        # ---
-        self.button_quick_compare = tk.Button(
-            self.frame_buttons, text='Start', command=self.button_action_quick_compare
-        )
-        self.button_quick_compare.grid(row=row_counter.get(increment=False), column=1, sticky='nwe')
-        self.toggle_state_quick_compare = False
-        # ---
-        self.button_open_report = tk.Button(
-            self.frame_buttons, text='Open last report', command=self.button_action_open_report
-        )
-        self.button_open_report.grid(row=row_counter.get(increment=False), column=2, sticky='nwe')
-        # ---
-        label_synchronization = tk.Label(self.frame_buttons, text='Synchronization')
-        label_synchronization.grid(row=row_counter.get(increment=True), column=0, sticky='w')
-        # ---
-        self.button_sync_now = tk.Button(self.frame_buttons, text='Sync now', command=self.button_action_sync_now)
-        self.button_sync_now.grid(row=row_counter.get(increment=False), column=1, sticky='nwe')
-        self.toggle_state_sync_now = False
-        # ---
-        self.button_schedule_sync = tk.Button(
-            self.frame_buttons,
-            text='Schedule (OFF)',
-            relief=TkinterCfgRelief.RAISED.value,
-            command=self.button_action_schedule_sync,
-        )
-        self.button_schedule_sync.grid(row=row_counter.get(increment=False), column=2, sticky='nwe')
-        self.toggle_state_schedule = False
-        # ---
-        checkbox_check_save_report = tk.Checkbutton(
-            self.frame_buttons, text='Save detailed report', variable=self.checkbox_var_save_report
-        )
-        checkbox_check_save_report.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
-        # ---
-        checkbox_build_local_mirror = tk.Checkbutton(
-            self.frame_buttons,
-            text='Rebuild local mirror',
-            variable=self.checkbox_var_build_mirror,
-            command=lambda: checkbox_use_local_mirror.deselect(),
-        )
-        checkbox_build_local_mirror.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
-        # ---
-        self.checkbox_var_use_mirror.set(True)
-        checkbox_use_local_mirror = tk.Checkbutton(
-            self.frame_buttons,
-            text='Use fast scan based on local mirror',
-            variable=self.checkbox_var_use_mirror,
-            command=lambda: checkbox_build_local_mirror.deselect(),
-        )
-        checkbox_use_local_mirror.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
-        # ---
-        self.checkbox_var_metadata_comparison.set(True)
-        checkbox_metadata_comparison = tk.Checkbutton(
-            self.frame_buttons,
-            text='Use fast comparison based on metadata',
-            variable=self.checkbox_var_metadata_comparison,
-        )
-        checkbox_metadata_comparison.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
-        # ---
-        self.checkbox_var_confirm_sync.set(True)
-        checkbox_confirm_sync = tk.Checkbutton(
-            self.frame_buttons, text='Request confirmation before sync', variable=self.checkbox_var_confirm_sync
-        )
-        checkbox_confirm_sync.grid(row=row_counter.get(increment=True), column=1, columnspan=2, sticky='w')
-        # ---
-        label_default_actions = tk.Label(self.frame_buttons, text='Default actions')
-        label_default_actions.grid(row=row_counter.get(increment=True), column=0, sticky='w')
-        # ---
-        self.frame_default_actions = tk.Frame(self.frame_buttons)
-        self.frame_default_actions.grid(row=row_counter.get(increment=False), column=1, columnspan=2)
-        # ---
-        checkbox_default_action_copy = tk.Checkbutton(
-            self.frame_default_actions,
-            text='Copy',
-            variable=self.checkbox_default_actions.get_var(Action.COPY),
-        )
-        checkbox_default_action_copy.grid(row=0, column=0, sticky='w')
-        # ---
-        checkbox_default_action_move = tk.Checkbutton(
-            self.frame_default_actions,
-            text='Move',
-            variable=self.checkbox_default_actions.get_var(Action.MOVE),
-        )
-        checkbox_default_action_move.grid(row=0, column=1, sticky='w')
-        # ---
-        checkbox_default_action_delete = tk.Checkbutton(
-            self.frame_default_actions,
-            text='Delete',
-            variable=self.checkbox_default_actions.get_var(Action.DELETE),
-        )
-        checkbox_default_action_delete.grid(row=0, column=2, sticky='w')
-        # ---
-        label_scheduler = tk.Label(self.frame_buttons, text='Schedule')
-        label_scheduler.grid(row=row_counter.get(increment=True), column=0, sticky='w')
-        # ---
-        self.frame_buttons_scheduler = tk.Frame(self.frame_buttons)
-        self.frame_buttons_scheduler.grid(row=row_counter.get(increment=False), column=1, columnspan=2)
-        # ---
-        self.frame_buttons_scheduler_days = tk.Frame(self.frame_buttons_scheduler)
-        self.frame_buttons_scheduler_days.grid(row=0, column=0, sticky='nw', padx=10)
-        # ---
-        label_week_days = tk.Label(self.frame_buttons_scheduler_days, text='Week days')
-        label_week_days.grid(row=0, column=0, sticky='w')
-        # ---
-        check_box_week_days = {}
-        for i, day in enumerate(self.week_days.options):
-            check_box_week_days[day] = tk.Checkbutton(
-                self.frame_buttons_scheduler_days, text=day, variable=self.week_days.checkboxes[day]
-            )
-            check_box_week_days[day].grid(row=1 + i, column=0, sticky='w')
+        self.log_panel.grid(row=1, column=0, sticky='nsew')
+        self.log_panel.apply_theme(self.current_theme)
 
-        frame_buttons_scheduler_times = tk.Frame(self.frame_buttons_scheduler)
-        frame_buttons_scheduler_times.grid(row=0, column=1, sticky='ne', padx=10)
-        # ---
-        label_times = tk.Label(frame_buttons_scheduler_times, text='Times')
-        label_times.grid(row=0, column=0, sticky='w')
-        # ---
-        self.entry_times = EntryTimes(frame_buttons_scheduler_times, width=5, height=5)
-        self.entry_times.grid(row=1, column=0)
-        # ---
-        label_log_options = tk.Label(self.frame_buttons, text='Log window')
-        label_log_options.grid(row=row_counter.get(increment=True), column=0, sticky='w')
-        # ---
-        self.toggle_auto_scroll.set(True)
-        self.checkbox_auto_scroll = tk.Checkbutton(
-            self.frame_buttons,
-            text='Auto-scroll',
-            variable=self.toggle_auto_scroll,
-            command=self.button_action_toggle_auto_scroll,
-        )
-        self.checkbox_auto_scroll.grid(row=row_counter.get(increment=False), column=2, sticky='nw')
-        # ---
-        self.frame_buttons_level = tk.Frame(self.frame_buttons)
-        self.frame_buttons_level.grid(row=row_counter.get(increment=False), column=1, sticky='nw')
-        # ---
-        check_box_log_level: dict[str, tk.Checkbutton] = {}
+        # Expose legacy attributes for 100% backward compatibility
+        self.entry_paths: EntryPaths = self.paths_panel.entry_paths
+        self.entry_exclusions: EntryExclusions = self.paths_panel.entry_exclusions
+        self.entry_times: EntryTimes = self.schedule_panel.entry_times
+        self.text_logger: TextLogger = self.log_panel.text_logger
 
-        for i, level in enumerate(self.log_levels.options):
-            check_box_log_level[level] = tk.Checkbutton(
-                self.frame_buttons_level,
-                text=level,
-                command=self.button_action_update_log_levels,
-                variable=self.log_levels.checkboxes[level],
-            )
-            check_box_log_level[level].grid(row=i, column=0, sticky='w')
+        self.button_quick_compare = self.actions_panel.button_quick_compare
+        self.button_open_report = self.actions_panel.button_open_report
+        self.button_sync_now = self.actions_panel.button_sync_now
+        self.button_schedule_sync = self.actions_panel.button_schedule_sync
+        self.button_new_config = self.actions_panel.button_new_config
+        self.button_save_config = self.actions_panel.button_save_config
 
-        # FINISH FRAME OF BUTTONS (DOWN-LEFT)
-
-        # START FRAME OF LOG (DOWN-RIGHT)
-
-        frame_log = tk.Frame(self.root)
-        frame_log.grid(row=1, column=1, sticky='nsw', padx=10, pady=10)
-
-        self.text_logger = TextLogger(frame_log, state=TkinterCfgState.DISABLED.value, height=33, width=140)
-        self.text_logger.set_log_levels(self.log_levels.get())
-        self.text_logger.grid(row=0, column=0, sticky='nsew')
-
-        # FINISH FRAME OF LOG (DOWN-RIGHT)
+        self.checkbox_auto_scroll = self.log_panel.checkbox_auto_scroll
+        self.frame_paths = self.paths_panel
+        self.frame_buttons = self.actions_panel
+        self.frame_default_actions = self.actions_panel.frame_default_actions
+        self.frame_buttons_scheduler_days = self.schedule_panel
+        self.frame_buttons_level = self.log_panel.frame_buttons_level
 
         self._gui_initialized = True
 
@@ -486,9 +385,9 @@ class Gui:
 
     def button_action_add_path(self):
         source = filedialog.askdirectory(title='Select source folder')
-        if source != '':
+        if source:
             target = filedialog.askdirectory(title='Select destination folder')
-            if target != '':
+            if target:
                 self.entry_paths.add(DirectoryPair(source=source, target=target))
 
     def button_action_open_report(self):
@@ -545,7 +444,7 @@ class Gui:
             now = datetime.datetime.now()
             next_appointment = self.get_next_appointment()
 
-            # If backend thread is not running
+            # If backend thread is in standby
             if self.backend_thread_status == BackendThreadStatus.STANDBY:
                 if (
                     self.toggle_state_schedule
@@ -566,7 +465,7 @@ class Gui:
                     self._current_run_trigger = 'sync_now'
                     self.call_backend_thread(also_sync=True, timestamp=now)
 
-            # If backend thread is running but a stop command was requested
+            # If backend thread is running but a cancellation was requested
             elif self.backend_thread_status == BackendThreadStatus.RUNNING:
                 stop_requested = (
                     (self._current_run_trigger == 'quick_compare' and not self.toggle_state_quick_compare)
@@ -642,18 +541,15 @@ class Gui:
 
         logger.debug('Processing thread was properly closed')
 
-    def get_next_appointment(self):
+    def get_next_appointment(self) -> datetime.datetime | None:
         string = 'Schedule is not activated'
         next_appointment = None
 
         if self.toggle_state_schedule:
             days = self.week_days.get_as_numbers()
             times = self.entry_times.get()
-
-            # Get now rounded on minutes
             now = round_time_to_minutes(datetime.datetime.now())
 
-            # Iterate over the number of minutes in a week
             for i in range(60 * 24 * 7):
                 delta = datetime.timedelta(minutes=i)
                 future = now + delta
@@ -673,7 +569,7 @@ class Gui:
         return next_appointment
 
     def log_queue_watchdog(self):
-        """Check every 100ms if there is a new message in the queue to be displayed"""
+        """Poll log queue every 100ms and display queued records in text logger."""
         while True:
             try:
                 record: LogRecord = logger.log_queue.get(block=False)
@@ -683,7 +579,6 @@ class Gui:
                 msg = logger.queue_handler.format(record)
                 self.text_logger.insert(msg, record.levelname)
 
-                # Autoscroll to the bottom
                 if self.toggle_auto_scroll.get():
                     self.text_logger.yview(tk.END)
 

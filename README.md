@@ -49,7 +49,7 @@
 - **Smart Move & Rename Detection**: Recognizes when files were renamed or moved to different folders on the source side. Rather than deleting and re-uploading large files over the network, it executes local/remote file moves directly on the target.
 - **Interactive Action Review**: An interactive treeview dialog previews proposed `COPY`, `MOVE`, and `DELETE` actions with individual file sizes, timestamps, and aggregate group volumes with Windows audio cues.
 - **Built-in Weekly Scheduler**: Configure specific days of the week and daily execution times for fully unattended backups.
-- **Windows System Tray Integration**: Minimizes to the Windows notification area via the bundled Winico DLL. Closing the window prompts to keep running in the background.
+- **Windows System Tray Integration**: Minimizes to the Windows notification area via native `pystray` integration. Closing the window prompts to keep running in the background.
 - **Killable Background Thread**: Long-running comparison and synchronization jobs execute asynchronously in a cancellable thread, keeping the GUI responsive and allowing clean cancellations.
 - **Gitwildmatch Exclusions**: Excludes files and folders using `.gitignore`-style wildcard syntax (powered by `pathspec`), pruning ignored directories on the fly during filesystem traversal.
 - **Detailed Logging & Excel Audit Reports**: In-GUI color-coded log console with real-time level filtering, persistent log files on disk, and optional detailed Excel (`.xlsx`) comparison reports via `pandas`.
@@ -128,7 +128,6 @@ automatic-backup/
 ├── local_mirror.db           # SQLite database for cached target mirrors
 ├── pyproject.toml            # Project metadata, dependencies, and tool settings
 ├── logs/                     # Session log files and generated Excel reports
-├── winico/                   # Winico 0.7.1 Tcl extension DLL and icon assets
 ├── notebooks/                # Exploratory & diagnostic Jupyter notebooks
 │   ├── explore_db.ipynb
 │   └── tests.ipynb
@@ -142,7 +141,7 @@ automatic-backup/
 │   ├── gui/
 │   │   ├── gui.py            # Main application window, watchdogs, scheduler
 │   │   ├── confirmation_popup.py # ActionSelection modal & CustomCheckboxTreeView
-│   │   ├── tray.py           # TrayableTk (Winico tray icon integration)
+│   │   ├── tray.py           # TrayableTk (pystray system tray integration)
 │   │   ├── custom_gui.py     # Backward-compatibility facade for tray and popup
 │   │   ├── enums.py          # Tkinter & Thread state enums
 │   │   ├── worker_thread.py  # KillableThread with sys.settrace hooks
@@ -171,7 +170,7 @@ automatic-backup/
 
 ### Prerequisites
 
-- **Operating System**: Windows 10 or Windows 11 (uses Windows-specific APIs: `ctypes.windll.kernel32`, `winsound`, `winico` DLL).
+- **Operating System**: Windows 10 or Windows 11 (uses Windows-specific APIs: `ctypes.windll.kernel32`, `winsound`).
 - **Python**: Version **3.10** or higher.
 - **Package Manager**: [uv](https://github.com/astral-sh/uv) (recommended) or standard `pip`.
 
@@ -469,7 +468,7 @@ uv run mypy src
 - **Resolution**: Enable Windows Long Paths in the Windows Registry (`LongPathsEnabled = 1` in `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`) or shorten top-level folder names.
 
 ### 4. System tray icon does not appear
-- **Cause**: The application uses the Winico Tcl extension DLL located in `winico/Winico0.7.1.dll`. If the folder is moved or DLL missing, system tray initialization will fail gracefully and log a warning, while the main GUI continues running.
+- **Cause**: The application uses `pystray` to dock in the Windows notification area. If system tray initialization fails, a warning is logged while the main GUI continues running.
 
 ---
 

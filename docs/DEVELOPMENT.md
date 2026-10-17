@@ -20,7 +20,7 @@ This guide covers developer onboarding, environment setup, coding standards, aut
    - [Formatting with Ruff](#formatting-with-ruff)
    - [Type Checking with Mypy](#type-checking-with-mypy)
 5. [Windows-Specific Dependencies](#windows-specific-dependencies)
-   - [Winico Tcl Extension](#winico-tcl-extension)
+   - [Pystray System Tray](#pystray-system-tray)
    - [Windows API Calls](#windows-api-calls)
 6. [Contribution Checklist](#contribution-checklist)
 
@@ -30,7 +30,7 @@ This guide covers developer onboarding, environment setup, coding standards, aut
 
 ### Prerequisites
 
-- **Windows 10 / 11**: The codebase uses Windows-native binaries (`winico`) and Windows platform libraries (`winsound`, `ctypes.windll.kernel32`).
+- **Windows 10 / 11**: The codebase uses Windows platform libraries (`winsound`, `ctypes.windll.kernel32`).
 - **Python 3.10+**: Confirm your Python version with:
   ```powershell
   python --version
@@ -93,7 +93,7 @@ automatic-backup/
 │   ├── gui/                  # Tkinter interface, threads, and custom widgets
 │   └── utils/                # Helpers, constants, and logging
 ├── tests/                    # Pytest test suite
-└── winico/                   # Windows notification tray DLL extension
+└── notebooks/                # Exploratory notebooks
 ```
 
 When installed with `-e .`, the `src` directory is linked into your virtual environment's `site-packages`, allowing absolute imports like `from core.file import CstmPath` or `from gui.gui import Gui`.
@@ -235,18 +235,13 @@ explicit_package_bases = true
 
 ## Windows-Specific Dependencies
 
-### Winico Tcl Extension
+### Pystray System Tray
 
-Tkinter on Windows does not natively support placing an icon into the taskbar notification area (system tray). The project bundles the open-source **Winico 0.7.1** Tcl extension in [`winico/Winico0.7.1.dll`](file:///d:/Rafael/Projects/Python/automatic-backup/winico/Winico0.7.1.dll).
-
-During startup in [`TrayableTk.add_system_tray_icon()`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/custom_gui.py#L33-L60):
-1. The `winico` folder is added to Tcl's package auto-path:
-   ```python
-   self.tk.call('lappend', 'auto_path', winico_path)
-   self.tk.call('package', 'require', 'Winico')
-   ```
-2. A taskbar icon is registered with callbacks dispatching to `menu_func()`.
-3. If running in an environment without Winico, the system tray initialization logs a warning and gracefully degrades without crashing.
+System tray integration is implemented using `pystray` in [`src/gui/tray.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/tray.py):
+1. Pure Python implementation using native Windows `Shell_NotifyIconW` via `ctypes`.
+2. Uses [`app_icon.ico`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/app_icon.ico) directly via Pillow (`PIL.Image`).
+3. Runs detached in a background thread without blocking Tkinter's event loop.
+4. If running in a headless or test environment, system tray initialization gracefully degrades without crashing.
 
 ### Windows API Calls
 

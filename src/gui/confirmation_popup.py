@@ -1,8 +1,11 @@
 import contextlib
+import os
 import tkinter as tk
 import winsound
 from collections.abc import Callable
+from tkinter import ttk
 
+import sv_ttk
 import ttkwidgets
 
 from core.file import CstmPath
@@ -32,23 +35,37 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         # Configure headers to preserve exact backward compatibility
         self['columns'] = self.custom_headers[1:]
-        self.column('#0', width=220, minwidth=160)
+        self.column('#0', width=240, minwidth=180)
         self.heading('#0', text=self.custom_headers[0])
 
         for column in self.custom_headers[1:]:
             self.heading(column, text=column.title())
             if 'date' in column:
-                self.column(column, width=150, minwidth=120)
+                self.column(column, width=155, minwidth=120)
             elif 'size' in column:
-                self.column(column, width=95, minwidth=75)
+                self.column(column, width=100, minwidth=80)
             else:
-                self.column(column, width=320, minwidth=180)
+                self.column(column, width=330, minwidth=180)
 
-        # Style tags for actions to provide clear visual cues
-        self.tag_configure('copy_tag', background='#f6fff8')
-        self.tag_configure('move_tag', background='#f0f7ff')
-        self.tag_configure('delete_tag', background='#fff5f5')
-        self.tag_configure('highlight_match', background='#fff59d')
+        self.apply_theme_tags()
+
+    def apply_theme_tags(self):
+        """Configure row tinting and match highlighting based on current dark or light theme."""
+        try:
+            is_dark = sv_ttk.get_theme() == 'dark'
+        except Exception:
+            is_dark = False
+
+        if is_dark:
+            self.tag_configure('copy_tag', background='#192c21')
+            self.tag_configure('move_tag', background='#14253a')
+            self.tag_configure('delete_tag', background='#3a1c20')
+            self.tag_configure('highlight_match', background='#4a3f00')
+        else:
+            self.tag_configure('copy_tag', background='#f6fff8')
+            self.tag_configure('move_tag', background='#f0f7ff')
+            self.tag_configure('delete_tag', background='#fff5f5')
+            self.tag_configure('highlight_match', background='#fff59d')
 
     def _box_click(self, event):
         super()._box_click(event)
@@ -195,6 +212,16 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             self.change_state(action.value, 'unchecked')
         self.refresh_group_stats()
 
+    def expand_all(self):
+        """Expand all action groups."""
+        for group in self.get_children(''):
+            self.item(group, open=True)
+
+    def collapse_all(self):
+        """Collapse all action groups."""
+        for group in self.get_children(''):
+            self.item(group, open=False)
+
 
 class ActionSelection:
     """Modern interactive confirmation popup for reviewing and selectively executing file sync operations."""
@@ -223,16 +250,16 @@ class ActionSelection:
         self.finished = False
         self.proceed = False
 
-        # Create window (withdrawn during creation to avoid multiple repaint events)
+        # Create window
         self.popup = tk.Toplevel(self.root_gui)
         self.popup.withdraw()
         self.popup.title('Automatic Backup - Confirm Actions')
-        self.popup.minsize(920, 580)
+        self.popup.minsize(940, 600)
         self.popup.transient(self.root_gui)
         self.popup.protocol('WM_DELETE_WINDOW', self.button_cancel_click)
 
         # Center window over root or screen
-        self._center_window(width=980, height=640)
+        self._center_window(width=1000, height=660)
 
         # Keyboard shortcuts
         self.popup.bind('<Return>', lambda e: self.button_save_click())
@@ -266,6 +293,12 @@ class ActionSelection:
         except Exception:
             self.popup.geometry(f'{width}x{height}')
 
+    def _is_dark_theme(self) -> bool:
+        try:
+            return sv_ttk.get_theme() == 'dark'
+        except Exception:
+            return False
+
     def create_widgets(self):
         logger.info('Collecting data for selection window. This may take a while')
 
@@ -276,10 +309,10 @@ class ActionSelection:
         # 1. Top Summary Banner
         self._create_summary_banner()
 
-        # 2. Toolbar (Search, Select All, Deselect All, Uncheck Deletions)
+        # 2. Toolbar (Search, Select All, Deselect All, Expand/Collapse, Uncheck Deletions)
         self._create_toolbar()
 
-        # 3. Table with scrollbars
+        # 3. Table with modern scrollbars
         self.create_table()
 
         # 4. Bottom Path Inspector & Dialog Action Buttons
@@ -289,42 +322,54 @@ class ActionSelection:
             winsound.PlaySound('SystemQuestion', winsound.SND_ALIAS)
 
     def _create_summary_banner(self):
-        banner_frame = tk.Frame(self.popup, bg='#f8f9fa', bd=1, relief='solid', padx=12, pady=8)
+        is_dark = self._is_dark_theme()
+        banner_bg = '#252525' if is_dark else '#f8f9fa'
+        title_fg = '#ffffff' if is_dark else '#212529'
+        desc_fg = '#aaaaaa' if is_dark else '#6c757d'
+
+        banner_frame = tk.Frame(self.popup, bg=banner_bg, bd=1, relief='solid', padx=12, pady=8)
         banner_frame.grid(row=0, column=0, sticky='ew', padx=8, pady=(8, 4))
         banner_frame.grid_columnconfigure(3, weight=1)
 
         # Title & Subtitle
-        title_box = tk.Frame(banner_frame, bg='#f8f9fa')
+        title_box = tk.Frame(banner_frame, bg=banner_bg)
         title_box.grid(row=0, column=0, columnspan=4, sticky='w', pady=(0, 6))
 
         lbl_title = tk.Label(
             title_box,
             text='Review Synchronization Actions',
             font=('Segoe UI', 11, 'bold'),
-            bg='#f8f9fa',
-            fg='#212529',
+            bg=banner_bg,
+            fg=title_fg,
         )
         lbl_title.pack(anchor='w')
 
         lbl_desc = tk.Label(
             title_box,
-            text='Select or unselect specific files to customize which actions are executed.',
+            text='Inspect planned filesystem changes. Check or uncheck items to customize what will be executed.',
             font=('Segoe UI', 8),
-            bg='#f8f9fa',
-            fg='#6c757d',
+            bg=banner_bg,
+            fg=desc_fg,
         )
         lbl_desc.pack(anchor='w')
 
         # Category Stat Badges
-        badge_frame = tk.Frame(banner_frame, bg='#f8f9fa')
+        badge_frame = tk.Frame(banner_frame, bg=banner_bg)
         badge_frame.grid(row=1, column=0, columnspan=4, sticky='w')
+
+        copy_bg = '#1a3322' if is_dark else '#e8f5e9'
+        copy_fg = '#81c784' if is_dark else '#2e7d32'
+        move_bg = '#132c44' if is_dark else '#e3f2fd'
+        move_fg = '#64b5f6' if is_dark else '#1565c0'
+        del_bg = '#3b1d20' if is_dark else '#ffebee'
+        del_fg = '#e57373' if is_dark else '#c62828'
 
         self.lbl_stat_copy = tk.Label(
             badge_frame,
             text='🟢 Copy: 0 files',
             font=('Segoe UI', 9),
-            bg='#e8f5e9',
-            fg='#2e7d32',
+            bg=copy_bg,
+            fg=copy_fg,
             padx=8,
             pady=3,
             relief='groove',
@@ -335,8 +380,8 @@ class ActionSelection:
             badge_frame,
             text='🔵 Move: 0 files',
             font=('Segoe UI', 9),
-            bg='#e3f2fd',
-            fg='#1565c0',
+            bg=move_bg,
+            fg=move_fg,
             padx=8,
             pady=3,
             relief='groove',
@@ -347,8 +392,8 @@ class ActionSelection:
             badge_frame,
             text='🔴 Delete: 0 files',
             font=('Segoe UI', 9),
-            bg='#ffebee',
-            fg='#c62828',
+            bg=del_bg,
+            fg=del_fg,
             padx=8,
             pady=3,
             relief='groove',
@@ -359,37 +404,50 @@ class ActionSelection:
             badge_frame,
             text='⚠️ Deletions are pending!',
             font=('Segoe UI', 9, 'bold'),
-            bg='#fff3e0',
-            fg='#e65100',
+            bg='#422b10' if is_dark else '#fff3e0',
+            fg='#ffb74d' if is_dark else '#e65100',
             padx=8,
             pady=3,
             relief='groove',
         )
 
     def _create_toolbar(self):
-        toolbar_frame = tk.Frame(self.popup, padx=8, pady=4)
+        toolbar_frame = ttk.Frame(self.popup, padding=(8, 4))
         toolbar_frame.grid(row=1, column=0, sticky='ew')
 
-        # Select All / Deselect All
-        btn_select_all = tk.Button(
+        # Selection shortcuts
+        btn_select_all = ttk.Button(
             toolbar_frame,
             text='Select All',
             command=lambda: self.tree.select_all(),
-            padx=6,
-            pady=2,
-            font=('Segoe UI', 8),
+            width=10,
         )
         btn_select_all.pack(side='left', padx=(0, 4))
 
-        btn_deselect_all = tk.Button(
+        btn_deselect_all = ttk.Button(
             toolbar_frame,
             text='Deselect All',
             command=lambda: self.tree.deselect_all(),
-            padx=6,
-            pady=2,
-            font=('Segoe UI', 8),
+            width=11,
         )
         btn_deselect_all.pack(side='left', padx=(0, 6))
+
+        # Expand / Collapse
+        btn_expand = ttk.Button(
+            toolbar_frame,
+            text='Expand All',
+            command=lambda: self.tree.expand_all(),
+            width=10,
+        )
+        btn_expand.pack(side='left', padx=(0, 4))
+
+        btn_collapse = ttk.Button(
+            toolbar_frame,
+            text='Collapse All',
+            command=lambda: self.tree.collapse_all(),
+            width=11,
+        )
+        btn_collapse.pack(side='left', padx=(0, 8))
 
         # Safety button: Uncheck all deletions
         btn_safe_delete = tk.Button(
@@ -399,47 +457,46 @@ class ActionSelection:
             padx=8,
             pady=2,
             font=('Segoe UI', 8, 'bold'),
-            fg='#b71c1c',
+            fg='#d32f2f',
+            relief='groove',
         )
         btn_safe_delete.pack(side='left', padx=(0, 12))
 
         # Filter Entry
-        lbl_filter = tk.Label(toolbar_frame, text='Filter:', font=('Segoe UI', 8))
+        lbl_filter = ttk.Label(toolbar_frame, text='Filter:', font=('Segoe UI', 9))
         lbl_filter.pack(side='left', padx=(0, 4))
 
         self.filter_var = tk.StringVar()
         self.filter_var.trace_add('write', self._on_filter_changed)
-        self.entry_filter = tk.Entry(toolbar_frame, textvariable=self.filter_var, width=28, font=('Segoe UI', 8))
+        self.entry_filter = ttk.Entry(toolbar_frame, textvariable=self.filter_var, width=28)
         self.entry_filter.pack(side='left', padx=(0, 4))
 
-        btn_clear_filter = tk.Button(
+        btn_clear_filter = ttk.Button(
             toolbar_frame,
             text='✕',
             command=lambda: self.filter_var.set(''),
-            padx=4,
-            pady=1,
-            font=('Segoe UI', 7),
+            width=3,
         )
         btn_clear_filter.pack(side='left', padx=(0, 6))
 
-        self.lbl_filter_count = tk.Label(toolbar_frame, text='', font=('Segoe UI', 8), fg='#666666')
+        self.lbl_filter_count = ttk.Label(toolbar_frame, text='', font=('Segoe UI', 8))
         self.lbl_filter_count.pack(side='left')
 
     def create_table(self):
-        frame_table = tk.Frame(self.popup)
+        frame_table = ttk.Frame(self.popup)
         frame_table.grid(row=2, column=0, sticky='nsew', padx=8, pady=4)
         frame_table.grid_rowconfigure(0, weight=1)
         frame_table.grid_columnconfigure(0, weight=1)
 
-        self.tree = CustomCheckboxTreeView(frame_table, height=22, on_stats_changed=self._update_banner_stats)
+        self.tree = CustomCheckboxTreeView(frame_table, height=20, on_stats_changed=self._update_banner_stats)
         self.tree.grid(row=0, column=0, sticky='nsew')
 
         # Add vertical scrollbar
-        vscroll = tk.Scrollbar(frame_table, orient='vertical', command=self.tree.yview)
+        vscroll = ttk.Scrollbar(frame_table, orient='vertical', command=self.tree.yview)
         vscroll.grid(row=0, column=1, sticky='ns')
 
         # Add horizontal scrollbar
-        hscroll = tk.Scrollbar(frame_table, orient='horizontal', command=self.tree.xview)
+        hscroll = ttk.Scrollbar(frame_table, orient='horizontal', command=self.tree.xview)
         hscroll.grid(row=1, column=0, sticky='ew')
 
         self.tree.configure(yscrollcommand=vscroll.set, xscrollcommand=hscroll.set)
@@ -454,57 +511,85 @@ class ActionSelection:
         )
 
         self.tree.bind('<<TreeviewSelect>>', self._on_item_selected)
+        self.tree.bind('<Double-1>', self._on_item_double_click)
         self.tree.refresh_group_stats()
 
     def _create_bottom_bar(self):
-        bottom_frame = tk.Frame(self.popup, padx=8, pady=6)
+        bottom_frame = ttk.Frame(self.popup, padding=(8, 6))
         bottom_frame.grid(row=3, column=0, sticky='ew')
         bottom_frame.grid_columnconfigure(0, weight=1)
 
         # Path Inspector panel
-        inspector_frame = tk.LabelFrame(
-            bottom_frame, text='Selected Item Details', font=('Segoe UI', 8), padx=8, pady=4
-        )
+        inspector_frame = ttk.LabelFrame(bottom_frame, text=' Selected Item Details ')
         inspector_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 8))
         inspector_frame.grid_columnconfigure(1, weight=1)
 
-        lbl_s = tk.Label(inspector_frame, text='Source:', font=('Segoe UI', 8, 'bold'), anchor='w')
-        lbl_s.grid(row=0, column=0, sticky='w')
-        self.lbl_inspector_source = tk.Label(
-            inspector_frame, text='(select an item to view path)', font=('Segoe UI', 8), fg='#333333', anchor='w'
+        lbl_s = ttk.Label(inspector_frame, text='Source:', font=('Segoe UI', 8, 'bold'))
+        lbl_s.grid(row=0, column=0, sticky='w', padx=(6, 4), pady=2)
+        self.lbl_inspector_source = ttk.Label(
+            inspector_frame, text='(select an item to view path)', font=('Segoe UI', 8)
         )
-        self.lbl_inspector_source.grid(row=0, column=1, sticky='ew', padx=(4, 0))
+        self.lbl_inspector_source.grid(row=0, column=1, sticky='ew', padx=(0, 4), pady=2)
 
-        lbl_t = tk.Label(inspector_frame, text='Target:', font=('Segoe UI', 8, 'bold'), anchor='w')
-        lbl_t.grid(row=1, column=0, sticky='w')
-        self.lbl_inspector_target = tk.Label(inspector_frame, text='-', font=('Segoe UI', 8), fg='#333333', anchor='w')
-        self.lbl_inspector_target.grid(row=1, column=1, sticky='ew', padx=(4, 0))
+        lbl_t = ttk.Label(inspector_frame, text='Target:', font=('Segoe UI', 8, 'bold'))
+        lbl_t.grid(row=1, column=0, sticky='w', padx=(6, 4), pady=2)
+        self.lbl_inspector_target = ttk.Label(inspector_frame, text='-', font=('Segoe UI', 8))
+        self.lbl_inspector_target.grid(row=1, column=1, sticky='ew', padx=(0, 4), pady=2)
+
+        # Copy Path button
+        btn_copy_path = ttk.Button(
+            inspector_frame,
+            text='📋 Copy Path',
+            command=self._copy_selected_path_to_clipboard,
+            width=12,
+        )
+        btn_copy_path.grid(row=0, column=2, rowspan=2, padx=(4, 6), pady=2)
 
         # Bottom Buttons
-        btn_box = tk.Frame(bottom_frame)
+        btn_box = ttk.Frame(bottom_frame)
         btn_box.grid(row=1, column=1, sticky='e')
 
-        self.button_save = tk.Button(
+        self.button_save = ttk.Button(
             btn_box,
             text='Save and continue',
             command=self.button_save_click,
-            font=('Segoe UI', 9, 'bold'),
-            bg='#2e7d32',
-            fg='white',
-            padx=14,
-            pady=4,
+            style='Accent.TButton',
+            width=18,
         )
         self.button_save.pack(side='right', padx=(6, 0))
 
-        self.button_cancel = tk.Button(
+        self.button_cancel = ttk.Button(
             btn_box,
             text='Cancel',
             command=self.button_cancel_click,
-            font=('Segoe UI', 9),
-            padx=12,
-            pady=4,
+            width=12,
         )
         self.button_cancel.pack(side='right')
+
+    def _copy_selected_path_to_clipboard(self):
+        target_path = self.lbl_inspector_target.cget('text')
+        source_path = self.lbl_inspector_source.cget('text')
+        path_to_copy = target_path if target_path not in ('-', '(none)') else source_path
+        if path_to_copy and path_to_copy not in ('(none)', '(select an item to view path)'):
+            self.popup.clipboard_clear()
+            self.popup.clipboard_append(path_to_copy)
+            logger.info(f'Copied path to clipboard: {path_to_copy}')
+
+    def _on_item_double_click(self, event):
+        """Open parent folder of selected file in Windows Explorer upon double-click."""
+        selected = self.tree.selection()
+        if not selected:
+            return
+        item_id = selected[0]
+        item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
+        if item_info is not None:
+            _, source_path, target_path = item_info
+            path_to_open = source_path if (source_path and os.path.exists(source_path)) else target_path
+            if path_to_open:
+                dir_to_open = os.path.dirname(path_to_open) if os.path.isfile(path_to_open) else path_to_open
+                if os.path.isdir(dir_to_open):
+                    with contextlib.suppress(Exception):
+                        os.startfile(dir_to_open)
 
     def _on_item_selected(self, event):
         selected = self.tree.selection()

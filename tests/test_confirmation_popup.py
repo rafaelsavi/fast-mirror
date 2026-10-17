@@ -717,3 +717,69 @@ def test_action_selection_dismissal_idempotence(monkeypatch):
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_custom_treeview_expand_and_collapse_all(tmp_path):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        src = tmp_path / 's.txt'
+        tgt = tmp_path / 't.txt'
+        src.write_text('content')
+
+        tree = CustomCheckboxTreeView(root)
+        tree.add_file_lists(
+            {
+                Action.COPY: [(CstmPath(src), CstmPath(tgt))],
+            }
+        )
+
+        tree.collapse_all()
+        assert bool(tree.item(Action.COPY.value, 'open')) is False
+
+        tree.expand_all()
+        assert bool(tree.item(Action.COPY.value, 'open')) is True
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_action_selection_copy_path_and_selection(tmp_path):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        src = tmp_path / 'source_file.txt'
+        tgt = tmp_path / 'target_file.txt'
+        src.write_text('hello')
+
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[(CstmPath(src), CstmPath(tgt))],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+
+        child_id = popup.tree.get_children(Action.COPY.value)[0]
+        popup.tree.selection_set(child_id)
+        popup._on_item_selected(None)
+
+        assert str(src) in popup.lbl_inspector_source.cget('text')
+        assert str(tgt) in popup.lbl_inspector_target.cget('text')
+
+        popup._copy_selected_path_to_clipboard()
+        copied = root.clipboard_get()
+        assert copied == str(tgt)
+
+        popup.button_cancel_click()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

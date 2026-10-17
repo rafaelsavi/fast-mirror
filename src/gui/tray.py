@@ -1,67 +1,81 @@
+import contextlib
 import os
 import tkinter as tk
 from tkinter import messagebox
 
-from utils.logger import logger
+import pystray
+from PIL import Image
+
+from utils.logger import is_test_or_agent_mode, logger
 
 
 class TrayableTk(tk.Tk):
-    """Tkinter root window with system tray integration via Winico."""
+    """Tkinter root window with modern cross-platform system tray integration via pystray."""
 
     def __init__(self):
         super().__init__()
-        self._has_tray_icon = False
+        self._tray_icon: pystray.Icon | None = None
+        self._is_closing = False
         self.add_system_tray_icon()
         self.protocol('WM_DELETE_WINDOW', self.on_closing)
         self.bind('<Unmap>', self.on_minimizing)
 
     def on_minimizing(self, event):
-        if event.widget == self and self._has_tray_icon:
+        if event.widget == self and self._tray_icon and not self._is_closing:
             self.withdraw()
 
-    def on_closing(self):
-        if not self._has_tray_icon:
+    def show_window(self):
+        self.after(0, self._restore_window)
+
+    def _restore_window(self):
+        self.deiconify()
+        self.lift()
+        with contextlib.suppress(Exception):
+            self.focus_force()
+
+    def destroy(self):
+        self._is_closing = True
+        if self._tray_icon is not None:
+            with contextlib.suppress(Exception):
+                self._tray_icon.stop()
+            self._tray_icon = None
+        super().destroy()
+
+    def finalize_quit(self):
+        self._is_closing = True
+        if self._tray_icon is not None:
+            with contextlib.suppress(Exception):
+                self._tray_icon.stop()
+            self._tray_icon = None
+        with contextlib.suppress(Exception):
             self.destroy()
+
+    def on_closing(self):
+        if not self._tray_icon:
+            self.finalize_quit()
             return
         close_confirmation = messagebox.askyesno(
             'Warning', 'The application is still running in the system tray, are you sure you want to finalize it?'
         )
         if close_confirmation:
-            self.destroy()
-        else:  # Minimize to system tray.
+            self.finalize_quit()
+        else:
             self.withdraw()
 
     def add_system_tray_icon(self):
+        if is_test_or_agent_mode():
+            return
         try:
-            # Add the path to the Winico package so Tcl can find it
-            winico_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'winico'))
-            self.tk.call('lappend', 'auto_path', winico_path)
-            self.tk.call('package', 'require', 'Winico')
             icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app_icon.ico'))
-            icon = self.tk.call('winico', 'createfrom', icon_path)
-            self.tk.call(
-                'winico',
-                'taskbar',
-                'add',
-                icon,
-                '-callback',
-                (self.register(self.menu_func), '%m', '%x', '%y'),
-                '-pos',
-                0,
-                '-text',
-                'Automatic Backup Tool',
-            )
+            if not os.path.isfile(icon_path):
+                return
 
-            # About menu
-            self.tray_menu = tk.Menu(self, tearoff=False)
-            self.tray_menu.add_command(label='Open', command=self.deiconify)
-            self.tray_menu.add_command(label='Quit', command=self.destroy)
-            self._has_tray_icon = True
+            image = Image.open(icon_path)
+            menu = pystray.Menu(
+                pystray.MenuItem('Open', lambda icon, item: self.show_window(), default=True),
+                pystray.MenuItem('Quit', lambda icon, item: self.after(0, self.finalize_quit)),
+            )
+            self._tray_icon = pystray.Icon('automatic_backup', image, 'Automatic Backup Tool', menu)
+            self._tray_icon.run_detached()
         except Exception as e:
             logger.warning(f'Could not initialize system tray icon. Exception: {e}')
-
-    def menu_func(self, event, x, y):
-        if event == 'WM_RBUTTONDOWN':  # Mouse event, Right click on the tray. Mostly we will show it.
-            self.tray_menu.tk_popup(x, y)  # pop it up on this position
-        if event == 'WM_LBUTTONDOWN' or event == 'WM_LBUTTONDBLCLK':
-            self.deiconify()  # show it.
