@@ -332,6 +332,37 @@ def test_log_panel_export_and_open_folder(tmp_path, monkeypatch):
     root.destroy()
 
 
+def test_log_panel_severity_counters():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.log_panel import LogPanel
+
+    log_panel = LogPanel(root)
+    assert 'Info: 0' in log_panel.lbl_stat_info.cget('text')
+    assert 'Warnings: 0' in log_panel.lbl_stat_warning.cget('text')
+    assert 'Errors: 0' in log_panel.lbl_stat_error.cget('text')
+
+    log_panel.text_logger.insert('Regular info message', 'INFO')
+    log_panel.text_logger.insert('First warning message', 'WARNING')
+    log_panel.text_logger.insert('First error message', 'ERROR')
+
+    assert 'Info: 1' in log_panel.lbl_stat_info.cget('text')
+    assert 'Warnings: 1' in log_panel.lbl_stat_warning.cget('text')
+    assert 'Errors: 1' in log_panel.lbl_stat_error.cget('text')
+
+    # Test clear_log resets counts
+    log_panel.clear_log()
+    assert 'Info: 0' in log_panel.lbl_stat_info.cget('text')
+    assert 'Warnings: 0' in log_panel.lbl_stat_warning.cget('text')
+    assert 'Errors: 0' in log_panel.lbl_stat_error.cget('text')
+
+    root.destroy()
+
+
 def test_gui_initialization_with_light_theme(monkeypatch):
     try:
         root = tk.Tk()

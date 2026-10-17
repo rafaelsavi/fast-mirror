@@ -1,6 +1,8 @@
+import contextlib
 import os
 import time
 import tkinter as tk
+from collections.abc import Callable
 from enum import Enum
 from tkinter.scrolledtext import ScrolledText
 
@@ -241,17 +243,29 @@ class LogLevels:
 
 
 class TextLogger(ScrolledText):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, on_log_updated: Callable[[], None] | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.lines = []
         self.log_levels = []
         self.limit_lines = 50000
+        self.on_log_updated = on_log_updated
+        self._level_counts: dict[str, int] = {'DEBUG': 0, 'INFO': 0, 'WARNING': 0, 'ERROR': 0, 'CRITICAL': 0}
         self.configure(font='TkFixedFont')
         self.tag_config('DEBUG', foreground='gray')
         self.tag_config('INFO', foreground='black')
         self.tag_config('WARNING', foreground='orange')
         self.tag_config('ERROR', foreground='red')
         self.tag_config('CRITICAL', foreground='red', underline=True)
+
+    @property
+    def level_counts(self) -> dict[str, int]:
+        return dict(self._level_counts)
+
+    def reset_counts(self):
+        self._level_counts = {'DEBUG': 0, 'INFO': 0, 'WARNING': 0, 'ERROR': 0, 'CRITICAL': 0}
+        if self.on_log_updated:
+            with contextlib.suppress(Exception):
+                self.on_log_updated()
 
     def set_log_levels(self, levels: list[str]):
         self.log_levels = levels
@@ -260,11 +274,15 @@ class TextLogger(ScrolledText):
     def insert(self, *args, **kwargs):
         message, tag = args
         self.lines.append((message, tag))
+        self._level_counts[tag] = self._level_counts.get(tag, 0) + 1
         if tag in self.log_levels:
             self.configure(state=TkinterCfgState.NORMAL.value)
             super().insert(tk.END, message + '\n', tag)
             self.configure(state=TkinterCfgState.DISABLED.value)
             self._check_num_lines()
+        if self.on_log_updated:
+            with contextlib.suppress(Exception):
+                self.on_log_updated()
 
     def _check_num_lines(self):
         # Remove excessive lines
@@ -276,6 +294,9 @@ class TextLogger(ScrolledText):
         yview_pos = self.yview()[0]
         if len(self.lines) > self.limit_lines * 1.5:
             self.lines = self.lines[-self.limit_lines :]
+            self._level_counts = {'DEBUG': 0, 'INFO': 0, 'WARNING': 0, 'ERROR': 0, 'CRITICAL': 0}
+            for _, tag in self.lines:
+                self._level_counts[tag] = self._level_counts.get(tag, 0) + 1
         self.configure(state=TkinterCfgState.NORMAL.value)
         self.delete('1.0', tk.END)
         for message, tag in self.lines[-self.limit_lines :]:
@@ -283,3 +304,6 @@ class TextLogger(ScrolledText):
                 super().insert(tk.END, message + '\n', tag)
         self.configure(state=TkinterCfgState.DISABLED.value)
         self.yview_moveto(yview_pos)
+        if self.on_log_updated:
+            with contextlib.suppress(Exception):
+                self.on_log_updated()
