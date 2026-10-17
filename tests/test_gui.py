@@ -363,6 +363,28 @@ def test_log_panel_severity_counters():
     root.destroy()
 
 
+def test_log_smart_autoscroll_position():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.log_panel import LogPanel
+
+    log_panel = LogPanel(root)
+    for i in range(100):
+        log_panel.text_logger.insert(f'Log trace row {i}', 'INFO')
+
+    log_panel.text_logger.yview(tk.END)
+    assert log_panel.text_logger.yview()[1] >= 0.95
+
+    log_panel.text_logger.yview_moveto(0.0)
+    assert log_panel.text_logger.yview()[1] < 0.95
+
+    root.destroy()
+
+
 def test_gui_initialization_with_light_theme(monkeypatch):
     try:
         root = tk.Tk()

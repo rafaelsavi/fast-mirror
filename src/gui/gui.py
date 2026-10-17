@@ -639,8 +639,11 @@ class Gui:
                 msg = logger.queue_handler.format(record)
                 self.text_logger.insert(msg, record.levelname)
 
+                # Smart auto-scroll: only follow to bottom if user has not scrolled up to inspect previous lines
                 if self.toggle_auto_scroll.get():
-                    self.text_logger.yview(tk.END)
+                    with contextlib.suppress(Exception):
+                        if self.text_logger.yview()[1] >= 0.95:
+                            self.text_logger.yview(tk.END)
 
         self.root.after(100, self.log_queue_watchdog)
 
