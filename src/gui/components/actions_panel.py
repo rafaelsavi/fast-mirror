@@ -141,14 +141,7 @@ class ActionsPanel(ttk.LabelFrame):
 
         # Section 4: Behavior Options
         self.frame_options = ttk.Frame(self)
-        self.frame_options.pack(fill='x', padx=8, pady=6)
-
-        self.cb_report = ttk.Checkbutton(
-            self.frame_options,
-            text='Save detailed report (.xlsx)',
-            variable=self.checkbox_var_save_report,
-        )
-        self.cb_report.pack(anchor='w', pady=1)
+        self.frame_options.pack(fill='x', padx=8, pady=(4, 4))
 
         def _on_rebuild_mirror_changed(*args):
             if self.checkbox_var_build_mirror.get():
@@ -161,33 +154,58 @@ class ActionsPanel(ttk.LabelFrame):
         self.checkbox_var_build_mirror.trace_add('write', _on_rebuild_mirror_changed)
         self.checkbox_var_use_mirror.trace_add('write', _on_use_mirror_changed)
 
-        self.cb_rebuild = ttk.Checkbutton(
+        # Performance & Scanning sub-group
+        lbl_perf = ttk.Label(
             self.frame_options,
-            text='Rebuild local mirror database',
-            variable=self.checkbox_var_build_mirror,
+            text='Performance & Scanning:',
+            font=('Segoe UI', 8, 'bold'),
+            foreground='#555555',
         )
-        self.cb_rebuild.pack(anchor='w', pady=1)
+        lbl_perf.pack(anchor='w', pady=(0, 2))
 
         self.cb_mirror = ttk.Checkbutton(
             self.frame_options,
             text='Use fast scan based on local mirror',
             variable=self.checkbox_var_use_mirror,
         )
-        self.cb_mirror.pack(anchor='w', pady=1)
+        self.cb_mirror.pack(anchor='w', padx=(4, 0), pady=1)
 
         self.cb_meta = ttk.Checkbutton(
             self.frame_options,
             text='Use fast comparison based on metadata',
             variable=self.checkbox_var_metadata_comparison,
         )
-        self.cb_meta.pack(anchor='w', pady=1)
+        self.cb_meta.pack(anchor='w', padx=(4, 0), pady=1)
+
+        self.cb_rebuild = ttk.Checkbutton(
+            self.frame_options,
+            text='Rebuild local mirror database',
+            variable=self.checkbox_var_build_mirror,
+        )
+        self.cb_rebuild.pack(anchor='w', padx=(4, 0), pady=1)
+
+        # Safety & Reporting sub-group
+        lbl_safe = ttk.Label(
+            self.frame_options,
+            text='Safety & Reporting:',
+            font=('Segoe UI', 8, 'bold'),
+            foreground='#555555',
+        )
+        lbl_safe.pack(anchor='w', pady=(5, 2))
 
         self.cb_confirm = ttk.Checkbutton(
             self.frame_options,
             text='Request confirmation before sync',
             variable=self.checkbox_var_confirm_sync,
         )
-        self.cb_confirm.pack(anchor='w', pady=1)
+        self.cb_confirm.pack(anchor='w', padx=(4, 0), pady=1)
+
+        self.cb_report = ttk.Checkbutton(
+            self.frame_options,
+            text='Save detailed report (.xlsx)',
+            variable=self.checkbox_var_save_report,
+        )
+        self.cb_report.pack(anchor='w', padx=(4, 0), pady=1)
 
         # Section 5: Default Actions
         actions_frame = ttk.Frame(self)
