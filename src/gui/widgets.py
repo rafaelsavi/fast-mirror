@@ -271,8 +271,8 @@ class LogLevels:
 class TextLogger(ScrolledText):
     def __init__(self, *args, on_log_updated: Callable[[], None] | None = None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.lines = []
-        self.log_levels = []
+        self.lines: list[tuple[str, str]] = []
+        self.log_levels: list[str] = []
         self.limit_lines = 50000
         self.on_log_updated = on_log_updated
         self._level_counts: dict[str, int] = {'DEBUG': 0, 'INFO': 0, 'WARNING': 0, 'ERROR': 0, 'CRITICAL': 0}
