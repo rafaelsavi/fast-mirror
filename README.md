@@ -140,7 +140,7 @@ automatic-backup/
 │   │   ├── gui.py            # Main application window, watchdogs, scheduler
 │   │   ├── worker_thread.py  # KillableThread with sys.settrace hooks
 │   │   ├── widgets.py        # Custom Tkinter controls (Paths, Exclusions, Loggers)
-│   │   └── smiley.ico        # Application and tray icon
+│   │   └── app_icon.ico      # Application and tray icon
 │   └── utils/
 │       ├── constants.py      # ROOT_DIR locator
 │       ├── logger.py         # Singleton logger with queue and file handlers
@@ -294,7 +294,7 @@ When synchronization begins with **"Request confirmation before sync"** enabled,
 
 ### System Tray Operation
 
-- **Minimizing**: Clicking the standard window Minimize button (`_`) hides the window and docks the application into the Windows system tray with a smiley icon.
+- **Minimizing**: Clicking the standard window Minimize button (`_`) hides the window and docks the application into the Windows system tray with the sync icon.
 - **Closing**: Clicking the window Close button (`X`) triggers a prompt offering to minimize to the tray instead of exiting.
 - **Restoring**: Double-click or single-click the system tray icon, or right-click to open the context menu and select **Open**.
 - **Exiting**: Right-click the system tray icon and select **Quit**.

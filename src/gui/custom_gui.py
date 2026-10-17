@@ -1,14 +1,9 @@
 import os
 import tkinter as tk
-from collections.abc import Callable
 from tkinter import messagebox
 
-import ttkwidgets
-
-from core.file import CstmPath
-from gui.widgets import Action
+from gui.confirmation_popup import CustomCheckboxTreeView  # noqa: F401
 from utils.logger import logger
-from utils.utils import format_size
 
 
 class TrayableTk(tk.Tk):
@@ -41,7 +36,7 @@ class TrayableTk(tk.Tk):
             winico_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'winico'))
             self.tk.call('lappend', 'auto_path', winico_path)
             self.tk.call('package', 'require', 'Winico')
-            icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'smiley.ico'))
+            icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app_icon.ico'))
             icon = self.tk.call('winico', 'createfrom', icon_path)
             self.tk.call(
                 'winico',
@@ -78,102 +73,3 @@ class TrayableTk(tk.Tk):
             self.deiconify()  # show it.
         # WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_LBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_RBUTTONDBLCLK,
         # WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MBUTTONDBLCLK
-
-
-class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
-    custom_headers = [
-        'enable',
-        'source',
-        'target',
-        'size (source)',
-        'size (target)',
-        'modification date (source)',
-        'modification date (target)',
-    ]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self._data: dict[Action, dict[str, dict[str, float | str]]] = {}
-
-        # Configure headers
-        self['columns'] = self.custom_headers[1:]
-        self.column('#0', width=220, minwidth=150)
-        self.heading('#0', text=self.custom_headers[0])
-        for column in self.custom_headers[1:]:
-            self.heading(column, text=column)
-            if 'date' in column:
-                self.column(column, width=150, minwidth=120)
-            elif 'size' in column:
-                self.column(column, width=90, minwidth=70)
-            else:
-                self.column(column, width=300, minwidth=150)
-
-    def _box_click(self, event):
-        super()._box_click(event)
-        self.refresh_group_stats()
-
-    def refresh_group_stats(self):
-        for action_str in self.get_children(''):
-            n_children = len(self.get_children(action_str))
-            selected_lines = [x for x in self.get_checked() if f'{action_str}::' in x]
-            selected_number = len(selected_lines)
-            size_list = [self._data[Action.from_str(action_str)][x]['size in bytes'] for x in selected_lines]
-            if not all(isinstance(size, int | float) for size in size_list):
-                raise TypeError('All elements in size_list must be numbers')
-            selected_size = format_size(sum(size_list))  # type: ignore
-            # Update group item
-            self.item(action_str, text=f'{action_str} {selected_size} ({selected_number} of {n_children})')
-
-    def add_file_lists(
-        self,
-        file_lists: dict[Action, list[tuple[CstmPath, CstmPath]] | list[CstmPath]],
-        default_active: list[Action] | None = None,
-    ):
-        if default_active is None:
-            default_active = []
-
-        for action, file_list in file_lists.items():
-            self._data[action] = {}
-            for file_entry in file_list:
-                args = (None, file_entry) if isinstance(file_entry, CstmPath) else file_entry
-                values = self.get_row(*args)
-                self._data[action][f'{action.value}::{values["source"]}::{values["target"]}'] = values
-
-        for action, rows in self._data.items():
-            tag = 'checked' if action in default_active else 'unchecked'
-            group_item = self.insert(
-                parent='', index='end', iid=action.value, text=action.value, tags=(tag,), open=True
-            )
-            for key, row in rows.items():
-                self.insert(
-                    parent=group_item,
-                    index='end',
-                    iid=key,
-                    values=[row.get(k, '') for k in self.custom_headers[1:]],
-                )
-
-    @staticmethod
-    def get_row(source: CstmPath | None, target: CstmPath | None) -> dict[str, float | str]:
-        def try_f(func: Callable, path: CstmPath | None, default: str | int = ''):
-            if path is None:
-                return default
-            try:
-                return func(path)
-            except FileNotFoundError:
-                return default
-            except Exception as e:
-                logger.warning(f'Failed to apply {func} on "{str(path)}". Exception: {e}')
-                return default
-
-        row = {}
-        row['source'] = try_f(str, source)
-        row['target'] = try_f(str, target)
-        row['size (source)'] = try_f(lambda x: x.get_st_size(as_str=True), source, default=0)
-        row['size (target)'] = try_f(lambda x: x.get_st_size(as_str=True), target, default=0)
-        row['modification date (source)'] = try_f(lambda x: x.get_st_mtime(as_date_str=True), source)
-        row['modification date (target)'] = try_f(lambda x: x.get_st_mtime(as_date_str=True), target)
-        get_size_from = source if source is not None else target
-        row['size in bytes'] = try_f(lambda x: x.get_st_size(as_str=False), get_size_from, default=0)
-
-        return row

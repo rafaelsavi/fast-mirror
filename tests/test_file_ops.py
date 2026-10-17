@@ -112,6 +112,39 @@ def test_robust_copy_and_move_fail_fast_on_missing_source(tmp_path, monkeypatch)
     assert len(sleep_calls) == 0
 
 
+def test_robust_copy_fails_fast_when_copy_raises_file_not_found(tmp_path, monkeypatch):
+    source = tmp_path / 'source.txt'
+    target = tmp_path / 'target.txt'
+    source.write_text('content')
+
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(time, 'sleep', lambda delay: sleep_calls.append(delay))
+
+    def missing_copy2(src, dst):
+        raise FileNotFoundError(2, 'The system cannot find the file specified')
+
+    monkeypatch.setattr(shutil, 'copy2', missing_copy2)
+
+    with pytest.raises(FileNotFoundError):
+        robust_copy(source, target, max_retries=3, initial_delay=1.0)
+    assert len(sleep_calls) == 0
+
+
+def test_robust_delete_fails_fast_on_missing_file(tmp_path, monkeypatch):
+    file_to_del = tmp_path / 'vanished.txt'
+    file_to_del.write_text('content')
+
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(time, 'sleep', lambda delay: sleep_calls.append(delay))
+
+    def missing_remove(path):
+        raise FileNotFoundError(2, 'The system cannot find the file specified')
+
+    monkeypatch.setattr(os, 'remove', missing_remove)
+    robust_delete(file_to_del, max_retries=3, initial_delay=1.0)
+    assert len(sleep_calls) == 0
+
+
 def test_robust_move_retries_and_succeeds(tmp_path, monkeypatch):
     source = tmp_path / 'move_source.txt'
     target = tmp_path / 'move_sub' / 'move_target.txt'

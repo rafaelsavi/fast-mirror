@@ -491,3 +491,31 @@ def test_sync_dirs_cancel_cooperative(tmp_path):
     assert len(sync.files_copied) == 0
     assert not (target_dir / '1.txt').exists()
     assert not (target_dir / '2.txt').exists()
+
+
+def test_copy_files_skips_when_source_missing(tmp_path):
+    source_dir = tmp_path / 'Source'
+    target_dir = tmp_path / 'Target'
+    source_dir.mkdir()
+    target_dir.mkdir()
+    missing_source = source_dir / 'missing.txt'
+    target_file = target_dir / 'missing.txt'
+
+    db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=db_path)
+    dirs = [DirectoryPair(source=str(source_dir), target=str(target_dir))]
+
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+    sync.files_requested_to_copy = [(str(missing_source), str(target_file))]
+    sync.copy_files()
+
+    assert sync.files_copied == [((str(missing_source), str(target_file)), False)]
+    assert not target_file.exists()

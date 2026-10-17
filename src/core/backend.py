@@ -1,5 +1,6 @@
 import ctypes
 import datetime
+import errno
 import filecmp
 import os
 import shutil
@@ -7,9 +8,7 @@ import stat
 import threading
 import time
 import tkinter as tk
-import winsound
 from collections import Counter
-from collections.abc import Callable
 from copy import copy
 from pathlib import Path, PureWindowsPath
 
@@ -17,7 +16,7 @@ import pandas as pd
 
 from core.file import CstmPath, CstmPathType, File, compare_files
 from core.mirror import MirrorDatabase
-from gui.custom_gui import CustomCheckboxTreeView
+from gui.confirmation_popup import ActionSelection
 from gui.widgets import Action
 from utils.logger import logger
 from utils.utils import (
@@ -412,6 +411,9 @@ def robust_copy(
             # Permanent error (e.g. source disappeared) - fail fast without retries
             raise
         except (OSError, PermissionError) as e:
+            if getattr(e, 'winerror', None) in (2, 3) or getattr(e, 'errno', None) == errno.ENOENT:
+                raise
+
             unlock_file_attributes(target_str)
 
             if attempt == max(1, max_retries):
@@ -458,6 +460,9 @@ def robust_move(
             # Missing source is permanent - fail fast without retrying
             raise
         except (OSError, PermissionError) as e:
+            if getattr(e, 'winerror', None) in (2, 3) or getattr(e, 'errno', None) == errno.ENOENT:
+                raise
+
             unlock_file_attributes(target_str)
             unlock_file_attributes(source_str)
 
@@ -501,7 +506,13 @@ def robust_delete(
             unlock_file_attributes(path_str)
             os.remove(path_str)
             return
+        except FileNotFoundError:
+            # File is already gone; no need to retry deleting a missing file
+            return
         except (OSError, PermissionError) as e:
+            if getattr(e, 'winerror', None) in (2, 3) or getattr(e, 'errno', None) == errno.ENOENT:
+                return
+
             unlock_file_attributes(path_str)
             if attempt == max(1, max_retries):
                 raise
@@ -520,8 +531,8 @@ class SyncDirs:
         files_to_move: list[tuple[CstmPath, CstmPath]],
         files_to_delete: list[CstmPath],
         mirror: MirrorDatabase,
-        root_gui,
-        dirs: list[DirectoryPair],
+        root_gui=None,
+        dirs: list[DirectoryPair] | None = None,
         default_actions: list[Action] | None = None,
         increment_mirror=True,
         confirm_sync=True,
@@ -559,6 +570,8 @@ class SyncDirs:
             return
 
         if confirm_sync:
+            if self.root_gui is None:
+                raise ValueError('Cannot confirm sync without a valid root_gui')
             if not self.open_confirmation_popup():
                 logger.info('Synchronization canceled by user')
                 return
@@ -643,6 +656,12 @@ class SyncDirs:
                 # Pre-resolve dir_pair before any filesystem changes
                 dir_pair = get_dirs_from_path(target, self.dirs)
 
+                # Skip copy if source file no longer exists (e.g. transient file removed)
+                if not os.path.isfile(source):
+                    logger.warning(f'Copy skipped because source file no longer exists: <{source}>')
+                    self.files_copied.append(((source, target), False))
+                    continue
+
                 # JIT Self-Healing: If target file already physically exists and matches source, avoid re-copying
                 if os.path.isfile(target):
                     try:
@@ -655,7 +674,8 @@ class SyncDirs:
                             logger.info(
                                 f'Target already exists and matches source: <{target}>. Self-healing mirror entry.'
                             )
-                            self.mirror.add_path(root_dir=dir_pair.target, path=target)
+                            if self.increment_mirror:
+                                self.mirror.add_path(root_dir=dir_pair.target, path=target)
                             counter_size += target_stat.st_size
                             success = True
                             self.files_copied.append(((source, target), success))
@@ -673,7 +693,8 @@ class SyncDirs:
                     backoff_factor=self.backoff_factor,
                 )
 
-                self.mirror.add_path(root_dir=dir_pair.target, path=target)
+                if self.increment_mirror:
+                    self.mirror.add_path(root_dir=dir_pair.target, path=target)
                 counter_size += size
                 copy_speed = f'Avg. copy speed: {format_size(counter_size / (time.time() - start_time))}/s'
                 log_interval = min(100, max(1, n_files // 10))
@@ -708,7 +729,8 @@ class SyncDirs:
                             logger.info(
                                 f'Source is already missing and target exists: <{target}>. Self-healing mirror entry.'
                             )
-                            self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
+                            if self.increment_mirror:
+                                self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
                             success = True
                             self.files_moved.append(((source, target), success))
                             continue
@@ -720,7 +742,8 @@ class SyncDirs:
                             'Purging phantom mirror record.'
                         )
                         try:
-                            self.mirror.remove_path(root_dir=dir_pair.target, path=source)
+                            if self.increment_mirror:
+                                self.mirror.remove_path(root_dir=dir_pair.target, path=source)
                         except Exception as rm_err:
                             logger.debug(f'Could not remove phantom move source from mirror: {rm_err}')
                         success = False
@@ -736,7 +759,8 @@ class SyncDirs:
                     initial_delay=self.retry_delay,
                     backoff_factor=self.backoff_factor,
                 )
-                self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
+                if self.increment_mirror:
+                    self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
                 log_progress('Moved', i, n_files, start_time, interval=log_interval)
                 success = True
             except Exception as e:
@@ -769,7 +793,8 @@ class SyncDirs:
                 success = True
                 logger.warning(f'Skipping deletion of file because it is already missing: <{path}>')
                 try:
-                    self.mirror.remove_path(root_dir=dir_pair.target, path=path)
+                    if self.increment_mirror:
+                        self.mirror.remove_path(root_dir=dir_pair.target, path=path)
                 except Exception as e:
                     logger.debug(f'Could not remove phantom path from mirror: {e}')
             else:
@@ -781,7 +806,8 @@ class SyncDirs:
                         initial_delay=self.retry_delay,
                         backoff_factor=self.backoff_factor,
                     )
-                    self.mirror.remove_path(root_dir=dir_pair.target, path=path)
+                    if self.increment_mirror:
+                        self.mirror.remove_path(root_dir=dir_pair.target, path=path)
                     success = True
                     log_progress('Deleted', i, n_files, start_time, interval=log_interval)
                 except Exception as e:
@@ -851,130 +877,6 @@ class SyncDirs:
         failed_delete = [p for p, success in self.files_deleted if not success]
         if failed_delete:
             logger.warning('Summary of files that failed to be deleted:\n    ' + '\n    '.join(failed_delete))
-
-
-class ActionSelection:
-    def __init__(
-        self,
-        root_gui: tk.Tk,
-        files_available_to_copy: list[tuple[CstmPath, CstmPath]],
-        files_available_to_move: list[tuple[CstmPath, CstmPath]],
-        files_available_to_delete: list[CstmPath],
-        default_actions: list[Action],
-        on_close_callback: Callable[[], None] | None = None,
-    ):
-        # Load input variables
-        self.default_actions = default_actions
-        self.files_available_to_copy = files_available_to_copy
-        self.files_available_to_move = files_available_to_move
-        self.files_available_to_delete = files_available_to_delete
-        self.on_close_callback = on_close_callback
-        self.files_requested_to_copy: list[tuple[str, str]] = list()
-        self.files_requested_to_move: list[tuple[str, str]] = list()
-        self.files_requested_to_delete: list[str] = list()
-
-        # Configure variables
-        self.root_gui = root_gui
-        self.finished = False
-        self.proceed = False
-
-        # Configure gui
-        self.popup = tk.Toplevel(self.root_gui)
-        self.popup.title('Automatic Backup - Confirm Actions')
-        self.popup.resizable(True, True)
-        self.popup.transient(self.root_gui)
-        self.popup.grid_rowconfigure(1, weight=1)
-        self.popup.grid_columnconfigure(0, weight=1)
-        self.popup.protocol('WM_DELETE_WINDOW', self.button_cancel_click)
-        self.create_widgets()
-
-    def create_widgets(self):
-        logger.info('Collecting data for selection window. This may take a while')
-        frame_buttons = tk.Frame(self.popup)
-
-        self.button_save = tk.Button(
-            frame_buttons, text='Save and continue', anchor='w', command=self.button_save_click
-        )
-        self.button_save.grid(row=0, column=0, sticky='w')
-
-        self.button_cancel = tk.Button(frame_buttons, text='Cancel', anchor='w', command=self.button_cancel_click)
-        self.button_cancel.grid(row=0, column=1, sticky='w')
-
-        self.create_table()
-
-        frame_buttons.grid(row=0, column=0, sticky='w')
-        winsound.PlaySound('SystemQuestion', winsound.SND_ALIAS)
-
-    def button_save_click(self):
-        logger.info('Saving selection of actions')
-        self.files_requested_to_copy = list()
-        self.files_requested_to_move = list()
-        self.files_requested_to_delete = list()
-
-        # Fill output
-        for id_ in self.tree.get_checked():
-            if '::' in id_:
-                group, source_path, target_path = id_.split('::')
-                if group == 'copy':
-                    self.files_requested_to_copy.append((source_path, target_path))
-                elif group == 'move':
-                    self.files_requested_to_move.append((source_path, target_path))
-                elif group == 'delete':
-                    self.files_requested_to_delete.append(target_path)
-
-        self.finished = True
-        self.proceed = True
-        self.popup.destroy()
-        if self.on_close_callback:
-            self.on_close_callback()
-
-    def button_cancel_click(self):
-        logger.info('Canceling selection of actions. No action will be taken')
-        self.files_requested_to_copy = list()
-        self.files_requested_to_move = list()
-        self.files_requested_to_delete = list()
-        self.finished = True
-        self.popup.destroy()
-        if self.on_close_callback:
-            self.on_close_callback()
-
-    def create_table(self):
-        # Create a frame to hold the treeview and scrollbar
-        frame_table = tk.Frame(self.popup)
-        frame_table.grid(row=1, column=0, sticky='nsew')
-        self.popup.grid_rowconfigure(1, weight=1)
-        self.popup.grid_columnconfigure(0, weight=1)
-        frame_table.grid_rowconfigure(0, weight=1)
-        frame_table.grid_columnconfigure(0, weight=1)
-
-        # Create the treeview
-        self.tree = CustomCheckboxTreeView(frame_table, height=30)
-        self.tree.grid(row=0, column=0, sticky='nsew')
-
-        # Add vertical scrollbar
-        vscroll = tk.Scrollbar(frame_table, orient='vertical', command=self.tree.yview)
-        vscroll.grid(row=0, column=1, sticky='ns')
-
-        # Add horizontal scrollbar
-        hscroll = tk.Scrollbar(frame_table, orient='horizontal', command=self.tree.xview)
-        hscroll.grid(row=1, column=0, sticky='ew')
-
-        self.tree.configure(yscrollcommand=vscroll.set, xscrollcommand=hscroll.set)
-
-        self.tree.add_file_lists(
-            {
-                Action.COPY: self.files_available_to_copy,
-                Action.MOVE: self.files_available_to_move,
-                Action.DELETE: self.files_available_to_delete,
-            },
-            default_active=self.default_actions,
-        )
-
-        # Display widget
-        self.tree.refresh_group_stats()
-
-    def get_outputs(self):
-        return self.files_requested_to_copy, self.files_requested_to_move, self.files_requested_to_delete
 
 
 def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> DirectoryPair:

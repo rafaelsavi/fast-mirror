@@ -1,3 +1,4 @@
+import contextlib
 import os
 import sys
 import threading
@@ -358,43 +359,175 @@ def test_e2e_syncdirs_selective_execution_with_popup(tmp_path, monkeypatch):
 
     monkeypatch.setattr('core.backend.ActionSelection', interactive_action_selection)
 
-    def run_sync():
-        try:
-            SyncDirs(
-                files_to_copy=[
-                    (CstmPath(keep_src, root_dir=src), CstmPath(keep_tgt, root_dir=tgt)),
-                    (CstmPath(skip_src, root_dir=src), CstmPath(skip_tgt, root_dir=tgt)),
-                ],
-                files_to_move=[],
-                files_to_delete=[CstmPath(del_file, root_dir=tgt)],
-                mirror=mirror,
-                root_gui=root,
-                dirs=dirs,
-                default_actions=[Action.COPY, Action.DELETE],
-                confirm_sync=True,
-            )
-        finally:
-            root.after(0, root.quit)
+    try:
 
-    sync_thread = threading.Thread(target=run_sync)
-    root.after(20, sync_thread.start)
-    root.mainloop()
-    sync_thread.join(timeout=3.0)
+        def run_sync():
+            try:
+                SyncDirs(
+                    files_to_copy=[
+                        (CstmPath(keep_src, root_dir=src), CstmPath(keep_tgt, root_dir=tgt)),
+                        (CstmPath(skip_src, root_dir=src), CstmPath(skip_tgt, root_dir=tgt)),
+                    ],
+                    files_to_move=[],
+                    files_to_delete=[CstmPath(del_file, root_dir=tgt)],
+                    mirror=mirror,
+                    root_gui=root,
+                    dirs=dirs,
+                    default_actions=[Action.COPY, Action.DELETE],
+                    confirm_sync=True,
+                )
+            finally:
+                root.after(0, root.quit)
 
-    # Assert outcomes:
-    # 1. keep.txt was copied
-    assert keep_tgt.is_file()
-    assert keep_tgt.read_text() == 'keep content'
+        sync_thread = threading.Thread(target=run_sync)
+        root.after(20, sync_thread.start)
+        root.mainloop()
+        sync_thread.join(timeout=3.0)
 
-    # 2. skip.txt was NOT copied (user unchecked it in popup!)
-    assert not skip_tgt.exists()
+        # Assert outcomes:
+        # 1. keep.txt was copied
+        assert keep_tgt.is_file()
+        assert keep_tgt.read_text() == 'keep content'
 
-    # 3. obsolete.txt was deleted
-    assert not del_file.exists()
+        # 2. skip.txt was NOT copied (user unchecked it in popup!)
+        assert not skip_tgt.exists()
 
-    # 4. Mirror database reflects the changes
-    assert mirror.exists(str(tgt), str(keep_tgt))
-    assert not mirror.exists(str(tgt), str(skip_tgt))
-    assert not mirror.exists(str(tgt), str(del_file))
+        # 3. obsolete.txt was deleted
+        assert not del_file.exists()
 
-    root.destroy()
+        # 4. Mirror database reflects the changes
+        assert mirror.exists(str(tgt), str(keep_tgt))
+        assert not mirror.exists(str(tgt), str(skip_tgt))
+        assert not mirror.exists(str(tgt), str(del_file))
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_action_selection_toolbar_select_and_deselect_all(tmp_path, monkeypatch):
+    """Test toolbar buttons 'Select All' and 'Deselect All'."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+    f1 = src / 'f1.txt'
+    f2 = src / 'f2.txt'
+    f1.write_text('1')
+    f2.write_text('2')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[
+                (CstmPath(f1, root_dir=src), CstmPath(tgt / 'f1.txt', root_dir=tgt)),
+                (CstmPath(f2, root_dir=src), CstmPath(tgt / 'f2.txt', root_dir=tgt)),
+            ],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+
+        assert len(popup.tree.get_checked()) == 2  # 2 leaf copy items
+
+        # Test Deselect All
+        popup.tree.deselect_all()
+        assert len(popup.tree.get_checked()) == 0
+
+        # Test Select All
+        popup.tree.select_all()
+        assert len(popup.tree.get_checked()) == 2
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_action_selection_uncheck_deletions_safety(tmp_path, monkeypatch):
+    """Test the safety button 'Uncheck All Deletions' leaves copies checked while disabling deletes."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+    f_copy = src / 'doc.txt'
+    f_del = tgt / 'obsolete.txt'
+    f_copy.write_text('doc')
+    f_del.write_text('old')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[(CstmPath(f_copy, root_dir=src), CstmPath(tgt / 'doc.txt', root_dir=tgt))],
+            files_available_to_move=[],
+            files_available_to_delete=[CstmPath(f_del, root_dir=tgt)],
+            default_actions=[Action.COPY, Action.DELETE],
+        )
+
+        # Initially both copy and delete are checked
+        checked_before = popup.tree.get_checked()
+        assert any('copy::' in x for x in checked_before)
+        assert any('delete::' in x for x in checked_before)
+
+        # Trigger safety button: Uncheck all deletions
+        popup.tree.uncheck_action(Action.DELETE)
+
+        checked_after = popup.tree.get_checked()
+        # Copies remain checked
+        assert any('copy::' in x for x in checked_after)
+        # Deletions are now completely unchecked
+        assert not any('delete::' in x for x in checked_after)
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_action_selection_path_inspector_updates_on_select(tmp_path, monkeypatch):
+    """Test Path Inspector panel updates source and target labels when an item is selected."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+    f1 = src / 'inspector_test.txt'
+    f1.write_text('test')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[(CstmPath(f1, root_dir=src), CstmPath(tgt / 'inspector_test.txt', root_dir=tgt))],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+
+        children = popup.tree.get_children('copy')
+        assert len(children) == 1
+        item_id = children[0]
+
+        # Select the item and trigger selection callback
+        popup.tree.selection_set(item_id)
+        popup._on_item_selected(None)
+
+        assert str(f1) in popup.lbl_inspector_source.cget('text')
+        assert str(tgt / 'inspector_test.txt') in popup.lbl_inspector_target.cget('text')
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

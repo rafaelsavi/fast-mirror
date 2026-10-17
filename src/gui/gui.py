@@ -42,7 +42,7 @@ class Gui:
         # Initialize GUI
         self.root = TrayableTk()
         self.root.resizable(False, False)
-        self.root.iconbitmap(os.path.join(os.path.dirname(__file__), 'smiley.ico'))
+        self.root.iconbitmap(os.path.join(os.path.dirname(__file__), 'app_icon.ico'))
         self.root.title('Automatic Backup Tool')
 
         self.config_path = os.path.join(ROOT_DIR, 'config.json')
