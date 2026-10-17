@@ -205,6 +205,41 @@ def test_paths_panel_interactions(tmp_path):
     root.destroy()
 
 
+def test_paths_panel_open_selected_and_source_validation(tmp_path, monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.paths_panel import PathsPanel
+
+    src = tmp_path / 'SourceFolder'
+    src.mkdir()
+    tgt = tmp_path / 'TargetFolder'
+    tgt.mkdir()
+
+    paths_panel = PathsPanel(root)
+    paths_panel.entry_paths.set([(str(src), str(tgt))])
+
+    # Test open_selected_folder
+    opened = []
+    if hasattr(os, 'startfile'):
+        monkeypatch.setattr(os, 'startfile', lambda p: opened.append(p))
+    paths_panel.entry_paths.tag_add('sel', '1.0', '1.end')
+    paths_panel.open_selected_folder()
+    if hasattr(os, 'startfile'):
+        assert len(opened) == 1
+
+    # Test pre-flight validation warning
+    missing = tmp_path / 'MissingSourceFolder'
+    paths_panel.entry_paths.insert(tk.END, f'\n{missing} -> {tgt}\n')
+    paths_panel.run_target_health_check()
+    assert 'Missing/Invalid Source' in paths_panel.lbl_health_status.cget('text')
+
+    root.destroy()
+
+
 def test_schedule_panel_interactions():
     try:
         root = tk.Tk()

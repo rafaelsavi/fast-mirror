@@ -15,6 +15,9 @@ class EntryPaths(ScrolledText):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def get_text(self, start: str = '1.0', end: str = tk.END) -> str:
+        return super().get(start, end)
+
     def get(self, *args, **kwargs) -> list[tuple[str, str]]:  # type: ignore[override]
         raw: str = super().get('1.0', tk.END)
         lines = raw.splitlines()
@@ -25,6 +28,29 @@ class EntryPaths(ScrolledText):
 
     def get_as_dir_pairs(self) -> list[DirectoryPair]:
         return [DirectoryPair(source=pair[0], target=pair[1]) for pair in self.get()]
+
+    def get_raw_pairs(self) -> list[tuple[str, str, str]]:
+        """
+        Scan all non-empty lines and validate syntax and source existence.
+        Returns tuples: (source, target, status_error).
+        """
+        raw: str = super().get('1.0', tk.END)
+        results = []
+        for line in raw.splitlines():
+            line_str = line.strip()
+            if not line_str:
+                continue
+            if ' -> ' not in line_str:
+                results.append((line_str, '', 'Invalid format: missing " -> "'))
+                continue
+            source, target = [p.strip() for p in line_str.split(' -> ', 1)]
+            if not os.path.exists(source):
+                results.append((source, target, f'Source does not exist or disconnected: {source}'))
+            elif not os.path.isdir(source):
+                results.append((source, target, f'Source is not a directory: {source}'))
+            else:
+                results.append((source, target, ''))
+        return results
 
     def add(self, pair: tuple[str, str] | DirectoryPair):
         pair_tuple = (pair.source, pair.target) if isinstance(pair, DirectoryPair) else pair

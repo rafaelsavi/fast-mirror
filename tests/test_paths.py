@@ -159,7 +159,34 @@ def test_entry_paths_parse_line(tmp_path):
     assert parsed_new is not None
     assert parsed_new[1] == os.path.realpath(str(new_target))
 
-    assert EntryPaths.parse_line('invalid path format') is None
-
     non_existent = tmp_path / 'DoesNotExist'
     assert EntryPaths.parse_line(f'{non_existent} -> {target}') is None
+
+
+def test_entry_paths_get_raw_pairs(tmp_path):
+    import tkinter as tk
+
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    entry = EntryPaths(root)
+    valid_src = tmp_path / 'ValidSrc'
+    valid_src.mkdir()
+    tgt = tmp_path / 'Target'
+    tgt.mkdir()
+
+    missing_src = tmp_path / 'MissingSrc'
+
+    raw_text = f'{valid_src} -> {tgt}\n{missing_src} -> {tgt}\ninvalid_format_line\n'
+    entry.insert('1.0', raw_text)
+
+    raw_pairs = entry.get_raw_pairs()
+    assert len(raw_pairs) == 3
+    assert raw_pairs[0][2] == ''
+    assert 'does not exist or disconnected' in raw_pairs[1][2]
+    assert 'Invalid format' in raw_pairs[2][2]
+
+    root.destroy()

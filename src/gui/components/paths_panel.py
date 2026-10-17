@@ -1,7 +1,8 @@
 import contextlib
+import os
 import tkinter as tk
 from collections.abc import Callable
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import Literal
 
 from gui.health_check import TargetHealth, probe_targets_async
@@ -52,7 +53,7 @@ class PathsPanel(ttk.LabelFrame):
             btn_box,
             text='+ Add Pair',
             command=self._handle_add_path,
-            width=11,
+            width=14,
         )
         self.btn_add_path.pack(anchor='w', pady=(0, 2))
 
@@ -62,7 +63,15 @@ class PathsPanel(ttk.LabelFrame):
             command=self.run_target_health_check,
             width=14,
         )
-        self.btn_check_targets.pack(anchor='w')
+        self.btn_check_targets.pack(anchor='w', pady=(0, 2))
+
+        self.btn_open_selected = ttk.Button(
+            btn_box,
+            text='📂 Explorer',
+            command=self.open_selected_folder,
+            width=14,
+        )
+        self.btn_open_selected.pack(anchor='w')
 
         if entry_paths is not None:
             self.entry_paths = entry_paths
@@ -125,8 +134,18 @@ class PathsPanel(ttk.LabelFrame):
             self.on_add_path()
 
     def run_target_health_check(self):
-        """Asynchronously probe all target destinations and report health/disk space."""
+        """Asynchronously probe all configured paths, check source existence and target free disk space."""
+        raw_pairs = self.entry_paths.get_raw_pairs()
+        source_errors = [err for _, _, err in raw_pairs if err]
+
         dirs = self.entry_paths.get_as_dir_pairs()
+        if source_errors:
+            self.lbl_health_status.config(
+                text=f'🔴 Missing/Invalid Source: {"; ".join(source_errors)}',
+                foreground='#c62828',
+            )
+            return
+
         if not dirs:
             self.lbl_health_status.config(
                 text='⚠️ No paths configured to check.',
@@ -143,6 +162,7 @@ class PathsPanel(ttk.LabelFrame):
             def _update_ui():
                 if not results:
                     return
+
                 all_online = all(r.is_online for r in results)
                 any_warning = any(r.warning for r in results if r.is_online)
 
@@ -169,6 +189,45 @@ class PathsPanel(ttk.LabelFrame):
 
         probe_targets_async(dirs, _on_results)
 
+    def open_selected_folder(self):
+        """Open the currently selected path or line under cursor in Windows File Explorer."""
+        selected_text = ''
+        with contextlib.suppress(Exception):
+            selected_text = self.entry_paths.get_text(tk.SEL_FIRST, tk.SEL_LAST).strip()
+
+        target_to_open = ''
+        if selected_text and os.path.exists(selected_text):
+            target_to_open = selected_text
+        else:
+            line_text = self.entry_paths.get_text('insert linestart', 'insert lineend').strip()
+            if ' -> ' in line_text:
+                source, target = [p.strip() for p in line_text.split(' -> ', 1)]
+                cursor_idx = self.entry_paths.index('insert')
+                cursor_col = int(cursor_idx.split('.')[1])
+                arrow_idx = line_text.find(' -> ')
+                if cursor_col > arrow_idx + 3:
+                    target_to_open = target if os.path.exists(target) else os.path.dirname(target)
+                else:
+                    target_to_open = source
+            elif os.path.exists(line_text):
+                target_to_open = line_text
+
+        if target_to_open and os.path.exists(target_to_open):
+            try:
+                if hasattr(os, 'startfile'):
+                    os.startfile(target_to_open)
+                else:
+                    import subprocess
+
+                    subprocess.Popen(['explorer', target_to_open])
+            except Exception as e:
+                messagebox.showerror('Explorer Error', f'Could not open directory: {e}')
+        else:
+            messagebox.showinfo(
+                'Open in Explorer',
+                'Please click on or select a valid directory path in the Paths box to open in Explorer.',
+            )
+
     def _on_preset_toggled(self, patterns: list[str], var: tk.BooleanVar):
         current_exclusions = self.entry_exclusions.get()
         if var.get():
@@ -186,6 +245,7 @@ class PathsPanel(ttk.LabelFrame):
         state: Literal['normal', 'disabled'] = 'normal' if enabled else 'disabled'
         self.btn_add_path.configure(state=state)
         self.btn_check_targets.configure(state=state)
+        self.btn_open_selected.configure(state=state)
         self.cb_preset_junk.configure(state=state)
         self.cb_preset_dev.configure(state=state)
         self.cb_preset_temp.configure(state=state)
