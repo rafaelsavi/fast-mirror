@@ -175,3 +175,4 @@ cython_debug/
 /tests/TestData/Destination
 /logs
 local_mirror.db
+scratch*
