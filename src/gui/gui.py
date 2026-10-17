@@ -33,6 +33,7 @@ from gui.widgets import (
     TextLogger,
     WeekDays,
 )
+from gui.window_drag import install_smooth_drag_interceptor
 from gui.worker_thread import WorkerThread
 from utils.constants import ROOT_DIR
 from utils.logger import is_test_or_agent_mode, logger
@@ -92,6 +93,7 @@ class Gui:
         init_w = self.root.winfo_reqwidth()
         init_h = self.root.winfo_reqheight()
         self.root.minsize(init_w, init_h)
+        install_smooth_drag_interceptor(self.root)
 
         # Update overview card mode labels dynamically on setting changes without remote network I/O
         self.checkbox_var_use_mirror.trace_add('write', lambda *_: self.update_mode_labels())

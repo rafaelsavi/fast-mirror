@@ -10,6 +10,7 @@ import ttkwidgets
 
 from core.file import CstmPath
 from gui.widgets import Action
+from gui.window_drag import install_smooth_drag_interceptor
 from utils.logger import logger
 from utils.utils import format_size
 
@@ -448,6 +449,7 @@ class ActionSelection:
 
         self.create_widgets()
         self.popup.deiconify()
+        install_smooth_drag_interceptor(self.popup)
 
     def _center_window(self, width: int, height: int):
         try:

@@ -1208,3 +1208,19 @@ def test_gui_backend_thread_rebuild_mirror_cleanup(tmp_path, monkeypatch):
     assert gui._build_mirror_confirmed is False
 
     gui.root.destroy()
+
+
+def test_smooth_drag_interceptor_lifecycle():
+    from gui.window_drag import install_smooth_drag_interceptor, uninstall_smooth_drag_interceptor
+
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    # In test/agent mode or headless, it gracefully returns False without error
+    res = install_smooth_drag_interceptor(root)
+    assert isinstance(res, bool)
+    uninstall_smooth_drag_interceptor(root)
+    root.destroy()
