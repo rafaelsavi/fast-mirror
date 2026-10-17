@@ -1,7 +1,7 @@
 # TODO List
 
-- request popup confirmation before resetting the DB
-- remove all personal paths and information from project
+- [x] request popup confirmation before resetting the DB
+- remove all personal paths and information from project, except for my configuration files should not be part of git. can this be applied retroatevelly to existing commits in the main. question.
 - [x] modernize GUI (Sun Valley ttk light theme, modular panel components, pystray tray management)
 - [x] make action selection popup more useful; find a way of improving the load-up speed and submit/close speed when there are thousands of files (optimized single-pass O(N) grouping, deferred rendering, direct metadata extraction, and O(1) submission lookup)
 - [x] implement rich frontend productivity enhancements:

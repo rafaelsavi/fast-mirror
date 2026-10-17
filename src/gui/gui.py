@@ -33,7 +33,7 @@ from gui.widgets import (
     TextLogger,
     WeekDays,
 )
-from gui.worker_thread import KillableThread
+from gui.worker_thread import WorkerThread
 from utils.constants import ROOT_DIR
 from utils.logger import is_test_or_agent_mode, logger
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
@@ -58,11 +58,13 @@ class Gui:
 
         self._gui_initialized = False
         self.last_realized_sync: datetime.datetime | None = None
-        self._backend_thread_holder: KillableThread | None = None
+        self._cancel_event = threading.Event()
+        self._backend_thread_holder: WorkerThread | None = None
         self._backend_thread_status = BackendThreadStatus.STANDBY
         self._current_run_trigger: str | None = None
         self._active_sync: SyncDirs | None = None
         self._last_tray_state: tuple[str, str] | None = None
+        self._build_mirror_confirmed: bool = False
 
         # Tkinter control variables
         self.toggle_auto_scroll = tk.BooleanVar(value=True)
@@ -241,6 +243,7 @@ class Gui:
             on_sync_now=self.button_action_sync_now,
             on_schedule_sync=self.button_action_schedule_sync,
             on_toggle_theme=self.button_action_toggle_theme,
+            on_rebuild_confirmation=self.on_rebuild_mirror_confirmation,
             padding=6,
         )
         self.actions_panel.pack(fill='x', pady=(0, 6))
@@ -339,6 +342,10 @@ class Gui:
         self.apply_theme(next_theme)
         logger.info(f'GUI theme switched to {next_theme}')
 
+    def on_rebuild_mirror_confirmation(self, confirmed: bool):
+        """Update confirmed state for rebuilding the mirror database."""
+        self._build_mirror_confirmed = confirmed
+
     def button_action_reset_config(self, ask_confirmation=True):
         if ask_confirmation:
             confirmation = messagebox.askyesno(
@@ -357,6 +364,7 @@ class Gui:
             self.text_logger.set_log_levels(self.log_levels.get())
             self.checkbox_var_use_mirror.set(True)
             self.checkbox_var_build_mirror.set(False)
+            self._build_mirror_confirmed = False
             self.checkbox_var_metadata_comparison.set(True)
             self.checkbox_var_confirm_sync.set(True)
             self.checkbox_var_save_report.set(False)
@@ -578,6 +586,7 @@ class Gui:
             logger.info('Stopping background process upon cancellation request')
             self.toggle_state_quick_compare = False
             self.toggle_state_sync_now = False
+            self._cancel_event.set()
             if hasattr(self, 'telemetry_bar'):
                 self.root.after(0, lambda: self.telemetry_bar.lbl_status.config(text='Stopping...'))
             if hasattr(self, '_active_sync') and self._active_sync is not None:
@@ -585,7 +594,7 @@ class Gui:
                     self._active_sync.cancel()
             if self.backend_thread_holder is not None:
                 with contextlib.suppress(Exception):
-                    self.backend_thread_holder.kill()
+                    self.backend_thread_holder.cancel()
             self.backend_thread_status = BackendThreadStatus.STOPPING
 
     def backend_watchdog(self):
@@ -630,6 +639,7 @@ class Gui:
                 if stop_requested:
                     logger.info('---------------------------------')
                     logger.info('Trying to stop background process')
+                    self._cancel_event.set()
                     if hasattr(self, '_active_sync') and self._active_sync is not None:
                         with contextlib.suppress(Exception):
                             self._active_sync.cancel()
@@ -637,7 +647,7 @@ class Gui:
                         logger.warning('There is no background process to stop')
                     else:
                         try:
-                            self.backend_thread_holder.kill()
+                            self.backend_thread_holder.cancel()
                         except Exception as e:
                             logger.error(f'Could not stop background process. Exception: {e}')
                     self.backend_thread_status = BackendThreadStatus.STOPPING
@@ -660,11 +670,32 @@ class Gui:
         save_report = self.checkbox_var_save_report.get()
         use_mirror = self.checkbox_var_use_mirror.get()
         build_mirror = self.checkbox_var_build_mirror.get()
+
+        if build_mirror and not getattr(self, '_build_mirror_confirmed', False):
+            confirm = messagebox.askyesno(
+                'Caution',
+                'Rebuilding the mirror database will reset and wipe existing cached records for the target '
+                'directories.\n\nAre you sure you want to proceed with resetting the DB?',
+                parent=self.root,
+            )
+            if not confirm:
+                logger.info('Database reset cancelled by user.')
+                self.toggle_state_quick_compare = False
+                self.toggle_state_sync_now = False
+                self.toggle_state_schedule = False
+                self.checkbox_var_build_mirror.set(False)
+                self.checkbox_var_use_mirror.set(True)
+                self.backend_thread_status = BackendThreadStatus.STANDBY
+                return
+            self._build_mirror_confirmed = True
+
         confirm_sync = self.checkbox_var_confirm_sync.get()
         default_actions = self.checkbox_default_actions.get_as_actions()
 
-        self.backend_thread_holder = KillableThread(
+        self._cancel_event.clear()
+        self.backend_thread_holder = WorkerThread(
             target=self.backend_thread,
+            cancel_event=self._cancel_event,
             args=(
                 also_sync,
                 dirs,
@@ -706,7 +737,12 @@ class Gui:
             use_mirror=use_mirror,
             increment_mirror=not build_mirror,
             rebuild_mirror=build_mirror,
+            cancel_requested=self._cancel_event,
         )
+
+        if self._cancel_event.is_set():
+            logger.info('Operation stopped upon cancellation request')
+            return
 
         try:
             if also_sync:
@@ -743,30 +779,39 @@ class Gui:
                     increment_mirror=not build_mirror,
                     confirm_sync=confirm_sync,
                     progress_callback=_on_sync_progress,
+                    cancel_requested=self._cancel_event,
                 )
-                self.root.after(
-                    0,
-                    lambda: self.root.notify(
-                        message='Backup synchronization completed successfully.',
-                        title='Automatic Backup',
-                    ),
-                )
+                if not self._cancel_event.is_set() and (
+                    self._active_sync is None or not self._active_sync.cancel_requested.is_set()
+                ):
+                    self.root.after(
+                        0,
+                        lambda: self.root.notify(
+                            message='Backup synchronization completed successfully.',
+                            title='Automatic Backup',
+                        ),
+                    )
             else:
-                summary_msg = (
-                    f'Comparison completed: {len(compare.files_to_copy)} to copy, '
-                    f'{len(compare.files_to_move)} to move, {len(compare.files_to_delete)} to delete.'
-                )
-                self.root.after(
-                    0,
-                    lambda: self.root.notify(
-                        message=summary_msg,
-                        title='Automatic Backup',
-                    ),
-                )
+                if not self._cancel_event.is_set():
+                    summary_msg = (
+                        f'Comparison completed: {len(compare.files_to_copy)} to copy, '
+                        f'{len(compare.files_to_move)} to move, {len(compare.files_to_delete)} to delete.'
+                    )
+                    self.root.after(
+                        0,
+                        lambda: self.root.notify(
+                            message=summary_msg,
+                            title='Automatic Backup',
+                        ),
+                    )
         finally:
             self._active_sync = None
             if hasattr(self, 'telemetry_bar'):
                 self.root.after(0, lambda: self.telemetry_bar.reset('Ready'))
+            if build_mirror:
+                self.root.after(0, lambda: self.checkbox_var_build_mirror.set(False))
+                self.root.after(0, lambda: self.checkbox_var_use_mirror.set(True))
+                self.root.after(0, lambda: setattr(self, '_build_mirror_confirmed', False))
 
         logger.debug('Processing thread was properly closed')
 

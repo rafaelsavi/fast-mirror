@@ -1,7 +1,7 @@
 import contextlib
 import tkinter as tk
 from collections.abc import Callable
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from gui.enums import TkinterCfgRelief
 from gui.widgets import Action, DefaultActions
@@ -27,6 +27,7 @@ class ActionsPanel(ttk.LabelFrame):
         on_schedule_sync: Callable[[], None],
         on_report_history: Callable[[], None] | None = None,
         on_toggle_theme: Callable[[], None] | None = None,
+        on_rebuild_confirmation: Callable[[bool], None] | None = None,
         **kwargs,
     ):
         super().__init__(master, text=' Actions & Operations ', **kwargs)
@@ -46,6 +47,7 @@ class ActionsPanel(ttk.LabelFrame):
         self.on_sync_now = on_sync_now
         self.on_schedule_sync = on_schedule_sync
         self.on_toggle_theme = on_toggle_theme
+        self.on_rebuild_confirmation = on_rebuild_confirmation
 
         self._create_widgets()
 
@@ -194,6 +196,9 @@ class ActionsPanel(ttk.LabelFrame):
             self.frame_options,
             text='Rebuild local mirror database',
             variable=self.checkbox_var_build_mirror,
+            onvalue=True,
+            offvalue=False,
+            command=self._on_rebuild_mirror_clicked,
         )
         self.cb_rebuild.pack(anchor='w', padx=(4, 0), pady=1)
 
@@ -258,6 +263,29 @@ class ActionsPanel(ttk.LabelFrame):
             from gui.components.reports_window import ReportsWindow
 
             ReportsWindow(self.winfo_toplevel())
+
+    def _on_rebuild_mirror_clicked(self):
+        if self.checkbox_var_build_mirror.get():
+            confirm = messagebox.askyesno(
+                'Caution',
+                'Are you sure you want to rebuild the local mirror database?\n\n'
+                'This will reset and wipe the cached file records for the target directories.',
+                parent=self.winfo_toplevel(),
+            )
+            if not confirm:
+                self.checkbox_var_build_mirror.set(False)
+                with contextlib.suppress(Exception):
+                    self.cb_rebuild.state(['!selected'])
+                self.checkbox_var_use_mirror.set(True)
+                if self.on_rebuild_confirmation is not None:
+                    self.on_rebuild_confirmation(False)
+            else:
+                self.checkbox_var_use_mirror.set(False)
+                if self.on_rebuild_confirmation is not None:
+                    self.on_rebuild_confirmation(True)
+        else:
+            if self.on_rebuild_confirmation is not None:
+                self.on_rebuild_confirmation(False)
 
     def set_enabled(self, enabled: bool, leave_sunken_enabled: bool = False):
         """Enable or disable interactive controls in the actions panel."""

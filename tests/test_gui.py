@@ -100,12 +100,6 @@ def test_log_levels_selection():
 
 
 def test_gui_scheduler_persistence_on_standby(monkeypatch):
-    try:
-        root = tk.Tk()
-        root.withdraw()
-    except tk.TclError:
-        pytest.skip('Tkinter display not available')
-
     from gui.gui import Gui
 
     monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
@@ -113,7 +107,11 @@ def test_gui_scheduler_persistence_on_standby(monkeypatch):
     monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
     monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
 
-    gui = Gui()
+    try:
+        gui = Gui()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
     gui.toggle_state_schedule = True
     gui.toggle_state_sync_now = True
     gui.toggle_state_quick_compare = True
@@ -129,13 +127,6 @@ def test_gui_scheduler_persistence_on_standby(monkeypatch):
 
 
 def test_gui_reset_config_restores_safe_defaults(tmp_path, monkeypatch):
-    try:
-        root = tk.Tk()
-        root.withdraw()
-        root.destroy()
-    except tk.TclError:
-        pytest.skip('Tkinter display not available')
-
     from gui.gui import Gui
 
     monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
@@ -143,7 +134,11 @@ def test_gui_reset_config_restores_safe_defaults(tmp_path, monkeypatch):
     monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
     monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
 
-    gui = Gui()
+    try:
+        gui = Gui()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
     gui.config_path = str(tmp_path / 'config.json')
     gui.button_action_reset_config(ask_confirmation=False)
 
@@ -501,6 +496,7 @@ def test_gui_initialization_with_light_theme(monkeypatch):
     try:
         root = tk.Tk()
         root.withdraw()
+        root.destroy()
     except tk.TclError:
         pytest.skip('Tkinter display not available')
 
@@ -1042,3 +1038,173 @@ def test_exclusions_modal_and_chips_workflow():
     assert '*.bak' not in excl.get()
 
     root.destroy()
+
+
+def test_actions_panel_rebuild_mirror_confirmation(monkeypatch):
+    """Test that toggling Rebuild local mirror database prompts for confirmation."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.actions_panel import ActionsPanel
+    from gui.widgets import DefaultActions
+
+    rebuild_confirmed = []
+    var_build = tk.BooleanVar(master=root, value=False)
+    var_use = tk.BooleanVar(master=root, value=True)
+
+    panel = ActionsPanel(
+        root,
+        checkbox_default_actions=DefaultActions(),
+        checkbox_var_save_report=tk.BooleanVar(master=root),
+        checkbox_var_build_mirror=var_build,
+        checkbox_var_use_mirror=var_use,
+        checkbox_var_metadata_comparison=tk.BooleanVar(master=root),
+        checkbox_var_confirm_sync=tk.BooleanVar(master=root),
+        on_reset_config=lambda: None,
+        on_save_config=lambda: None,
+        on_quick_compare=lambda: None,
+        on_open_report=lambda: None,
+        on_sync_now=lambda: None,
+        on_schedule_sync=lambda: None,
+        on_rebuild_confirmation=lambda val: rebuild_confirmed.append(val),
+    )
+    panel.pack()
+    root.update_idletasks()
+
+    # 1. User clicks rebuild checkbutton but CANCELS confirmation
+    monkeypatch.setattr('gui.components.actions_panel.messagebox.askyesno', lambda *args, **kwargs: False)
+    panel.cb_rebuild.invoke()
+    root.update_idletasks()
+
+    assert var_build.get() is False
+    assert var_use.get() is True
+    assert rebuild_confirmed[-1] is False
+
+    # 2. User clicks rebuild checkbutton and ACCEPTS confirmation
+    monkeypatch.setattr('gui.components.actions_panel.messagebox.askyesno', lambda *args, **kwargs: True)
+    panel.cb_rebuild.invoke()
+    root.update_idletasks()
+
+    assert var_build.get() is True
+    assert var_use.get() is False
+    assert rebuild_confirmed[-1] is True
+
+    # 3. User unchecks rebuild checkbutton (no popup required)
+    panel.cb_rebuild.invoke()
+    root.update_idletasks()
+    assert var_build.get() is False
+    assert rebuild_confirmed[-1] is False
+
+    root.destroy()
+
+
+def test_gui_call_backend_thread_rebuild_prompt(tmp_path, monkeypatch):
+    """Test that Gui prompts before resetting DB if build_mirror was not pre-confirmed."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.destroy()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    import datetime
+
+    from core.backend import DirectoryPair
+    from gui.gui import Gui
+
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'load_config', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    src = tmp_path / 'src'
+    tgt = tmp_path / 'tgt'
+    src.mkdir()
+    tgt.mkdir()
+
+    gui = Gui()
+    gui.entry_paths.set([DirectoryPair(source=str(src), target=str(tgt))])
+    gui.checkbox_var_build_mirror.set(True)
+    gui._build_mirror_confirmed = False
+
+    # 1. User clicks No -> execution aborted
+    monkeypatch.setattr('gui.gui.messagebox.askyesno', lambda *args, **kwargs: False)
+    gui.call_backend_thread(also_sync=False, timestamp=datetime.datetime.now())
+
+    assert gui.checkbox_var_build_mirror.get() is False
+    assert gui.checkbox_var_use_mirror.get() is True
+    assert gui.backend_thread_holder is None
+
+    # 2. User clicks Yes -> execution proceeds
+    gui.checkbox_var_build_mirror.set(True)
+    gui._build_mirror_confirmed = False
+    monkeypatch.setattr('gui.gui.messagebox.askyesno', lambda *args, **kwargs: True)
+
+    # Prevent thread execution
+    monkeypatch.setattr('gui.worker_thread.WorkerThread.start', lambda self: None)
+    gui.call_backend_thread(also_sync=False, timestamp=datetime.datetime.now())
+
+    assert gui._build_mirror_confirmed is True
+    assert gui.backend_thread_holder is not None
+
+    gui.root.destroy()
+
+
+def test_gui_backend_thread_rebuild_mirror_cleanup(tmp_path, monkeypatch):
+    """Test that after a rebuild mirror execution, flags are safely reset in finally block."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.destroy()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from core.backend import CompareMethod, DirectoryPair
+    from gui.gui import Gui
+
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'load_config', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    gui = Gui()
+    src = tmp_path / 'src'
+    tgt = tmp_path / 'tgt'
+    src.mkdir()
+    tgt.mkdir()
+
+    gui.checkbox_var_build_mirror.set(True)
+    gui._build_mirror_confirmed = True
+
+    # Run backend_thread synchronously with mock CompareDirs
+    class DummyCompare:
+        def __init__(self, *args, **kwargs):
+            self.files_to_copy = []
+            self.files_to_move = []
+            self.files_to_delete = []
+
+    monkeypatch.setattr('gui.gui.CompareDirs', DummyCompare)
+
+    gui.backend_thread(
+        also_sync=False,
+        dirs=[DirectoryPair(source=str(src), target=str(tgt))],
+        exclusions=[],
+        comparison_method=CompareMethod.METADATA,
+        save_report=False,
+        use_mirror=False,
+        build_mirror=True,
+        confirm_sync=False,
+        default_actions=[],
+    )
+
+    # Process pending root.after calls
+    gui.root.update()
+
+    assert gui.checkbox_var_build_mirror.get() is False
+    assert gui.checkbox_var_use_mirror.get() is True
+    assert gui._build_mirror_confirmed is False
+
+    gui.root.destroy()
