@@ -48,3 +48,6 @@ class StatusBar(ttk.Frame):
             font=('Segoe UI', 9),
         )
         lbl_sched_val.pack(side='left')
+
+        sep = ttk.Separator(self, orient='horizontal')
+        sep.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(4, 0))

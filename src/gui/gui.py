@@ -13,6 +13,7 @@ from core.backend import CompareDirs, SyncDirs
 from core.mirror import MirrorDatabase
 from gui.components.actions_panel import ActionsPanel
 from gui.components.log_panel import LogPanel
+from gui.components.overview_card import OverviewCard
 from gui.components.paths_panel import PathsPanel
 from gui.components.reports_window import ReportsWindow
 from gui.components.schedule_panel import SchedulePanel
@@ -22,6 +23,7 @@ from gui.enums import BackendThreadStatus, TkinterCfgRelief
 from gui.scheduler import calculate_next_run
 from gui.tray import TrayableTk
 from gui.widgets import (
+    Action,
     DefaultActions,
     EntryExclusions,
     EntryPaths,
@@ -81,6 +83,11 @@ class Gui:
 
         # Build GUI modular components
         self.create_widgets()
+
+        # Update overview card dynamically on setting changes
+        self.checkbox_var_use_mirror.trace_add('write', lambda *_: self.update_overview_stats())
+        self.checkbox_var_build_mirror.trace_add('write', lambda *_: self.update_overview_stats())
+        self.checkbox_var_confirm_sync.trace_add('write', lambda *_: self.update_overview_stats())
 
         # Register tray actions and update initial tray state
         self.root.set_tray_callbacks(
@@ -238,6 +245,13 @@ class Gui:
         )
         self.schedule_panel.pack(fill='x')
 
+        # System Overview Card
+        self.overview_card = OverviewCard(
+            left_container,
+            padding=6,
+        )
+        self.overview_card.pack(fill='x', pady=(6, 0))
+
         # 3. Right Column: Paths Panel and Activity Log Panel
         right_container = ttk.Frame(self.root)
         right_container.grid(row=1, column=1, sticky='nsew', padx=(5, 10), pady=(0, 10))
@@ -301,6 +315,7 @@ class Gui:
             with contextlib.suppress(Exception):
                 os.remove(self.config_path)
             self.get_next_appointment()
+            self.update_overview_stats()
             logger.info('GUI configuration was reset')
 
     def button_action_save_config(self, ask_confirmation=True):
@@ -355,6 +370,35 @@ class Gui:
             self.button_action_reset_config(ask_confirmation=False)
 
         self.get_next_appointment()
+        self.update_overview_stats()
+
+    def update_overview_stats(self):
+        """Update system overview card with live counts and modes."""
+        if not hasattr(self, 'overview_card'):
+            return
+        try:
+            raw_pairs = self.entry_paths.get_raw_pairs()
+            total_count = len(raw_pairs)
+            valid_pairs = self.entry_paths.get_as_dir_pairs()
+            online_count = len([p for p in valid_pairs if os.path.isdir(p.source) and os.path.isdir(p.target)])
+            self.overview_card.text_var_pairs_count.set(f'{online_count} online / {total_count} configured')
+        except Exception as e:
+            logger.error(f'update_overview_stats failed: {e}')
+            self.overview_card.text_var_pairs_count.set('0 configured')
+
+        if hasattr(self, 'checkbox_var_use_mirror'):
+            use_mirror = self.checkbox_var_use_mirror.get()
+            build_mirror = self.checkbox_var_build_mirror.get() if hasattr(self, 'checkbox_var_build_mirror') else False
+            if build_mirror:
+                self.overview_card.text_var_mirror_status.set('Rebuild Mode (WAL)')
+            elif use_mirror:
+                self.overview_card.text_var_mirror_status.set('Active (WAL cache)')
+            else:
+                self.overview_card.text_var_mirror_status.set('Direct Scan (Disabled)')
+
+        if hasattr(self, 'checkbox_var_confirm_sync'):
+            confirm = self.checkbox_var_confirm_sync.get()
+            self.overview_card.text_var_confirm_status.set('Interactive Approval' if confirm else 'Direct / Automatic')
 
     def button_action_add_path(self):
         source = filedialog.askdirectory(title='Select source folder')
@@ -362,6 +406,7 @@ class Gui:
             target = filedialog.askdirectory(title='Select destination folder')
             if target:
                 self.entry_paths.add(DirectoryPair(source=source, target=target))
+                self.update_overview_stats()
 
     def button_action_open_report(self):
         if not os.path.isdir(logger.log_dir):
@@ -506,20 +551,52 @@ class Gui:
 
     def call_backend_thread(self, also_sync: bool, timestamp: datetime.datetime):
         self.last_realized_sync = timestamp
+        dirs = self.entry_paths.get_as_dir_pairs()
+        if not dirs:
+            logger.warning('No valid directory pairs configured. Please add at least one path pair.')
+            self.backend_thread_status = BackendThreadStatus.STANDBY
+            return
+
+        exclusions = self.entry_exclusions.get()
+        comparison_method = (
+            CompareMethod.METADATA if self.checkbox_var_metadata_comparison.get() else CompareMethod.CONTENT
+        )
+        save_report = self.checkbox_var_save_report.get()
+        use_mirror = self.checkbox_var_use_mirror.get()
+        build_mirror = self.checkbox_var_build_mirror.get()
+        confirm_sync = self.checkbox_var_confirm_sync.get()
+        default_actions = self.checkbox_default_actions.get_as_actions()
+
         self.backend_thread_holder = KillableThread(
             target=self.backend_thread,
-            args=(also_sync,),
+            args=(
+                also_sync,
+                dirs,
+                exclusions,
+                comparison_method,
+                save_report,
+                use_mirror,
+                build_mirror,
+                confirm_sync,
+                default_actions,
+            ),
             daemon=True,
         )
         self.backend_thread_holder.start()
 
-    def backend_thread(self, also_sync: bool):
-        dirs = self.entry_paths.get_as_dir_pairs()
-        if not dirs:
-            logger.warning('No valid directory pairs configured. Please add at least one path pair.')
-            return
-
-        mirror = MirrorDatabase(exclusions=self.entry_exclusions.get())
+    def backend_thread(
+        self,
+        also_sync: bool,
+        dirs: list[DirectoryPair],
+        exclusions: list[str],
+        comparison_method: CompareMethod,
+        save_report: bool,
+        use_mirror: bool,
+        build_mirror: bool,
+        confirm_sync: bool,
+        default_actions: list[Action],
+    ):
+        mirror = MirrorDatabase(exclusions=exclusions)
 
         if hasattr(self, 'telemetry_bar'):
             self.root.after(0, lambda: self.telemetry_bar.set_indeterminate('Scanning and comparing files...'))
@@ -527,19 +604,16 @@ class Gui:
         compare = CompareDirs(
             mirror=mirror,
             dirs=dirs,
-            exclusions=self.entry_exclusions.get(),
-            comparison_method=CompareMethod.METADATA
-            if self.checkbox_var_metadata_comparison.get()
-            else CompareMethod.CONTENT,
-            save_report=self.checkbox_var_save_report.get(),
-            use_mirror=self.checkbox_var_use_mirror.get(),
-            increment_mirror=not self.checkbox_var_build_mirror.get(),
-            rebuild_mirror=self.checkbox_var_build_mirror.get(),
+            exclusions=exclusions,
+            comparison_method=comparison_method,
+            save_report=save_report,
+            use_mirror=use_mirror,
+            increment_mirror=not build_mirror,
+            rebuild_mirror=build_mirror,
         )
 
         try:
             if also_sync:
-                default_actions = self.checkbox_default_actions.get_as_actions()
 
                 def _on_sync_progress(
                     action: str,
@@ -570,8 +644,8 @@ class Gui:
                     root_gui=self.root,
                     dirs=dirs,
                     default_actions=default_actions,
-                    increment_mirror=not self.checkbox_var_build_mirror.get(),
-                    confirm_sync=self.checkbox_var_confirm_sync.get(),
+                    increment_mirror=not build_mirror,
+                    confirm_sync=confirm_sync,
                     progress_callback=_on_sync_progress,
                 )
                 self.root.after(

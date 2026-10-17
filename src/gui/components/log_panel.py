@@ -331,17 +331,32 @@ class LogPanel(ttk.LabelFrame):
             )
 
     def apply_theme(self, theme_name: str = 'light'):
-        """Apply clean light/day theme styling to text logger."""
-        self.text_logger.configure(
-            bg='#ffffff',
-            fg='#1c1c1c',
-            insertbackground='#000000',
-            selectbackground='#b0c4de',
-        )
-        self.text_logger.tag_config('DEBUG', foreground='gray')
-        self.text_logger.tag_config('INFO', foreground='black')
-        self.text_logger.tag_config('WARNING', foreground='orange')
-        self.text_logger.tag_config('ERROR', foreground='red')
-        self.text_logger.tag_config('CRITICAL', foreground='red', underline=True)
-        self.text_logger.tag_config('SEARCH_MATCH', background='#fff3bf', foreground='#000000')
-        self.text_logger.tag_config('SEARCH_CURRENT', background='#ff922b', foreground='#ffffff')
+        """Apply clean light or dark theme styling to text logger."""
+        if theme_name == 'dark':
+            self.text_logger.configure(
+                bg='#1e1e1e',
+                fg='#d4d4d4',
+                insertbackground='#ffffff',
+                selectbackground='#264f78',
+            )
+            self.text_logger.tag_config('DEBUG', foreground='#808080')
+            self.text_logger.tag_config('INFO', foreground='#d4d4d4')
+            self.text_logger.tag_config('WARNING', foreground='#e5c07b')
+            self.text_logger.tag_config('ERROR', foreground='#f44747')
+            self.text_logger.tag_config('CRITICAL', foreground='#f44747', underline=True)
+            self.text_logger.tag_config('SEARCH_MATCH', background='#613214', foreground='#ffffff')
+            self.text_logger.tag_config('SEARCH_CURRENT', background='#e5a158', foreground='#000000')
+        else:
+            self.text_logger.configure(
+                bg='#ffffff',
+                fg='#1c1c1c',
+                insertbackground='#000000',
+                selectbackground='#b0c4de',
+            )
+            self.text_logger.tag_config('DEBUG', foreground='gray')
+            self.text_logger.tag_config('INFO', foreground='black')
+            self.text_logger.tag_config('WARNING', foreground='orange')
+            self.text_logger.tag_config('ERROR', foreground='red')
+            self.text_logger.tag_config('CRITICAL', foreground='red', underline=True)
+            self.text_logger.tag_config('SEARCH_MATCH', background='#fff3bf', foreground='#000000')
+            self.text_logger.tag_config('SEARCH_CURRENT', background='#ff922b', foreground='#ffffff')

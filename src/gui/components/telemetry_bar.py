@@ -21,13 +21,17 @@ class TelemetryBar(ttk.Frame):
     def _create_widgets(self):
         self.columnconfigure(1, weight=1)
 
-        # Row 0: Status label on left, Stop button on right
+        # Row 0: Top Framing Separator
+        sep = ttk.Separator(self, orient='horizontal')
+        sep.grid(row=0, column=0, columnspan=3, sticky='ew', pady=(0, 4))
+
+        # Row 1: Status label on left, Stop button on right
         self.lbl_status = ttk.Label(
             self,
             text='Ready',
             font=('Segoe UI', 9, 'bold'),
         )
-        self.lbl_status.grid(row=0, column=0, sticky='w', padx=(4, 8), pady=(2, 2))
+        self.lbl_status.grid(row=1, column=0, sticky='w', padx=(4, 8), pady=(2, 2))
 
         self.lbl_details = ttk.Label(
             self,
@@ -35,7 +39,7 @@ class TelemetryBar(ttk.Frame):
             font=('Segoe UI', 8),
             foreground='#555555',
         )
-        self.lbl_details.grid(row=0, column=1, sticky='w', padx=(0, 8), pady=(2, 2))
+        self.lbl_details.grid(row=1, column=1, sticky='w', padx=(0, 8), pady=(2, 2))
 
         self.btn_stop = ttk.Button(
             self,
@@ -44,15 +48,15 @@ class TelemetryBar(ttk.Frame):
             width=9,
             style='Secondary.TButton',
         )
-        self.btn_stop.grid(row=0, column=2, rowspan=2, sticky='e', padx=(4, 4), pady=(2, 2))
+        self.btn_stop.grid(row=1, column=2, rowspan=2, sticky='e', padx=(4, 4), pady=(2, 2))
 
-        # Row 1: Modern Progress Bar
+        # Row 2: Modern Progress Bar
         self.progress = ttk.Progressbar(
             self,
             orient='horizontal',
             mode='indeterminate',
         )
-        self.progress.grid(row=1, column=0, columnspan=2, sticky='ew', padx=(4, 8), pady=(2, 4))
+        self.progress.grid(row=2, column=0, columnspan=2, sticky='ew', padx=(4, 8), pady=(2, 4))
 
     def _handle_stop(self):
         if self.on_stop:
