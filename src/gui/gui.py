@@ -630,6 +630,11 @@ class Gui:
 
     def log_queue_watchdog(self):
         """Poll log queue every 100ms and display queued records in text logger."""
+        records_drained = 0
+        was_at_bottom = False
+        with contextlib.suppress(Exception):
+            was_at_bottom = self.text_logger.yview()[1] >= 0.95
+
         while True:
             try:
                 record: LogRecord = logger.log_queue.get(block=False)
@@ -638,12 +643,12 @@ class Gui:
             else:
                 msg = logger.queue_handler.format(record)
                 self.text_logger.insert(msg, record.levelname)
+                records_drained += 1
 
-                # Smart auto-scroll: only follow to bottom if user has not scrolled up to inspect previous lines
-                if self.toggle_auto_scroll.get():
-                    with contextlib.suppress(Exception):
-                        if self.text_logger.yview()[1] >= 0.95:
-                            self.text_logger.yview(tk.END)
+        # Smart auto-scroll: only follow to bottom if user has not scrolled up to inspect previous lines
+        if records_drained > 0 and self.toggle_auto_scroll.get() and was_at_bottom:
+            with contextlib.suppress(Exception):
+                self.text_logger.yview(tk.END)
 
         self.root.after(100, self.log_queue_watchdog)
 

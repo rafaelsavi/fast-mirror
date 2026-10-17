@@ -427,6 +427,58 @@ def test_log_smart_autoscroll_position():
     root.destroy()
 
 
+def test_gui_log_queue_watchdog_batching_and_autoscroll(monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    import logging
+
+    from gui.gui import Gui
+    from utils.logger import logger
+
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'load_config', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    orig_watchdog = Gui.log_queue_watchdog
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    gui = Gui()
+
+    # Pre-populate log with lines to establish scroll height
+    for i in range(100):
+        gui.text_logger.insert(f'Existing row {i}', 'INFO')
+
+    # Case 1: was at bottom, auto-scroll is True -> scrolls to bottom
+    gui.text_logger.yview(tk.END)
+    assert gui.text_logger.yview()[1] >= 0.95
+    gui.toggle_auto_scroll.set(True)
+
+    rec = logging.LogRecord('test', logging.INFO, '', 0, 'New incoming log record', (), None)
+    logger.log_queue.put(rec)
+
+    after_called = []
+    monkeypatch.setattr(gui.root, 'after', lambda ms, cb: after_called.append((ms, cb)))
+
+    orig_watchdog(gui)
+    assert len(after_called) == 1
+    assert gui.text_logger.yview()[1] >= 0.95
+
+    # Case 2: was scrolled up to top (0.0) -> does NOT scroll to bottom
+    gui.text_logger.yview_moveto(0.0)
+    assert gui.text_logger.yview()[1] < 0.95
+
+    rec2 = logging.LogRecord('test', logging.INFO, '', 0, 'Another incoming log while reading history', (), None)
+    logger.log_queue.put(rec2)
+
+    orig_watchdog(gui)
+    assert gui.text_logger.yview()[1] < 0.95
+
+    gui.root.destroy()
+
+
 def test_gui_initialization_with_light_theme(monkeypatch):
     try:
         root = tk.Tk()
