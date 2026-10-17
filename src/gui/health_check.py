@@ -61,13 +61,13 @@ def probe_single_target(path: str) -> TargetHealth:
 
 
 def probe_targets_async(
-    dirs: list[DirectoryPair],
+    dirs: list[DirectoryPair] | list[str],
     on_complete: Callable[[list[TargetHealth]], None],
 ):
     """Probe all configured backup target paths in a non-blocking background thread."""
 
     def _worker():
-        results = [probe_single_target(dir_pair.target) for dir_pair in dirs]
+        results = [probe_single_target(d.target if isinstance(d, DirectoryPair) else d) for d in dirs]
         with contextlib.suppress(Exception):
             on_complete(results)
 

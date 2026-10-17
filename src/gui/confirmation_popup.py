@@ -34,14 +34,16 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self._cached_checked_by_action: dict[str, list[str]] = {}
         self._all_group_children: dict[str, list[str]] = {}
         self.on_stats_changed = on_stats_changed
+        self._sort_col: str | None = None
+        self._sort_descending: bool = False
 
         # Configure Treeview columns and headers
         self['columns'] = self.custom_headers[1:]
         self.column('#0', width=240, minwidth=180)
-        self.heading('#0', text=self.custom_headers[0])
+        self.heading('#0', text=self.custom_headers[0], command=lambda: self.sort_by_column('#0'))
 
         for column in self.custom_headers[1:]:
-            self.heading(column, text=column.title())
+            self.heading(column, text=column.title(), command=lambda c=column: self.sort_by_column(c))
             if 'date' in column:
                 self.column(column, width=155, minwidth=120)
             elif 'size' in column:
@@ -129,6 +131,11 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         self._item_actions.clear()
         self._all_group_children.clear()
+        self._sort_col = None
+        self._sort_descending = False
+        self.heading('#0', text=self.custom_headers[0])
+        for column in self.custom_headers[1:]:
+            self.heading(column, text=column.title())
 
         for action, file_list in file_lists.items():
             self._data[action] = {}
@@ -275,6 +282,76 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             self.change_state(action.value, 'unchecked')
         self.refresh_group_stats()
 
+    def set_copies_only(self):
+        """Check all copy items and uncheck all move and delete items."""
+        if self.exists(Action.COPY.value):
+            self.change_state(Action.COPY.value, 'checked')
+        if self.exists(Action.MOVE.value):
+            self.change_state(Action.MOVE.value, 'unchecked')
+        if self.exists(Action.DELETE.value):
+            self.change_state(Action.DELETE.value, 'unchecked')
+        self.refresh_group_stats()
+
+    def sort_by_column(self, col: str):
+        """Sort items within each action group by column ascending or descending."""
+        if getattr(self, '_sort_col', None) == col:
+            self._sort_descending = not getattr(self, '_sort_descending', False)
+        else:
+            self._sort_col = col
+            self._sort_descending = False
+
+        reverse = self._sort_descending
+        arrow = ' ▼' if reverse else ' ▲'
+
+        # Update headings
+        col0_text = self.custom_headers[0]
+        self.heading('#0', text=f'{col0_text}{arrow}' if col == '#0' else col0_text)
+        for c in self.custom_headers[1:]:
+            title = c.title()
+            self.heading(c, text=f'{title}{arrow}' if c == col else title)
+
+        # Sort children within each action group
+        for group in self.get_children(''):
+            children = self._all_group_children.get(group, list(self.get_children(group)))
+            if not children:
+                continue
+
+            try:
+                action_enum = Action.from_str(group)
+            except Exception:
+                action_enum = None
+
+            action_data = self._data.get(action_enum, {}) if action_enum else {}
+
+            def _sort_key(item_id: str, data=action_data):
+                row = data.get(item_id, {})
+                if col == 'size (source)':
+                    val = row.get('bytes (source)', 0)
+                    return float(val if isinstance(val, int | float) else 0)
+                elif col == 'size (target)':
+                    val = row.get('bytes (target)', 0)
+                    return float(val if isinstance(val, int | float) else 0)
+                elif col == 'modification date (source)':
+                    return str(row.get('modification date (source)', ''))
+                elif col == 'modification date (target)':
+                    return str(row.get('modification date (target)', ''))
+                elif col == 'source':
+                    return str(row.get('source', '')).lower()
+                elif col == 'target':
+                    return str(row.get('target', '')).lower()
+                elif col == '#0':
+                    is_checked = self.tag_has('checked', item_id)
+                    return (0 if is_checked else 1, item_id.lower())
+                else:
+                    return item_id.lower()
+
+            sorted_children = sorted(children, key=_sort_key, reverse=reverse)
+            self._all_group_children[group] = sorted_children
+
+            for idx, item_id in enumerate(sorted_children):
+                if self.exists(item_id):
+                    self.move(item_id, group, idx)
+
     def expand_all(self):
         """Expand all action groups."""
         for group in self.get_children(''):
@@ -285,19 +362,20 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         for group in self.get_children(''):
             self.item(group, open=False)
 
-    def filter_items(self, query: str) -> tuple[int, str | None]:
+    def filter_items(self, query: str = '', category: str | None = None) -> tuple[int, str | None]:
         """
-        Filter the displayed tree items by search query.
+        Filter the displayed tree items by search query and optional file type category.
 
         Detaches non-matching leaf items and empty groups, and reattaches matching items.
         Returns (match_count, first_match_id).
         """
         query = query.strip().lower()
+        cat_filter = category.lower() if category and category.lower() not in ('all', '') else None
         first_match: str | None = None
         match_count = 0
 
-        # If query is empty, restore all items and groups in their original order
-        if not query:
+        # If both query and category filter are empty, restore all items and groups in their original order
+        if not query and cat_filter is None:
             if not getattr(self, '_is_filtered', False):
                 return 0, None
             self._is_filtered = False
@@ -314,7 +392,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             return 0, None
 
         self._is_filtered = True
-        # Filter items by query
+        # Filter items by query and category
         for group, children in self._all_group_children.items():
             if not self.exists(group):
                 continue
@@ -327,10 +405,22 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                     continue
 
                 row = action_data.get(child, {})
-                src = str(row.get('source', '')).lower()
-                tgt = str(row.get('target', '')).lower()
+                src = str(row.get('source', ''))
+                tgt = str(row.get('target', ''))
+                src_l = src.lower()
+                tgt_l = tgt.lower()
 
-                if query in src or query in tgt or query in child.lower():
+                # Text search match
+                text_match = not query or (query in src_l or query in tgt_l or query in child.lower())
+
+                # File type category match
+                if cat_filter is None:
+                    cat_match = True
+                else:
+                    path_for_cat = src if (src and src != '(none)') else tgt
+                    cat_match = get_file_category_group(path_for_cat) == cat_filter
+
+                if text_match and cat_match:
                     match_count += 1
                     group_matches.append(child)
                     if first_match is None:
@@ -340,9 +430,11 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                         self.reattach(child, group, 'end')
 
                     tags = list(self.item(child, 'tags'))
-                    if 'highlight_match' not in tags:
+                    if query and 'highlight_match' not in tags:
                         tags.append('highlight_match')
-                        self.item(child, tags=tuple(tags))
+                    elif not query and 'highlight_match' in tags:
+                        tags.remove('highlight_match')
+                    self.item(child, tags=tuple(tags))
                 else:
                     if child in self.get_children(group):
                         self.detach(child)
@@ -359,6 +451,39 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                     self.detach(group)
 
         return match_count, first_match
+
+
+def get_file_category_group(path: str) -> str:
+    """Return category group: 'image', 'document', 'media', 'code', 'archive', or 'other'."""
+    if not path or path in ('-', '(none)'):
+        return 'other'
+    ext = os.path.splitext(path)[1].lower()
+    if ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico'):
+        return 'image'
+    if ext in ('.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mp3', '.wav', '.flac', '.m4a'):
+        return 'media'
+    if ext in ('.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.txt', '.csv', '.rtf'):
+        return 'document'
+    if ext in ('.zip', '.tar', '.gz', '.7z', '.rar', '.bz2', '.xz'):
+        return 'archive'
+    if ext in (
+        '.py',
+        '.js',
+        '.ts',
+        '.html',
+        '.css',
+        '.json',
+        '.xml',
+        '.yaml',
+        '.yml',
+        '.md',
+        '.sh',
+        '.bat',
+        '.ps1',
+        '.sql',
+    ):
+        return 'code'
+    return 'other'
 
 
 def get_file_type_badge(path: str) -> tuple[str, str]:
@@ -564,10 +689,15 @@ class ActionSelection:
     def _create_toolbar(self):
         toolbar_frame = ttk.Frame(self.popup, padding=(8, 4))
         toolbar_frame.grid(row=1, column=0, sticky='ew')
+        toolbar_frame.grid_columnconfigure(0, weight=1)
+
+        # Row 1: Action buttons & Quick safety buttons
+        row_actions = ttk.Frame(toolbar_frame)
+        row_actions.pack(fill='x', pady=(0, 4))
 
         # Selection shortcuts
         btn_select_all = ttk.Button(
-            toolbar_frame,
+            row_actions,
             text='Select All',
             command=lambda: self.tree.select_all(),
             width=10,
@@ -575,7 +705,7 @@ class ActionSelection:
         btn_select_all.pack(side='left', padx=(0, 4))
 
         btn_deselect_all = ttk.Button(
-            toolbar_frame,
+            row_actions,
             text='Deselect All',
             command=lambda: self.tree.deselect_all(),
             width=11,
@@ -584,7 +714,7 @@ class ActionSelection:
 
         # Expand / Collapse
         btn_expand = ttk.Button(
-            toolbar_frame,
+            row_actions,
             text='Expand All',
             command=lambda: self.tree.expand_all(),
             width=10,
@@ -592,32 +722,78 @@ class ActionSelection:
         btn_expand.pack(side='left', padx=(0, 4))
 
         btn_collapse = ttk.Button(
-            toolbar_frame,
+            row_actions,
             text='Collapse All',
             command=lambda: self.tree.collapse_all(),
             width=11,
         )
-        btn_collapse.pack(side='left', padx=(0, 12))
+        btn_collapse.pack(side='left', padx=(0, 8))
 
-        # Filter Entry
-        lbl_filter = ttk.Label(toolbar_frame, text='Filter:', font=('Segoe UI', 9))
+        ttk.Separator(row_actions, orient='vertical').pack(side='left', fill='y', padx=4)
+
+        # Quick Safety Action Buttons
+        self.btn_uncheck_deletions = ttk.Button(
+            row_actions,
+            text='🛡️ Uncheck Deletions',
+            command=lambda: self.tree.uncheck_action(Action.DELETE),
+        )
+        self.btn_uncheck_deletions.pack(side='left', padx=(6, 4))
+
+        self.btn_copies_only = ttk.Button(
+            row_actions,
+            text='🟢 Copies Only',
+            command=lambda: self.tree.set_copies_only(),
+        )
+        self.btn_copies_only.pack(side='left', padx=(0, 4))
+
+        # Row 2: Search Entry & File Type Filter Chips
+        row_filter = ttk.Frame(toolbar_frame)
+        row_filter.pack(fill='x', pady=(2, 0))
+
+        lbl_filter = ttk.Label(row_filter, text='Filter:', font=('Segoe UI', 9))
         lbl_filter.pack(side='left', padx=(0, 4))
 
         self.filter_var = tk.StringVar()
         self.filter_var.trace_add('write', self._on_filter_changed)
-        self.entry_filter = ttk.Entry(toolbar_frame, textvariable=self.filter_var, width=28)
+        self.entry_filter = ttk.Entry(row_filter, textvariable=self.filter_var, width=24)
         self.entry_filter.pack(side='left', padx=(0, 4))
 
         btn_clear_filter = ttk.Button(
-            toolbar_frame,
+            row_filter,
             text='✕',
-            command=lambda: self.filter_var.set(''),
+            command=self._on_clear_filter,
             width=3,
         )
-        btn_clear_filter.pack(side='left', padx=(0, 6))
+        btn_clear_filter.pack(side='left', padx=(0, 8))
 
-        self.lbl_filter_count = ttk.Label(toolbar_frame, text='', font=('Segoe UI', 9))
-        self.lbl_filter_count.pack(side='left')
+        ttk.Separator(row_filter, orient='vertical').pack(side='left', fill='y', padx=4)
+
+        lbl_type = ttk.Label(row_filter, text='Type:', font=('Segoe UI', 9))
+        lbl_type.pack(side='left', padx=(6, 4))
+
+        self.active_category: str = 'all'
+        self.category_buttons: dict[str, ttk.Button] = {}
+        chip_defs = [
+            ('all', 'All'),
+            ('image', '🖼️ Images'),
+            ('document', '📄 Docs'),
+            ('media', '🎬 Media'),
+            ('code', '💻 Code'),
+            ('archive', '📦 Archives'),
+        ]
+
+        for cat_id, cat_label in chip_defs:
+            btn = ttk.Button(
+                row_filter,
+                text=cat_label,
+                command=lambda c=cat_id: self._on_category_chip_clicked(c),
+                style='Accent.TButton' if cat_id == 'all' else 'TButton',
+            )
+            btn.pack(side='left', padx=2)
+            self.category_buttons[cat_id] = btn
+
+        self.lbl_filter_count = ttk.Label(row_filter, text='', font=('Segoe UI', 9))
+        self.lbl_filter_count.pack(side='left', padx=(8, 0))
 
     def create_table(self):
         frame_table = ttk.Frame(self.popup)
@@ -903,12 +1079,27 @@ class ActionSelection:
         self.lbl_stat_move.config(text=f'🔵 Move: {move_count} files ({format_size(move_bytes)})')
         self.lbl_stat_delete.config(text=f'🔴 Delete: {del_count} files ({format_size(del_bytes)})')
 
+    def _on_category_chip_clicked(self, cat: str):
+        self.active_category = cat
+        for c_key, btn in getattr(self, 'category_buttons', {}).items():
+            btn.configure(style='Accent.TButton' if c_key == cat else 'TButton')
+        self._on_filter_changed()
+
+    def _on_clear_filter(self):
+        self.active_category = 'all'
+        for c_key, btn in getattr(self, 'category_buttons', {}).items():
+            btn.configure(style='Accent.TButton' if c_key == 'all' else 'TButton')
+        self.filter_var.set('')
+
     def _on_filter_changed(self, *args):
         query = self.filter_var.get()
-        match_count, first_match = self.tree.filter_items(query)
+        active_cat = getattr(self, 'active_category', 'all')
+        match_count, first_match = self.tree.filter_items(query, category=active_cat)
 
-        if query.strip():
-            self.lbl_filter_count.config(text=f'({match_count} match{"es" if match_count != 1 else ""})')
+        is_filtering = bool(query.strip()) or (active_cat != 'all')
+        if is_filtering:
+            cat_desc = f' [{active_cat.title()}]' if active_cat != 'all' else ''
+            self.lbl_filter_count.config(text=f'({match_count} match{"es" if match_count != 1 else ""}{cat_desc})')
             if first_match is not None:
                 self.tree.see(first_match)
                 self.tree.selection_set(first_match)
@@ -924,7 +1115,7 @@ class ActionSelection:
         self.proceed = True
 
         # Restore treeview filter before collecting output selections
-        self.tree.filter_items('')
+        self.tree.filter_items('', category=None)
 
         self.files_requested_to_copy = list()
         self.files_requested_to_move = list()

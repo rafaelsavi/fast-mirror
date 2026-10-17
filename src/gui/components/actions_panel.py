@@ -51,7 +51,7 @@ class ModernButton(ttk.Button):
             res['relief'] = ('relief', 'relief', 'Relief', TkinterCfgRelief.RAISED.value, self._relief)
         return res
 
-    configure = config
+    configure = config  # type: ignore[assignment]
 
     def cget(self, key):
         if key == 'relief':

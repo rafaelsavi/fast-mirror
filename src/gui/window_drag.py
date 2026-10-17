@@ -14,7 +14,7 @@ import sys
 import tkinter as tk
 from ctypes import wintypes
 
-from utils.logger import is_test_or_agent_mode, logger
+from utils.logger import logger
 
 PAGE_EXECUTE_READWRITE = 0x40
 MEM_COMMIT = 0x1000
@@ -36,7 +36,7 @@ def install_smooth_drag_interceptor(window: tk.Tk | tk.Toplevel, target_fps: int
     """
     if os.name != 'nt' or not hasattr(ctypes, 'windll'):
         return False
-    if is_test_or_agent_mode():
+    if os.environ.get('AUTOMATIC_BACKUP_DISABLE_SMOOTH_DRAG') == '1':
         return False
     if sys.platform != 'win32' or ctypes.sizeof(ctypes.c_void_p) != 8:
         return False
@@ -138,7 +138,7 @@ def install_smooth_drag_interceptor(window: tk.Tk | tk.Toplevel, target_fps: int
         jne_skip_sync_idx = len(code) - 4
 
         # Deliver final WM_WINDOWPOSCHANGED to orig_wndproc:
-        emit(b'\x48\x83\xec\x28')  # sub rsp, 40
+        emit(b'\x48\x83\xec\x48')  # sub rsp, 0x48 (72 bytes, 16-byte aligned frame)
         emit(b'\x48\x89\x4c\x24\x30')  # mov [rsp + 48], rcx (save hwnd)
         emit(b'\x48\x89\x54\x24\x38')  # mov [rsp + 56], rdx (save uMsg)
 
@@ -157,7 +157,7 @@ def install_smooth_drag_interceptor(window: tk.Tk | tk.Toplevel, target_fps: int
 
         emit(b'\x48\x8b\x4c\x24\x30')  # mov rcx, [rsp + 48]
         emit(b'\x48\x8b\x54\x24\x38')  # mov rdx, [rsp + 56]
-        emit(b'\x48\x83\xc4\x28')  # add rsp, 40
+        emit(b'\x48\x83\xc4\x48')  # add rsp, 0x48
 
         # has_last_pos = 0
         inst_end = code_start_offset + len(code) + 10
@@ -256,7 +256,7 @@ def install_smooth_drag_interceptor(window: tk.Tk | tk.Toplevel, target_fps: int
         ctypes.memmove(stub_addr, bytes(code), len(code))
 
         user32.SetWindowLongPtrW(top_hwnd, GWLP_WNDPROC, stub_addr)
-        window._smooth_drag_hook = (mem, orig_wndproc, top_hwnd)  # type: ignore[attr-defined]
+        setattr(window, '_smooth_drag_hook', (mem, orig_wndproc, top_hwnd))  # noqa: B010
 
         def _cleanup(event):
             if event.widget == window:
@@ -287,6 +287,6 @@ def uninstall_smooth_drag_interceptor(window: tk.Tk | tk.Toplevel) -> None:
 
         user32.SetWindowLongPtrW(top_hwnd, GWLP_WNDPROC, orig_wndproc)
         kernel32.VirtualFree(mem, 0, MEM_RELEASE)
-        window._smooth_drag_hook = None  # type: ignore[attr-defined]
+        setattr(window, '_smooth_drag_hook', None)  # noqa: B010
     except Exception:
         pass

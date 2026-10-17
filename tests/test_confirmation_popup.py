@@ -1172,3 +1172,206 @@ def test_action_selection_see_in_folder_button(tmp_path, monkeypatch):
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_custom_treeview_click_to_sort_columns(tmp_path):
+    """Test click-to-sort columns ascending/descending with arrow indicators and correct numeric/text ordering."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+
+    # Create 3 files with different sizes and names
+    f_small = src / 'z_small.txt'
+    f_small.write_bytes(b'x' * 10)
+    f_large = src / 'a_large.txt'
+    f_large.write_bytes(b'x' * 1000)
+    f_medium = src / 'm_medium.txt'
+    f_medium.write_bytes(b'x' * 200)
+
+    try:
+        tree = CustomCheckboxTreeView(root)
+        tree.add_file_lists(
+            {
+                Action.COPY: [
+                    (CstmPath(f_small, root_dir=src), CstmPath(tgt / 'z_small.txt', root_dir=tgt)),
+                    (CstmPath(f_large, root_dir=src), CstmPath(tgt / 'a_large.txt', root_dir=tgt)),
+                    (CstmPath(f_medium, root_dir=src), CstmPath(tgt / 'm_medium.txt', root_dir=tgt)),
+                ]
+            },
+            default_active=[Action.COPY],
+        )
+
+        # 1. Sort by Size (Source) Ascending
+        tree.sort_by_column('size (source)')
+        assert '▲' in tree.heading('size (source)', 'text')
+        children_asc = tree._all_group_children[Action.COPY.value]
+        # Should be small (10 B), medium (200 B), large (1000 B)
+        assert 'z_small.txt' in children_asc[0]
+        assert 'm_medium.txt' in children_asc[1]
+        assert 'a_large.txt' in children_asc[2]
+
+        # 2. Sort by Size (Source) Descending (click again)
+        tree.sort_by_column('size (source)')
+        assert '▼' in tree.heading('size (source)', 'text')
+        children_desc = tree._all_group_children[Action.COPY.value]
+        # Should be large (1000 B), medium (200 B), small (10 B)
+        assert 'a_large.txt' in children_desc[0]
+        assert 'm_medium.txt' in children_desc[1]
+        assert 'z_small.txt' in children_desc[2]
+
+        # 3. Sort by Source Alphabetical Ascending
+        tree.sort_by_column('source')
+        assert '▲' in tree.heading('source', 'text')
+        children_name = tree._all_group_children[Action.COPY.value]
+        assert 'a_large.txt' in children_name[0]
+        assert 'm_medium.txt' in children_name[1]
+        assert 'z_small.txt' in children_name[2]
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_action_selection_safety_buttons(tmp_path, monkeypatch):
+    """Test 'Uncheck Deletions' and 'Copies Only' toolbar buttons."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+
+    f_copy = src / 'copy.txt'
+    f_copy.write_text('copy')
+    f_move = src / 'move.txt'
+    f_move.write_text('move')
+    f_del = tgt / 'del.txt'
+    f_del.write_text('del')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[(CstmPath(f_copy, root_dir=src), CstmPath(tgt / 'copy.txt', root_dir=tgt))],
+            files_available_to_move=[(CstmPath(f_move, root_dir=src), CstmPath(tgt / 'moved.txt', root_dir=tgt))],
+            files_available_to_delete=[CstmPath(f_del, root_dir=tgt)],
+            default_actions=[Action.COPY, Action.MOVE, Action.DELETE],
+        )
+
+        assert hasattr(popup, 'btn_uncheck_deletions')
+        assert hasattr(popup, 'btn_copies_only')
+
+        # Initially all three are checked
+        checked = popup.tree.get_checked()
+        assert any('copy::' in x for x in checked)
+        assert any('move::' in x for x in checked)
+        assert any('delete::' in x for x in checked)
+
+        # 1. Test "Uncheck Deletions"
+        popup.btn_uncheck_deletions.invoke()
+        checked_after_uncheck = popup.tree.get_checked()
+        assert any('copy::' in x for x in checked_after_uncheck)
+        assert any('move::' in x for x in checked_after_uncheck)
+        assert not any('delete::' in x for x in checked_after_uncheck)
+
+        # Re-enable deletions
+        popup.tree.change_state(Action.DELETE.value, 'checked')
+        assert any('delete::' in x for x in popup.tree.get_checked())
+
+        # 2. Test "Copies Only"
+        popup.btn_copies_only.invoke()
+        checked_copies_only = popup.tree.get_checked()
+        assert any('copy::' in x for x in checked_copies_only)
+        assert not any('move::' in x for x in checked_copies_only)
+        assert not any('delete::' in x for x in checked_copies_only)
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_action_selection_file_type_filter_chips(tmp_path, monkeypatch):
+    """Test interactive file-type filter chips (Images, Docs, Media, Code, Archives)."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+
+    f_img = src / 'photo.jpg'
+    f_img.write_text('img')
+    f_doc = src / 'report.pdf'
+    f_doc.write_text('doc')
+    f_med = src / 'music.mp3'
+    f_med.write_text('med')
+    f_code = src / 'script.py'
+    f_code.write_text('code')
+    f_arch = src / 'backup.zip'
+    f_arch.write_text('arch')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[
+                (CstmPath(f_img, root_dir=src), CstmPath(tgt / 'photo.jpg', root_dir=tgt)),
+                (CstmPath(f_doc, root_dir=src), CstmPath(tgt / 'report.pdf', root_dir=tgt)),
+                (CstmPath(f_med, root_dir=src), CstmPath(tgt / 'music.mp3', root_dir=tgt)),
+                (CstmPath(f_code, root_dir=src), CstmPath(tgt / 'script.py', root_dir=tgt)),
+                (CstmPath(f_arch, root_dir=src), CstmPath(tgt / 'backup.zip', root_dir=tgt)),
+            ],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+
+        assert 'image' in popup.category_buttons
+        assert 'document' in popup.category_buttons
+        assert 'media' in popup.category_buttons
+        assert 'code' in popup.category_buttons
+        assert 'archive' in popup.category_buttons
+
+        # Initially all 5 are visible
+        assert len(popup.tree.get_children(Action.COPY.value)) == 5
+
+        # 1. Filter by Images chip
+        popup.category_buttons['image'].invoke()
+        visible_images = popup.tree.get_children(Action.COPY.value)
+        assert len(visible_images) == 1
+        assert 'photo.jpg' in visible_images[0]
+        assert 'Image' in popup.lbl_filter_count.cget('text')
+
+        # 2. Filter by Documents chip
+        popup.category_buttons['document'].invoke()
+        visible_docs = popup.tree.get_children(Action.COPY.value)
+        assert len(visible_docs) == 1
+        assert 'report.pdf' in visible_docs[0]
+
+        # 3. Filter by Code chip
+        popup.category_buttons['code'].invoke()
+        visible_code = popup.tree.get_children(Action.COPY.value)
+        assert len(visible_code) == 1
+        assert 'script.py' in visible_code[0]
+
+        # 4. Clear filter button
+        popup._on_clear_filter()
+        assert len(popup.tree.get_children(Action.COPY.value)) == 5
+        assert popup.lbl_filter_count.cget('text') == ''
+        assert popup.active_category == 'all'
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

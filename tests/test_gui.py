@@ -1271,4 +1271,3 @@ def test_paths_panel_visual_cards_lifecycle(tmp_path):
     assert len(panel.entry_paths.get()) == 1
 
     root.destroy()
-
