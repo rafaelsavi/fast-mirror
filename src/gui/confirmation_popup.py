@@ -431,17 +431,6 @@ class ActionSelection:
         )
         self.lbl_stat_delete.pack(side='left', padx=(0, 6))
 
-        self.lbl_delete_alert = tk.Label(
-            badge_frame,
-            text='⚠️ Deletions are pending!',
-            font=('Segoe UI', 9, 'bold'),
-            bg='#fff3e0',
-            fg='#e65100',
-            padx=8,
-            pady=3,
-            relief='groove',
-        )
-
     def _create_toolbar(self):
         toolbar_frame = ttk.Frame(self.popup, padding=(8, 4))
         toolbar_frame.grid(row=1, column=0, sticky='ew')
@@ -478,20 +467,7 @@ class ActionSelection:
             command=lambda: self.tree.collapse_all(),
             width=11,
         )
-        btn_collapse.pack(side='left', padx=(0, 8))
-
-        # Safety button: Uncheck all deletions
-        btn_safe_delete = tk.Button(
-            toolbar_frame,
-            text='🛡️ Uncheck All Deletions',
-            command=lambda: self.tree.uncheck_action(Action.DELETE),
-            padx=8,
-            pady=2,
-            font=('Segoe UI', 9, 'bold'),
-            fg='#d32f2f',
-            relief='groove',
-        )
-        btn_safe_delete.pack(side='left', padx=(0, 12))
+        btn_collapse.pack(side='left', padx=(0, 12))
 
         # Filter Entry
         lbl_filter = ttk.Label(toolbar_frame, text='Filter:', font=('Segoe UI', 9))
@@ -740,11 +716,6 @@ class ActionSelection:
         self.lbl_stat_copy.config(text=f'🟢 Copy: {len(copy_lines)} files')
         self.lbl_stat_move.config(text=f'🔵 Move: {len(move_lines)} files')
         self.lbl_stat_delete.config(text=f'🔴 Delete: {len(del_lines)} files')
-
-        if len(del_lines) > 0:
-            self.lbl_delete_alert.pack(side='left', padx=(6, 0))
-        else:
-            self.lbl_delete_alert.pack_forget()
 
     def _on_filter_changed(self, *args):
         query = self.filter_var.get().strip().lower()
