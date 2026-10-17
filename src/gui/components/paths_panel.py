@@ -101,19 +101,52 @@ class PathsPanel(ttk.LabelFrame):
         excl_header = ttk.Frame(self)
         excl_header.grid(row=3, column=0, sticky='ew', padx=8, pady=(2, 2))
 
-        lbl_exclusions = ttk.Label(excl_header, text='Exclusions (glob patterns):', font=('Segoe UI', 9, 'bold'))
-        lbl_exclusions.pack(side='left')
+        lbl_exclusions = ttk.Label(excl_header, text='Ignore List (Exclusions):', font=('Segoe UI', 9, 'bold'))
+        lbl_exclusions.pack(side='left', padx=(0, 6))
+
+        self.lbl_excl_count = tk.Label(
+            excl_header,
+            text='0 patterns',
+            font=('Segoe UI', 8, 'bold'),
+            bg='#e2e8f0',
+            fg='#1e293b',
+            padx=7,
+            pady=1,
+            relief='solid',
+            bd=1,
+        )
+        self.lbl_excl_count.pack(side='left', padx=(0, 8))
+
+        self.btn_add_exclusion = ttk.Button(
+            excl_header,
+            text='➕ Add Pattern',
+            command=self._handle_add_exclusion,
+            width=13,
+        )
+        self.btn_add_exclusion.pack(side='left', padx=2)
+
+        self.btn_manage_exclusions = ttk.Button(
+            excl_header,
+            text='⚙️ Manage List...',
+            command=self.open_exclusions_manager,
+            width=15,
+        )
+        self.btn_manage_exclusions.pack(side='left', padx=2)
 
         # Row 4: Full-Width Exclusions Entry
         if entry_exclusions is not None:
             self.entry_exclusions = entry_exclusions
         else:
             self.entry_exclusions = EntryExclusions(self, width=90)
-        self.entry_exclusions.grid(row=4, column=0, sticky='ew', padx=8, pady=(2, 4))
+        self.entry_exclusions.grid(row=4, column=0, sticky='ew', padx=8, pady=(2, 3))
 
-        # Row 5: Exclusion Presets Chips
+        # Row 5: Interactive Exclusion Tag Chips
+        self.chips_box = ttk.Frame(self)
+        self.chips_box.grid(row=5, column=0, sticky='w', padx=8, pady=(0, 4))
+
+        # Row 6: Exclusion Presets Checkbuttons
         chips_frame = ttk.Frame(self)
-        chips_frame.grid(row=5, column=0, sticky='w', padx=8, pady=(0, 6))
+        chips_frame.grid(row=6, column=0, sticky='w', padx=8, pady=(0, 6))
 
         lbl_presets = ttk.Label(chips_frame, text='Presets:', font=('Segoe UI', 9, 'bold'), foreground='#555555')
         lbl_presets.pack(side='left', padx=(0, 6))
@@ -141,6 +174,10 @@ class PathsPanel(ttk.LabelFrame):
             command=lambda: self._on_preset_toggled(self.PRESET_TEMP, self._preset_vars['temp']),
         )
         self.cb_preset_temp.pack(side='left')
+
+        # Hook trace for automatic chips update
+        self.entry_exclusions.var.trace_add('write', lambda *args: self._update_exclusion_chips())
+        self._update_exclusion_chips()
 
     def _handle_add_path(self):
         if self.on_add_path:
@@ -276,6 +313,81 @@ class PathsPanel(ttk.LabelFrame):
             remaining = [p for p in current_exclusions if p not in patterns]
             self.entry_exclusions.set(remaining)
 
+    def _handle_add_exclusion(self):
+        from tkinter import simpledialog
+
+        pattern = simpledialog.askstring(
+            'Add Ignore Pattern',
+            'Enter glob pattern to ignore (e.g. *.iso, cache/**, node_modules):',
+            parent=self.winfo_toplevel(),
+        )
+        if pattern:
+            from utils.utils import sanitize_path
+
+            sanitized = sanitize_path(pattern.strip())
+            current = self.entry_exclusions.get()
+            if sanitized not in current:
+                self.entry_exclusions.set(current + [sanitized])
+
+    def open_exclusions_manager(self):
+        """Open the interactive ignore patterns manager modal."""
+        from gui.components.exclusions_modal import ExclusionsModal
+
+        ExclusionsModal(self.winfo_toplevel(), self.entry_exclusions, on_changed=self._update_exclusion_chips)
+
+    def _remove_single_exclusion(self, pattern: str):
+        current = self.entry_exclusions.get()
+        if pattern in current:
+            remaining = [p for p in current if p != pattern]
+            self.entry_exclusions.set(remaining)
+
+    def _update_exclusion_chips(self, *args):
+        if not hasattr(self, 'chips_box') or not hasattr(self, 'lbl_excl_count'):
+            return
+        patterns = self.entry_exclusions.get()
+        self.lbl_excl_count.config(text=f'{len(patterns)} patterns')
+
+        for child in self.chips_box.winfo_children():
+            child.destroy()
+
+        max_visible = 6
+        for pattern in patterns[:max_visible]:
+            chip = tk.Frame(self.chips_box, bg='#f1f5f9', bd=1, relief='solid')
+            chip.pack(side='left', padx=(0, 4), pady=1)
+
+            lbl = tk.Label(chip, text=pattern, font=('Segoe UI', 8), bg='#f1f5f9', fg='#334155', padx=5, pady=1)
+            lbl.pack(side='left')
+
+            btn_del = tk.Label(
+                chip,
+                text='✕',
+                font=('Segoe UI', 8, 'bold'),
+                bg='#f1f5f9',
+                fg='#94a3b8',
+                padx=4,
+                pady=1,
+                cursor='hand2',
+            )
+            btn_del.pack(side='left')
+            btn_del.bind('<Button-1>', lambda e, p=pattern: self._remove_single_exclusion(p))
+
+        if len(patterns) > max_visible:
+            remaining = len(patterns) - max_visible
+            lbl_more = tk.Label(
+                self.chips_box,
+                text=f'+{remaining} more...',
+                font=('Segoe UI', 8, 'bold'),
+                bg='#e2e8f0',
+                fg='#0369a1',
+                padx=6,
+                pady=1,
+                relief='solid',
+                bd=1,
+                cursor='hand2',
+            )
+            lbl_more.pack(side='left', padx=2)
+            lbl_more.bind('<Button-1>', lambda e: self.open_exclusions_manager())
+
     def set_enabled(self, enabled: bool):
         """Enable or disable interactive widgets in the paths panel."""
         state: Literal['normal', 'disabled'] = 'normal' if enabled else 'disabled'
@@ -283,6 +395,8 @@ class PathsPanel(ttk.LabelFrame):
         self.btn_manage_paths.configure(state=state)
         self.btn_check_targets.configure(state=state)
         self.btn_open_selected.configure(state=state)
+        self.btn_add_exclusion.configure(state=state)
+        self.btn_manage_exclusions.configure(state=state)
         self.cb_preset_junk.configure(state=state)
         self.cb_preset_dev.configure(state=state)
         self.cb_preset_temp.configure(state=state)

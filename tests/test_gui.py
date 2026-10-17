@@ -987,3 +987,54 @@ def test_directory_pairs_modal_and_syntax_highlighting(tmp_path):
     assert changed_flag == [True]
 
     root.destroy()
+
+
+def test_exclusions_modal_and_chips_workflow():
+    """Verify ExclusionsModal pattern management, live tester sandbox, and chip updates."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.exclusions_modal import ExclusionsModal
+    from gui.components.paths_panel import PathsPanel
+    from gui.widgets import EntryExclusions
+
+    excl = EntryExclusions(root)
+    excl.set(['Thumbs.db', '*.tmp', '.git'])
+
+    # Test modal
+    changed_flag = []
+    modal = ExclusionsModal(root, excl, on_changed=lambda: changed_flag.append(True))
+    assert len(modal._patterns) == 3
+    assert len(modal.tree.get_children()) == 3
+
+    # Test pattern testing sandbox
+    modal.test_path_var.set('photos/vacation/Thumbs.db')
+    assert 'Ignored' in modal.lbl_test_result.cget('text')
+    assert 'Thumbs.db' in modal.lbl_test_result.cget('text')
+
+    modal.test_path_var.set('photos/vacation/family.jpg')
+    assert 'Included' in modal.lbl_test_result.cget('text')
+
+    # Add a new pattern via modal
+    modal.new_pattern_var.set('*.bak')
+    modal._handle_add_pattern()
+    assert '*.bak' in modal._patterns
+
+    # Apply changes
+    modal._apply_and_close()
+    assert '*.bak' in excl.get()
+    assert changed_flag == [True]
+
+    # Test PathsPanel chip rendering
+    panel = PathsPanel(root, entry_exclusions=excl)
+    assert panel.lbl_excl_count.cget('text') == f'{len(excl.get())} patterns'
+    assert len(panel.chips_box.winfo_children()) > 0
+
+    # Test removing a single exclusion via chip action
+    panel._remove_single_exclusion('*.bak')
+    assert '*.bak' not in excl.get()
+
+    root.destroy()
