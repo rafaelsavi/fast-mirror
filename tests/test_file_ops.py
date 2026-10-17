@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 import pytest
 
-from core.backend import robust_copy, robust_delete, robust_move, unlock_file_attributes
+from core.file_ops import robust_copy, robust_delete, robust_move, unlock_file_attributes
 
 
 def test_robust_copy_success(tmp_path):

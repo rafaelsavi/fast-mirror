@@ -133,19 +133,20 @@ automatic-backup/
 │   └── tests.ipynb
 ├── src/
 │   ├── core/
-│   │   ├── backend.py        # CompareDirs, SyncDirs orchestration & re-export facade
+│   │   ├── backend.py        # CompareDirs, SyncDirs orchestration engine
 │   │   ├── file_ops.py       # Robust atomic file operations (copy, move, delete, unlock)
 │   │   ├── path_resolver.py  # Path conversions & specificity-scored root resolution
 │   │   ├── file.py           # CstmPath, File abstractions, hash calculation
 │   │   └── mirror.py         # MirrorDatabase SQLite manager
 │   ├── gui/
-│   │   ├── gui.py            # Main application window, watchdogs, scheduler
+│   │   ├── gui.py            # Main application orchestrator, watchdogs, scheduler
 │   │   ├── confirmation_popup.py # ActionSelection modal & CustomCheckboxTreeView
-│   │   ├── tray.py           # TrayableTk (pystray system tray integration)
-│   │   ├── custom_gui.py     # Backward-compatibility facade for tray and popup
+│   │   ├── health_check.py   # Non-blocking target reachability & disk space prober
+│   │   ├── tray.py           # TrayableTk system tray integration
 │   │   ├── enums.py          # Tkinter & Thread state enums
 │   │   ├── worker_thread.py  # KillableThread with sys.settrace hooks
 │   │   ├── widgets.py        # Custom Tkinter controls (Paths, Exclusions, Loggers)
+│   │   ├── components/       # Modular GUI panels (Actions, Log, Paths, Schedule, Status, Telemetry)
 │   │   └── app_icon.ico      # Application and tray icon
 │   └── utils/
 │       ├── constants.py      # ROOT_DIR locator

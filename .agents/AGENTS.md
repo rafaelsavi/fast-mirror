@@ -55,7 +55,7 @@ automatic-backup/
 │   └── tests.ipynb
 ├── src/
 │   ├── core/
-│   │   ├── backend.py        # Core synchronization engine (SyncDirs, CompareDirs) & re-exports
+│   │   ├── backend.py        # Core synchronization engine (SyncDirs, CompareDirs)
 │   │   ├── file_ops.py       # Atomic file operations (robust_copy, robust_move, robust_delete, unlock)
 │   │   ├── path_resolver.py  # Specificity-scored root path resolution & UNC path conversions
 │   │   ├── mirror.py         # SQLite-based file mirror cache (MirrorDatabase)
@@ -64,9 +64,9 @@ automatic-backup/
 │   │   ├── gui.py            # Main application window & scheduler watchdog (Gui)
 │   │   ├── confirmation_popup.py # Action selection modal & CheckboxTreeView
 │   │   ├── tray.py           # System tray integration (TrayableTk via Winico)
-│   │   ├── custom_gui.py     # Backward-compatibility facade for TrayableTk & Treeview
 │   │   ├── worker_thread.py  # Background worker thread execution & cancellation
-│   │   └── widgets.py        # Custom UI controls & form fields
+│   │   ├── widgets.py        # Custom UI controls & form fields
+│   │   └── components/       # Modular GUI panels (Actions, Log, Paths, Schedule, Status, Telemetry)
 │   └── utils/
 │       ├── utils.py          # DirectoryPair, byte conversion, path sanitizers
 │       └── logger.py         # Context-aware logging configuration and formatting

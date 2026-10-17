@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 import pytest
 
-from core.backend import get_dirs_from_path
+from core.path_resolver import get_dirs_from_path
 from gui.widgets import EntryPaths
 from utils.utils import DirectoryPair, format_elapsed_time
 

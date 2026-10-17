@@ -16,7 +16,6 @@ from core.file_ops import (
     robust_copy,
     robust_delete,
     robust_move,
-    unlock_file_attributes,
 )
 from core.mirror import MirrorDatabase
 from core.path_resolver import (
@@ -40,14 +39,6 @@ from utils.utils import (
 __all__ = [
     'CompareDirs',
     'SyncDirs',
-    'ActionSelection',
-    'robust_copy',
-    'robust_move',
-    'robust_delete',
-    'unlock_file_attributes',
-    'get_dirs_from_path',
-    '_to_path',
-    'check_length',
 ]
 
 

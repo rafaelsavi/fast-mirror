@@ -146,32 +146,50 @@ class Gui:
 
     @property
     def toggle_state_schedule(self) -> bool:
-        return self.button_schedule_sync.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
+        return self.actions_panel.button_schedule_sync.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
 
     @toggle_state_schedule.setter
     def toggle_state_schedule(self, value: bool):
-        self.button_schedule_sync.config(
+        self.actions_panel.button_schedule_sync.config(
             relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value,
             text='Schedule (ON)' if value else 'Schedule (OFF)',
         )
 
     @property
     def toggle_state_quick_compare(self) -> bool:
-        return self.button_quick_compare.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
+        return self.actions_panel.button_quick_compare.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
 
     @toggle_state_quick_compare.setter
     def toggle_state_quick_compare(self, value: bool):
-        self.button_quick_compare.config(
+        self.actions_panel.button_quick_compare.config(
             relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value
         )
 
     @property
     def toggle_state_sync_now(self) -> bool:
-        return self.button_sync_now.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
+        return self.actions_panel.button_sync_now.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
 
     @toggle_state_sync_now.setter
     def toggle_state_sync_now(self, value: bool):
-        self.button_sync_now.config(relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value)
+        self.actions_panel.button_sync_now.config(
+            relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value
+        )
+
+    @property
+    def entry_paths(self) -> EntryPaths:
+        return self.paths_panel.entry_paths
+
+    @property
+    def entry_exclusions(self) -> EntryExclusions:
+        return self.paths_panel.entry_exclusions
+
+    @property
+    def entry_times(self) -> EntryTimes:
+        return self.schedule_panel.entry_times
+
+    @property
+    def text_logger(self) -> TextLogger:
+        return self.log_panel.text_logger
 
     def create_widgets(self):
         # Configure layout root grid
@@ -253,27 +271,6 @@ class Gui:
             padding=(8, 2),
         )
         self.telemetry_bar.grid(row=2, column=0, columnspan=2, sticky='ew', padx=10, pady=(0, 6))
-
-        # Expose legacy attributes for 100% backward compatibility
-        self.entry_paths: EntryPaths = self.paths_panel.entry_paths
-        self.entry_exclusions: EntryExclusions = self.paths_panel.entry_exclusions
-        self.entry_times: EntryTimes = self.schedule_panel.entry_times
-        self.text_logger: TextLogger = self.log_panel.text_logger
-
-        self.button_quick_compare = self.actions_panel.button_quick_compare
-        self.button_open_report = self.actions_panel.button_open_report
-        self.button_report_history = self.actions_panel.button_report_history
-        self.button_sync_now = self.actions_panel.button_sync_now
-        self.button_schedule_sync = self.actions_panel.button_schedule_sync
-        self.button_new_config = self.actions_panel.button_new_config
-        self.button_save_config = self.actions_panel.button_save_config
-
-        self.checkbox_auto_scroll = self.log_panel.checkbox_auto_scroll
-        self.frame_paths = self.paths_panel
-        self.frame_buttons = self.actions_panel
-        self.frame_default_actions = self.actions_panel.frame_default_actions
-        self.frame_buttons_scheduler_days = self.schedule_panel
-        self.frame_buttons_level = self.log_panel.frame_buttons_level
 
         self._gui_initialized = True
 

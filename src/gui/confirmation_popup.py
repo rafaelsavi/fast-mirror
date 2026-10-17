@@ -32,7 +32,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self._cached_checked_by_action: dict[str, list[str]] = {}
         self.on_stats_changed = on_stats_changed
 
-        # Configure headers to preserve exact backward compatibility
+        # Configure Treeview columns and headers
         self['columns'] = self.custom_headers[1:]
         self.column('#0', width=240, minwidth=180)
         self.heading('#0', text=self.custom_headers[0])

@@ -8,10 +8,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 import pytest
 
-from core.backend import ActionSelection, SyncDirs
+from core.backend import SyncDirs
 from core.file import CstmPath
 from core.mirror import MirrorDatabase
-from gui.custom_gui import CustomCheckboxTreeView
+from gui.confirmation_popup import ActionSelection, CustomCheckboxTreeView
 from gui.widgets import Action
 from utils.utils import DirectoryPair
 
