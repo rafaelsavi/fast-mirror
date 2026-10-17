@@ -49,7 +49,7 @@ class KillableThread(threading.Thread):
     def kill(self):
         self.killed = True
 
-    def join(self, *args):
-        super().join(*args)
+    def join(self, timeout: float | None = None):
+        super().join(timeout=timeout)
         if self.exc:
             raise self.exc
