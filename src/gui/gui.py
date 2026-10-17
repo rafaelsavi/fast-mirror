@@ -33,21 +33,6 @@ from utils.logger import logger
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
 
 
-def detect_system_theme() -> str:
-    """Detect whether Windows system is currently configured for dark or light theme."""
-    try:
-        import winreg
-
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize',
-        )
-        val, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')
-        return 'light' if val == 1 else 'dark'
-    except Exception:
-        return 'dark'
-
-
 class Gui:
     """Main application orchestrator coordinating GUI panels, scheduler watchdogs, and backend execution."""
 
@@ -61,14 +46,14 @@ class Gui:
                 self.root.iconbitmap(icon_path)
         self.root.title('Automatic Backup Tool')
 
-        # Apply modern Sun Valley ttk theme matching Windows preference
-        self.current_theme = detect_system_theme()
+        # Apply modern Sun Valley light theme
         with contextlib.suppress(Exception):
-            sv_ttk.set_theme(self.current_theme)
+            sv_ttk.set_theme('light')
 
         self.config_path = os.path.join(ROOT_DIR, 'config.json')
 
         # State variables
+
         self._gui_initialized = False
         self.last_realized_sync: datetime.datetime | None = None
         self._backend_thread_holder: KillableThread | None = None
@@ -196,28 +181,17 @@ class Gui:
     def toggle_state_sync_now(self, value: bool):
         self.button_sync_now.config(relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value)
 
-    def toggle_theme(self):
-        """Toggle between Sun Valley dark and light themes and update text log colors."""
-        try:
-            new_theme = 'light' if sv_ttk.get_theme() == 'dark' else 'dark'
-            sv_ttk.set_theme(new_theme)
-            self.current_theme = new_theme
-            self.log_panel.apply_theme(new_theme)
-        except Exception as e:
-            logger.warning(f'Could not toggle theme: {e}')
-
     def create_widgets(self):
         # Configure layout root grid
         self.root.columnconfigure(0, weight=0)
         self.root.columnconfigure(1, weight=1)
         self.root.rowconfigure(1, weight=1)
 
-        # 1. Top Status & Theme Bar spanning full width
+        # 1. Top Status Bar spanning full width
         self.status_bar = StatusBar(
             self.root,
             text_var_status=self.text_var_status,
             text_var_next_appointment=self.text_var_next_appointment,
-            on_toggle_theme=self.toggle_theme,
             padding=(8, 4),
         )
         self.status_bar.grid(row=0, column=0, columnspan=2, sticky='ew', padx=10, pady=(8, 4))
@@ -277,7 +251,7 @@ class Gui:
             padding=6,
         )
         self.log_panel.grid(row=1, column=0, sticky='nsew')
-        self.log_panel.apply_theme(self.current_theme)
+        self.log_panel.apply_theme('light')
 
         # Expose legacy attributes for 100% backward compatibility
         self.entry_paths: EntryPaths = self.paths_panel.entry_paths

@@ -97,29 +97,16 @@ class LogPanel(ttk.LabelFrame):
         self.text_logger.lines.clear()
         self.text_logger.configure(state=TkinterCfgState.DISABLED.value)
 
-    def apply_theme(self, theme_name: str):
-        """Update logger colors to match dark or light theme gracefully."""
-        if theme_name == 'dark':
-            self.text_logger.configure(
-                bg='#1c1c1c',
-                fg='#e0e0e0',
-                insertbackground='#ffffff',
-                selectbackground='#333333',
-            )
-            self.text_logger.tag_config('DEBUG', foreground='#888888')
-            self.text_logger.tag_config('INFO', foreground='#e0e0e0')
-            self.text_logger.tag_config('WARNING', foreground='#ffb74d')
-            self.text_logger.tag_config('ERROR', foreground='#ef5350')
-            self.text_logger.tag_config('CRITICAL', foreground='#ff5252', underline=True)
-        else:
-            self.text_logger.configure(
-                bg='#ffffff',
-                fg='#1c1c1c',
-                insertbackground='#000000',
-                selectbackground='#b0c4de',
-            )
-            self.text_logger.tag_config('DEBUG', foreground='gray')
-            self.text_logger.tag_config('INFO', foreground='black')
-            self.text_logger.tag_config('WARNING', foreground='orange')
-            self.text_logger.tag_config('ERROR', foreground='red')
-            self.text_logger.tag_config('CRITICAL', foreground='red', underline=True)
+    def apply_theme(self, theme_name: str = 'light'):
+        """Apply clean light/day theme styling to text logger."""
+        self.text_logger.configure(
+            bg='#ffffff',
+            fg='#1c1c1c',
+            insertbackground='#000000',
+            selectbackground='#b0c4de',
+        )
+        self.text_logger.tag_config('DEBUG', foreground='gray')
+        self.text_logger.tag_config('INFO', foreground='black')
+        self.text_logger.tag_config('WARNING', foreground='orange')
+        self.text_logger.tag_config('ERROR', foreground='red')
+        self.text_logger.tag_config('CRITICAL', foreground='red', underline=True)

@@ -5,7 +5,6 @@ import winsound
 from collections.abc import Callable
 from tkinter import ttk
 
-import sv_ttk
 import ttkwidgets
 
 from core.file import CstmPath
@@ -50,22 +49,11 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self.apply_theme_tags()
 
     def apply_theme_tags(self):
-        """Configure row tinting and match highlighting based on current dark or light theme."""
-        try:
-            is_dark = sv_ttk.get_theme() == 'dark'
-        except Exception:
-            is_dark = False
-
-        if is_dark:
-            self.tag_configure('copy_tag', background='#192c21')
-            self.tag_configure('move_tag', background='#14253a')
-            self.tag_configure('delete_tag', background='#3a1c20')
-            self.tag_configure('highlight_match', background='#4a3f00')
-        else:
-            self.tag_configure('copy_tag', background='#f6fff8')
-            self.tag_configure('move_tag', background='#f0f7ff')
-            self.tag_configure('delete_tag', background='#fff5f5')
-            self.tag_configure('highlight_match', background='#fff59d')
+        """Configure row tinting and match highlighting for day mode."""
+        self.tag_configure('copy_tag', background='#f6fff8')
+        self.tag_configure('move_tag', background='#f0f7ff')
+        self.tag_configure('delete_tag', background='#fff5f5')
+        self.tag_configure('highlight_match', background='#fff59d')
 
     def _box_click(self, event):
         super()._box_click(event)
@@ -293,12 +281,6 @@ class ActionSelection:
         except Exception:
             self.popup.geometry(f'{width}x{height}')
 
-    def _is_dark_theme(self) -> bool:
-        try:
-            return sv_ttk.get_theme() == 'dark'
-        except Exception:
-            return False
-
     def create_widgets(self):
         logger.info('Collecting data for selection window. This may take a while')
 
@@ -322,25 +304,20 @@ class ActionSelection:
             winsound.PlaySound('SystemQuestion', winsound.SND_ALIAS)
 
     def _create_summary_banner(self):
-        is_dark = self._is_dark_theme()
-        banner_bg = '#252525' if is_dark else '#f8f9fa'
-        title_fg = '#ffffff' if is_dark else '#212529'
-        desc_fg = '#aaaaaa' if is_dark else '#6c757d'
-
-        banner_frame = tk.Frame(self.popup, bg=banner_bg, bd=1, relief='solid', padx=12, pady=8)
+        banner_frame = tk.Frame(self.popup, bg='#f8f9fa', bd=1, relief='solid', padx=12, pady=8)
         banner_frame.grid(row=0, column=0, sticky='ew', padx=8, pady=(8, 4))
         banner_frame.grid_columnconfigure(3, weight=1)
 
         # Title & Subtitle
-        title_box = tk.Frame(banner_frame, bg=banner_bg)
+        title_box = tk.Frame(banner_frame, bg='#f8f9fa')
         title_box.grid(row=0, column=0, columnspan=4, sticky='w', pady=(0, 6))
 
         lbl_title = tk.Label(
             title_box,
             text='Review Synchronization Actions',
             font=('Segoe UI', 11, 'bold'),
-            bg=banner_bg,
-            fg=title_fg,
+            bg='#f8f9fa',
+            fg='#212529',
         )
         lbl_title.pack(anchor='w')
 
@@ -348,28 +325,21 @@ class ActionSelection:
             title_box,
             text='Inspect planned filesystem changes. Check or uncheck items to customize what will be executed.',
             font=('Segoe UI', 8),
-            bg=banner_bg,
-            fg=desc_fg,
+            bg='#f8f9fa',
+            fg='#6c757d',
         )
         lbl_desc.pack(anchor='w')
 
         # Category Stat Badges
-        badge_frame = tk.Frame(banner_frame, bg=banner_bg)
+        badge_frame = tk.Frame(banner_frame, bg='#f8f9fa')
         badge_frame.grid(row=1, column=0, columnspan=4, sticky='w')
-
-        copy_bg = '#1a3322' if is_dark else '#e8f5e9'
-        copy_fg = '#81c784' if is_dark else '#2e7d32'
-        move_bg = '#132c44' if is_dark else '#e3f2fd'
-        move_fg = '#64b5f6' if is_dark else '#1565c0'
-        del_bg = '#3b1d20' if is_dark else '#ffebee'
-        del_fg = '#e57373' if is_dark else '#c62828'
 
         self.lbl_stat_copy = tk.Label(
             badge_frame,
             text='🟢 Copy: 0 files',
             font=('Segoe UI', 9),
-            bg=copy_bg,
-            fg=copy_fg,
+            bg='#e8f5e9',
+            fg='#2e7d32',
             padx=8,
             pady=3,
             relief='groove',
@@ -380,8 +350,8 @@ class ActionSelection:
             badge_frame,
             text='🔵 Move: 0 files',
             font=('Segoe UI', 9),
-            bg=move_bg,
-            fg=move_fg,
+            bg='#e3f2fd',
+            fg='#1565c0',
             padx=8,
             pady=3,
             relief='groove',
@@ -392,8 +362,8 @@ class ActionSelection:
             badge_frame,
             text='🔴 Delete: 0 files',
             font=('Segoe UI', 9),
-            bg=del_bg,
-            fg=del_fg,
+            bg='#ffebee',
+            fg='#c62828',
             padx=8,
             pady=3,
             relief='groove',
@@ -404,8 +374,8 @@ class ActionSelection:
             badge_frame,
             text='⚠️ Deletions are pending!',
             font=('Segoe UI', 9, 'bold'),
-            bg='#422b10' if is_dark else '#fff3e0',
-            fg='#ffb74d' if is_dark else '#e65100',
+            bg='#fff3e0',
+            fg='#e65100',
             padx=8,
             pady=3,
             relief='groove',

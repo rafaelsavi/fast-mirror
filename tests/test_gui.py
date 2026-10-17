@@ -155,7 +155,7 @@ def test_gui_reset_config_restores_safe_defaults(tmp_path, monkeypatch):
     gui.root.destroy()
 
 
-def test_status_bar_updates_and_theme_toggle():
+def test_status_bar_updates():
     try:
         root = tk.Tk()
         root.withdraw()
@@ -166,21 +166,19 @@ def test_status_bar_updates_and_theme_toggle():
 
     status_var = tk.StringVar(value='STANDBY')
     sched_var = tk.StringVar(value='Tomorrow 10:00')
-    theme_toggled = []
 
     bar = StatusBar(
         root,
         text_var_status=status_var,
         text_var_next_appointment=sched_var,
-        on_toggle_theme=lambda: theme_toggled.append(True),
     )
 
     assert bar.text_var_status.get() == 'STANDBY'
+    assert bar.text_var_next_appointment.get() == 'Tomorrow 10:00'
     status_var.set('RUNNING')
+    sched_var.set('Next Week')
     assert bar.text_var_status.get() == 'RUNNING'
-
-    bar._handle_theme_toggle()
-    assert len(theme_toggled) == 1
+    assert bar.text_var_next_appointment.get() == 'Next Week'
 
     root.destroy()
 
@@ -276,7 +274,7 @@ def test_actions_panel_interactions():
     root.destroy()
 
 
-def test_log_panel_clear_and_theme_switching():
+def test_log_panel_clear_and_styling():
     try:
         root = tk.Tk()
         root.withdraw()
@@ -293,26 +291,22 @@ def test_log_panel_clear_and_theme_switching():
     assert log_panel.text_logger.get('1.0', tk.END).strip() == ''
     assert len(log_panel.text_logger.lines) == 0
 
-    log_panel.apply_theme('dark')
-    assert log_panel.text_logger.cget('bg') == '#1c1c1c'
-
     log_panel.apply_theme('light')
     assert log_panel.text_logger.cget('bg') == '#ffffff'
 
     root.destroy()
 
 
-def test_gui_detect_system_theme_and_toggle(monkeypatch):
+def test_gui_initialization_with_light_theme(monkeypatch):
     try:
         root = tk.Tk()
         root.withdraw()
     except tk.TclError:
         pytest.skip('Tkinter display not available')
 
-    from gui.gui import Gui, detect_system_theme
+    import sv_ttk
 
-    theme = detect_system_theme()
-    assert theme in ('light', 'dark')
+    from gui.gui import Gui
 
     monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
     monkeypatch.setattr(Gui, 'load_config', lambda self: None)
@@ -320,10 +314,11 @@ def test_gui_detect_system_theme_and_toggle(monkeypatch):
     monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
 
     gui = Gui()
-    initial_theme = gui.current_theme
-    gui.toggle_theme()
-    assert gui.current_theme != initial_theme
-    gui.toggle_theme()
-    assert gui.current_theme == initial_theme
+    assert sv_ttk.get_theme() == 'light'
+    assert gui.status_bar is not None
+    assert gui.paths_panel is not None
+    assert gui.actions_panel is not None
+    assert gui.schedule_panel is not None
+    assert gui.log_panel is not None
 
     gui.root.destroy()
