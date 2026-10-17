@@ -202,8 +202,8 @@ def test_actions_panel_all_clicks_and_corner_cases(monkeypatch, tmp_path):
     gui.root.destroy()
 
 
-def test_schedule_panel_presets_and_corner_cases(monkeypatch):
-    """Test schedule quick day presets and corner cases in time formatting."""
+def test_schedule_panel_and_corner_cases(monkeypatch):
+    """Test schedule checkboxes, enabled state toggling, and corner cases in time formatting."""
     try:
         gui = _setup_test_gui(monkeypatch)
     except tk.TclError:
@@ -211,16 +211,14 @@ def test_schedule_panel_presets_and_corner_cases(monkeypatch):
 
     sp = gui.schedule_panel
 
-    # Click Mon-Fri preset
-    sp.btn_weekdays.invoke()
-    assert sorted(gui.week_days.get()) == ['FRI', 'MON', 'THU', 'TUE', 'WED']
+    # Verify checkboxes exist for all week days
+    assert set(sp.checkbox_week_days.keys()) == set(gui.week_days.options)
 
-    # Click All days preset
-    sp.btn_all_days.invoke()
-    assert len(gui.week_days.get()) == 7
+    # Toggle days via week_days model
+    gui.week_days.set(['MON', 'FRI'])
+    assert sorted(gui.week_days.get()) == ['FRI', 'MON']
 
-    # Click Clear days preset
-    sp.btn_clear_days.invoke()
+    gui.week_days.set([])
     assert gui.week_days.get() == []
 
     # Corner Cases: EntryTimes with spaces, empty strings, and invalid times
@@ -234,12 +232,12 @@ def test_schedule_panel_presets_and_corner_cases(monkeypatch):
 
     # Test set_enabled state toggling
     sp.set_enabled(False)
-    assert str(sp.btn_weekdays.cget('state')) == 'disabled'
-    assert str(sp.btn_all_days.cget('state')) == 'disabled'
-    assert str(sp.btn_clear_days.cget('state')) == 'disabled'
+    for cb in sp.checkbox_week_days.values():
+        assert str(cb.cget('state')) == 'disabled'
 
     sp.set_enabled(True)
-    assert str(sp.btn_weekdays.cget('state')) == 'normal'
+    for cb in sp.checkbox_week_days.values():
+        assert str(cb.cget('state')) == 'normal'
 
     gui.root.destroy()
 

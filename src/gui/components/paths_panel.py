@@ -92,10 +92,53 @@ class PathsPanel(ttk.LabelFrame):
         )
         self.btn_toggle_view.pack(side='right', padx=2)
 
-        # Row 1: Cards View & Raw Text Editor
-        self.cards_frame = ttk.Frame(self)
-        self.cards_frame.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
-        self.cards_frame.columnconfigure(0, weight=1)
+        # Row 1: Cards View (Scrollable Canvas Container) & Raw Text Editor
+        self.cards_container = ttk.Frame(self)
+        self.cards_container.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
+        self.cards_container.columnconfigure(0, weight=1)
+
+        self.cards_canvas = tk.Canvas(
+            self.cards_container,
+            bg='#f8fafc',
+            bd=1,
+            relief='solid',
+            highlightthickness=0,
+            height=215,
+        )
+        self.cards_canvas.grid(row=0, column=0, sticky='nsew')
+
+        self.cards_scrollbar = ttk.Scrollbar(
+            self.cards_container,
+            orient='vertical',
+            command=self.cards_canvas.yview,
+        )
+        self.cards_scrollbar.grid(row=0, column=1, sticky='ns')
+        self.cards_canvas.configure(yscrollcommand=self.cards_scrollbar.set)
+
+        self.cards_scrollable_frame = tk.Frame(self.cards_canvas, bg='#f8fafc')
+        self.cards_canvas_window = self.cards_canvas.create_window(
+            (0, 0),
+            window=self.cards_scrollable_frame,
+            anchor='nw',
+        )
+
+        self.cards_scrollable_frame.bind(
+            '<Configure>',
+            lambda e: self._on_cards_frame_configure(),
+        )
+        self.cards_canvas.bind(
+            '<Configure>',
+            lambda e: self.cards_canvas.itemconfig(self.cards_canvas_window, width=e.width),
+        )
+
+        def _on_mousewheel(event):
+            self.cards_canvas.yview_scroll(int(-1 * (event.delta / 120)), 'units')
+
+        self.cards_canvas.bind('<Enter>', lambda e: self.cards_canvas.bind_all('<MouseWheel>', _on_mousewheel))
+        self.cards_canvas.bind('<Leave>', lambda e: self.cards_canvas.unbind_all('<MouseWheel>'))
+
+        # Maintain cards_frame as cards_scrollable_frame for seamless compatibility
+        self.cards_frame = self.cards_scrollable_frame
 
         if entry_paths is not None:
             self.entry_paths = entry_paths
@@ -150,12 +193,22 @@ class PathsPanel(ttk.LabelFrame):
         )
         self.btn_manage_exclusions.pack(side='left', padx=2)
 
-        # Row 4: Full-Width Exclusions Entry
+        self.btn_toggle_excl_view = ttk.Button(
+            excl_header,
+            text='📝 Raw Text',
+            command=self._toggle_exclusions_view,
+            width=11,
+        )
+        self.btn_toggle_excl_view.pack(side='right', padx=2)
+
+        # Row 4: Full-Width Exclusions Entry (hidden by default to avoid duplicate clutter)
         if entry_exclusions is not None:
             self.entry_exclusions = entry_exclusions
         else:
             self.entry_exclusions = EntryExclusions(self, width=90)
         self.entry_exclusions.grid(row=4, column=0, sticky='ew', padx=8, pady=(2, 3))
+        self.entry_exclusions.grid_remove()
+        self._exclusions_view_mode = 'chips'
 
         # Row 5: Interactive Exclusion Tag Chips
         self.chips_box = ttk.Frame(self)
@@ -286,16 +339,37 @@ class PathsPanel(ttk.LabelFrame):
     def _toggle_view(self):
         """Toggle between modern visual cards view and raw monospace text editor."""
         if self._view_mode == 'cards':
-            self.cards_frame.grid_remove()
+            self.cards_container.grid_remove()
             self.entry_paths.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
             self.btn_toggle_view.config(text='🗂️ Cards View')
             self._view_mode = 'text'
         else:
             self.entry_paths.grid_remove()
-            self.cards_frame.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
+            self.cards_container.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
             self.btn_toggle_view.config(text='📝 Raw Text')
             self._view_mode = 'cards'
             self.refresh_cards()
+
+    def _toggle_exclusions_view(self):
+        """Toggle between modern tag chips view and raw text box for exclusions."""
+        if getattr(self, '_exclusions_view_mode', 'chips') == 'chips':
+            self.entry_exclusions.grid()
+            self.btn_toggle_excl_view.config(text='🏷️ Chips View')
+            self._exclusions_view_mode = 'text'
+        else:
+            self.entry_exclusions.grid_remove()
+            self.btn_toggle_excl_view.config(text='📝 Raw Text')
+            self._exclusions_view_mode = 'chips'
+
+    def _on_cards_frame_configure(self):
+        """Adjust canvas scrollable region and dynamic height based on pair count."""
+        if not hasattr(self, 'cards_canvas'):
+            return
+        self.cards_canvas.configure(scrollregion=self.cards_canvas.bbox('all'))
+        req_h = self.cards_scrollable_frame.winfo_reqheight()
+        if req_h > 0:
+            target_h = max(70, min(req_h + 4, 215))
+            self.cards_canvas.configure(height=target_h)
 
     def refresh_cards(self):
         """Render modern interactive cards for each directory backup pair."""
@@ -305,7 +379,8 @@ class PathsPanel(ttk.LabelFrame):
         for child in self.cards_frame.winfo_children():
             child.destroy()
 
-        pairs = self.entry_paths.get()
+        raw_pairs = self.entry_paths.get_raw_pairs()
+        pairs = [(s, t) for s, t, _ in raw_pairs if s and t]
         if not pairs:
             empty_frame = tk.Frame(self.cards_frame, bg='#f8fafc', bd=1, relief='solid', padx=12, pady=10)
             empty_frame.pack(fill='x', padx=2, pady=3)
@@ -321,7 +396,7 @@ class PathsPanel(ttk.LabelFrame):
             return
 
         for idx, (source, target) in enumerate(pairs):
-            card = tk.Frame(self.cards_frame, bg='#ffffff', bd=1, relief='solid', padx=8, pady=5)
+            card = tk.Frame(self.cards_frame, bg='#ffffff', bd=1, relief='solid', padx=6, pady=3)
             card.pack(fill='x', padx=2, pady=2)
             card.columnconfigure(1, weight=1)
 
@@ -334,7 +409,7 @@ class PathsPanel(ttk.LabelFrame):
                 padx=5,
                 pady=1,
             )
-            lbl_idx.grid(row=0, column=0, rowspan=2, padx=(0, 8), sticky='n')
+            lbl_idx.grid(row=0, column=0, rowspan=2, padx=(0, 6), sticky='n')
 
             path_row = tk.Frame(card, bg='#ffffff')
             path_row.grid(row=0, column=1, sticky='w')
@@ -353,23 +428,23 @@ class PathsPanel(ttk.LabelFrame):
             lbl_src.bind('<Double-1>', lambda e, p=source: self._open_folder_path(p))
 
             lbl_arrow = tk.Label(path_row, text=' ──▶ ', font=('Segoe UI', 9, 'bold'), bg='#ffffff', fg='#0d9488')
-            lbl_arrow.pack(side='left', padx=4)
+            lbl_arrow.pack(side='left', padx=3)
 
-            tgt_exists = os.path.exists(target)
-            tgt_icon = '🖥️' if target.startswith('\\\\') else '📁'
+            is_unc = target.startswith('\\\\') or target.startswith('//')
+            tgt_icon = '🖥️' if is_unc else '📁'
             lbl_tgt = tk.Label(
                 path_row,
                 text=f'{tgt_icon} {target}',
                 font=('Segoe UI', 9),
                 bg='#ffffff',
-                fg='#0284c7' if tgt_exists else '#64748b',
+                fg='#0284c7',
                 cursor='hand2',
             )
             lbl_tgt.pack(side='left')
             lbl_tgt.bind('<Double-1>', lambda e, p=target: self._open_folder_path(p))
 
             meta_row = tk.Frame(card, bg='#ffffff')
-            meta_row.grid(row=1, column=1, sticky='ew', pady=(3, 0))
+            meta_row.grid(row=1, column=1, sticky='ew', pady=(2, 0))
             meta_row.columnconfigure(0, weight=1)
 
             cached = self._pair_health_cache.get(target)
@@ -383,14 +458,11 @@ class PathsPanel(ttk.LabelFrame):
                 else:
                     h_text = f'🔴 {cached.error or "Offline"}'
                     h_bg, h_fg = '#fee2e2', '#b91c1c'
-            elif tgt_exists:
-                h_text = '🟢 Target Reachable'
-                h_bg, h_fg = '#dcfce7', '#15803d'
             elif not src_exists:
                 h_text = '🔴 Source Missing'
                 h_bg, h_fg = '#fee2e2', '#b91c1c'
             else:
-                h_text = '⚪ Ready to verify'
+                h_text = '⚪ Unchecked'
                 h_bg, h_fg = '#f1f5f9', '#475569'
 
             lbl_health = tk.Label(
@@ -399,7 +471,7 @@ class PathsPanel(ttk.LabelFrame):
                 font=('Segoe UI', 8),
                 bg=h_bg,
                 fg=h_fg,
-                padx=6,
+                padx=5,
                 pady=1,
                 relief='solid',
                 bd=1,
@@ -415,7 +487,7 @@ class PathsPanel(ttk.LabelFrame):
                 width=10,
                 command=lambda s=source, t=target: self._open_pair_in_explorer(s, t),
             )
-            btn_exp.pack(side='left', padx=2)
+            btn_exp.pack(side='left', padx=1)
 
             btn_prb = ttk.Button(
                 btn_box,
@@ -423,7 +495,7 @@ class PathsPanel(ttk.LabelFrame):
                 width=8,
                 command=lambda s=source, t=target: self._probe_single_pair(s, t),
             )
-            btn_prb.pack(side='left', padx=2)
+            btn_prb.pack(side='left', padx=1)
 
             btn_del = ttk.Button(
                 btn_box,
@@ -431,7 +503,7 @@ class PathsPanel(ttk.LabelFrame):
                 width=3,
                 command=lambda s=source, t=target: self._remove_single_pair(s, t),
             )
-            btn_del.pack(side='left', padx=2)
+            btn_del.pack(side='left', padx=1)
 
     def _probe_single_pair(self, source: str, target: str):
         self.lbl_health_status.config(
@@ -461,7 +533,7 @@ class PathsPanel(ttk.LabelFrame):
         probe_targets_async([target], _on_single_result)
 
     def _remove_single_pair(self, source: str, target: str):
-        pairs = self.entry_paths.get()
+        pairs = [(s, t) for s, t, _ in self.entry_paths.get_raw_pairs() if s and t]
         remaining = [p for p in pairs if not (p[0] == source and p[1] == target)]
         self.entry_paths.set(remaining)
         top = self.winfo_toplevel()

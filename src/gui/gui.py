@@ -211,6 +211,7 @@ class Gui:
         return self.log_panel.text_logger
 
     def create_widgets(self):
+        self.root._gui = self
         # Configure layout root grid
         self.root.columnconfigure(0, weight=0)
         self.root.columnconfigure(1, weight=1)
