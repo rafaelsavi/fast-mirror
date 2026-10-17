@@ -7,7 +7,7 @@ from gui.widgets import LogLevels, TextLogger
 
 
 class LogPanel(ttk.LabelFrame):
-    """Panel hosting the real-time activity log viewer, level filters, and auto-scroll controls."""
+    """Panel hosting the real-time activity log viewer, level filters, live search, and auto-scroll controls."""
 
     def __init__(
         self,
@@ -26,15 +26,21 @@ class LogPanel(ttk.LabelFrame):
         self.on_update_log_levels = on_update_log_levels
         self.on_toggle_auto_scroll = on_toggle_auto_scroll
 
+        self.search_var = tk.StringVar()
+        self.search_count_var = tk.StringVar(value='')
+        self._search_matches: list[str] = []
+        self._current_match_idx: int = -1
+
         self._create_widgets(text_logger)
+        self.search_var.trace_add('write', self._on_search_query_changed)
 
     def _create_widgets(self, text_logger: TextLogger | None):
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(2, weight=1)
 
-        # Header toolbar (Levels, Auto-scroll, Clear)
+        # Toolbar Row 0: Log Level Filters on left, Copy/Clear/Auto-scroll on right
         toolbar = ttk.Frame(self)
-        toolbar.grid(row=0, column=0, sticky='ew', padx=8, pady=(4, 6))
+        toolbar.grid(row=0, column=0, sticky='ew', padx=8, pady=(4, 4))
 
         lbl_filter = ttk.Label(toolbar, text='Levels:', font=('Segoe UI', 9, 'bold'))
         lbl_filter.pack(side='left', padx=(0, 6))
@@ -53,7 +59,7 @@ class LogPanel(ttk.LabelFrame):
             cb.pack(side='left', padx=4)
             self.check_box_log_level[level] = cb
 
-        # Right side of toolbar: Auto-scroll checkbox & Clear button
+        # Right side: Auto-scroll, Clear, and Copy
         self.checkbox_auto_scroll = ttk.Checkbutton(
             toolbar,
             text='Auto-scroll',
@@ -62,21 +68,71 @@ class LogPanel(ttk.LabelFrame):
         )
         self.checkbox_auto_scroll.pack(side='right', padx=(6, 2))
 
-        btn_clear = ttk.Button(
+        self.btn_clear = ttk.Button(
             toolbar,
             text='Clear Log',
             command=self.clear_log,
-            width=10,
+            width=9,
         )
-        btn_clear.pack(side='right', padx=(2, 6))
+        self.btn_clear.pack(side='right', padx=3)
 
-        # Main Log Text View
+        self.btn_copy = ttk.Button(
+            toolbar,
+            text='📋 Copy Log',
+            command=self.copy_log,
+            width=11,
+        )
+        self.btn_copy.pack(side='right', padx=3)
+
+        # Toolbar Row 1: Search & Filter inside Log Console
+        search_bar = ttk.Frame(self)
+        search_bar.grid(row=1, column=0, sticky='ew', padx=8, pady=(0, 6))
+
+        lbl_find = ttk.Label(search_bar, text='🔍 Find in log:', font=('Segoe UI', 9))
+        lbl_find.pack(side='left', padx=(0, 4))
+
+        self.entry_search = ttk.Entry(search_bar, textvariable=self.search_var, width=32)
+        self.entry_search.pack(side='left', padx=(0, 2))
+
+        btn_clear_search = ttk.Button(
+            search_bar,
+            text='✕',
+            width=3,
+            command=self._clear_search,
+        )
+        btn_clear_search.pack(side='left', padx=(0, 4))
+
+        btn_prev = ttk.Button(
+            search_bar,
+            text='▲',
+            width=3,
+            command=self._prev_match,
+        )
+        btn_prev.pack(side='left', padx=1)
+
+        btn_next = ttk.Button(
+            search_bar,
+            text='▼',
+            width=3,
+            command=self._next_match,
+        )
+        btn_next.pack(side='left', padx=1)
+
+        lbl_count = ttk.Label(
+            search_bar,
+            textvariable=self.search_count_var,
+            font=('Segoe UI', 8),
+            foreground='#555555',
+        )
+        lbl_count.pack(side='left', padx=(6, 0))
+
+        # Main Log Text View (Row 2)
         if text_logger is not None:
             self.text_logger = text_logger
         else:
             self.text_logger = TextLogger(self, state=TkinterCfgState.DISABLED.value, height=28, width=135)
         self.text_logger.set_log_levels(self.log_levels.get())
-        self.text_logger.grid(row=1, column=0, sticky='nsew', padx=8, pady=(0, 8))
+        self.text_logger.grid(row=2, column=0, sticky='nsew', padx=8, pady=(0, 8))
 
     def _handle_level_change(self):
         self.text_logger.set_log_levels(self.log_levels.get())
@@ -84,6 +140,7 @@ class LogPanel(ttk.LabelFrame):
             self.on_update_log_levels()
         if self.toggle_auto_scroll.get():
             self.text_logger.yview(tk.END)
+        self._on_search_query_changed()
 
     def _handle_auto_scroll_toggle(self):
         if self.on_toggle_auto_scroll:
@@ -91,11 +148,73 @@ class LogPanel(ttk.LabelFrame):
         if self.toggle_auto_scroll.get():
             self.text_logger.yview(tk.END)
 
+    def _clear_search(self):
+        self.search_var.set('')
+
+    def _on_search_query_changed(self, *args):
+        query = self.search_var.get().strip()
+        self.text_logger.tag_remove('SEARCH_MATCH', '1.0', tk.END)
+        self.text_logger.tag_remove('SEARCH_CURRENT', '1.0', tk.END)
+        self._search_matches.clear()
+        self._current_match_idx = -1
+
+        if not query:
+            self.search_count_var.set('')
+            return
+
+        pos = '1.0'
+        while True:
+            pos = self.text_logger.search(query, pos, stopindex=tk.END, nocase=True)
+            if not pos:
+                break
+            end_pos = f'{pos}+{len(query)}c'
+            self.text_logger.tag_add('SEARCH_MATCH', pos, end_pos)
+            self._search_matches.append(pos)
+            pos = end_pos
+
+        count = len(self._search_matches)
+        if count > 0:
+            self._current_match_idx = 0
+            self._highlight_current_match()
+            self.search_count_var.set(f'1 of {count} match{"es" if count != 1 else ""}')
+        else:
+            self.search_count_var.set('0 matches')
+
+    def _highlight_current_match(self):
+        if 0 <= self._current_match_idx < len(self._search_matches):
+            self.text_logger.tag_remove('SEARCH_CURRENT', '1.0', tk.END)
+            pos = self._search_matches[self._current_match_idx]
+            query = self.search_var.get().strip()
+            end_pos = f'{pos}+{len(query)}c'
+            self.text_logger.tag_add('SEARCH_CURRENT', pos, end_pos)
+            self.text_logger.see(pos)
+            count = len(self._search_matches)
+            self.search_count_var.set(f'{self._current_match_idx + 1} of {count} match{"es" if count != 1 else ""}')
+
+    def _next_match(self):
+        if self._search_matches:
+            self._current_match_idx = (self._current_match_idx + 1) % len(self._search_matches)
+            self._highlight_current_match()
+
+    def _prev_match(self):
+        if self._search_matches:
+            self._current_match_idx = (self._current_match_idx - 1) % len(self._search_matches)
+            self._highlight_current_match()
+
+    def copy_log(self):
+        content = self.text_logger.get('1.0', tk.END)
+        if content.strip():
+            self.clipboard_clear()
+            self.clipboard_append(content)
+            self.btn_copy.config(text='✓ Copied!')
+            self.after(1500, lambda: self.btn_copy.config(text='📋 Copy Log'))
+
     def clear_log(self):
         self.text_logger.configure(state=TkinterCfgState.NORMAL.value)
         self.text_logger.delete('1.0', tk.END)
         self.text_logger.lines.clear()
         self.text_logger.configure(state=TkinterCfgState.DISABLED.value)
+        self._on_search_query_changed()
 
     def apply_theme(self, theme_name: str = 'light'):
         """Apply clean light/day theme styling to text logger."""
@@ -110,3 +229,5 @@ class LogPanel(ttk.LabelFrame):
         self.text_logger.tag_config('WARNING', foreground='orange')
         self.text_logger.tag_config('ERROR', foreground='red')
         self.text_logger.tag_config('CRITICAL', foreground='red', underline=True)
+        self.text_logger.tag_config('SEARCH_MATCH', background='#fff3bf', foreground='#000000')
+        self.text_logger.tag_config('SEARCH_CURRENT', background='#ff922b', foreground='#ffffff')

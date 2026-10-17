@@ -6,6 +6,7 @@ import threading
 import time
 import tkinter as tk
 from collections import Counter
+from collections.abc import Callable
 from copy import copy
 
 import pandas as pd
@@ -366,6 +367,7 @@ class SyncDirs:
         max_retries: int = 3,
         retry_delay: float = 1.0,
         backoff_factor: float = 2.0,
+        progress_callback: Callable[[str, int, int, int, str, str], None] | None = None,
     ):
         logger.info('---------------------------')
         logger.info('Initializing synchronization')
@@ -379,6 +381,7 @@ class SyncDirs:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.backoff_factor = backoff_factor
+        self.progress_callback = progress_callback
         self.cancel_requested = threading.Event()
 
         # Initialize variables
@@ -472,6 +475,7 @@ class SyncDirs:
         n_files = len(self.files_requested_to_copy)
         start_time = time.time()
         counter_size = 0
+        copy_speed = ''
 
         for i, (source, target) in enumerate(self.files_requested_to_copy, 1):
             if hasattr(self, 'cancel_requested') and self.cancel_requested.is_set():
@@ -487,6 +491,9 @@ class SyncDirs:
                 if not os.path.isfile(source):
                     logger.warning(f'Copy skipped because source file no longer exists: <{source}>')
                     self.files_copied.append(((source, target), False))
+                    if self.progress_callback is not None:
+                        with contextlib.suppress(Exception):
+                            self.progress_callback('copy', i, n_files, counter_size, str(source), copy_speed)
                     continue
 
                 # JIT Self-Healing: If target file already physically exists and matches source, avoid re-copying
@@ -506,6 +513,9 @@ class SyncDirs:
                             counter_size += target_stat.st_size
                             success = True
                             self.files_copied.append(((source, target), success))
+                            if self.progress_callback is not None:
+                                with contextlib.suppress(Exception):
+                                    self.progress_callback('copy', i, n_files, counter_size, str(source), copy_speed)
                             continue
                     except Exception as jit_err:
                         logger.debug(f'JIT self-heal check skipped for <{target}>: {jit_err}')
@@ -536,6 +546,9 @@ class SyncDirs:
                 logger.error(f'There was an error while copying file <{source}>. Exception: {error_msg}')
 
             self.files_copied.append(((source, target), success))
+            if self.progress_callback is not None:
+                with contextlib.suppress(Exception):
+                    self.progress_callback('copy', i, n_files, counter_size, str(source), copy_speed)
 
     def move_files(self):
         n_files = len(self.files_requested_to_move)
@@ -563,6 +576,9 @@ class SyncDirs:
                                 self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
                             success = True
                             self.files_moved.append(((source, target), success))
+                            if self.progress_callback is not None:
+                                with contextlib.suppress(Exception):
+                                    self.progress_callback('move', i, n_files, 0, str(source), '')
                             continue
                         except Exception as jit_err:
                             logger.debug(f'JIT move self-heal check skipped for <{target}>: {jit_err}')
@@ -578,6 +594,9 @@ class SyncDirs:
                             logger.debug(f'Could not remove phantom move source from mirror: {rm_err}')
                         success = False
                         self.files_moved.append(((source, target), success))
+                        if self.progress_callback is not None:
+                            with contextlib.suppress(Exception):
+                                self.progress_callback('move', i, n_files, 0, str(source), '')
                         continue
 
                 size_str = get_size_as_str(source) if os.path.isfile(source) else 'N/A'
@@ -602,6 +621,9 @@ class SyncDirs:
                 logger.error(f'There was an error while moving file <{source}>. Exception: {error_msg}')
 
             self.files_moved.append(((source, target), success))
+            if self.progress_callback is not None:
+                with contextlib.suppress(Exception):
+                    self.progress_callback('move', i, n_files, 0, str(source), '')
 
     def delete_files(self):
         n_files = len(self.files_requested_to_delete)
@@ -620,6 +642,9 @@ class SyncDirs:
             except Exception as e:
                 logger.error(f'Could not identify root directory for deletion target <{path}>: {e}')
                 self.files_deleted.append((path, False))
+                if self.progress_callback is not None:
+                    with contextlib.suppress(Exception):
+                        self.progress_callback('delete', i, n_files, 0, str(path), '')
                 continue
 
             if not os.path.isfile(path):
@@ -649,6 +674,9 @@ class SyncDirs:
                     logger.error(f'There was an error while deleting file <{path}>. Exception: {error_msg}')
 
             self.files_deleted.append((path, success))
+            if self.progress_callback is not None:
+                with contextlib.suppress(Exception):
+                    self.progress_callback('delete', i, n_files, 0, str(path), '')
 
     def delete_empty_dirs(self):
         """Delete empty directories from folders where files were deleted or moved from"""

@@ -14,8 +14,10 @@ from core.mirror import MirrorDatabase
 from gui.components.actions_panel import ActionsPanel
 from gui.components.log_panel import LogPanel
 from gui.components.paths_panel import PathsPanel
+from gui.components.reports_window import ReportsWindow
 from gui.components.schedule_panel import SchedulePanel
 from gui.components.status_bar import StatusBar
+from gui.components.telemetry_bar import TelemetryBar
 from gui.enums import BackendThreadStatus, TkinterCfgRelief
 from gui.scheduler import calculate_next_run
 from gui.tray import TrayableTk
@@ -203,6 +205,7 @@ class Gui:
             on_save_config=self.button_action_save_config,
             on_quick_compare=self.button_action_quick_compare,
             on_open_report=self.button_action_open_report,
+            on_report_history=self.button_action_open_report_history,
             on_sync_now=self.button_action_sync_now,
             on_schedule_sync=self.button_action_schedule_sync,
             padding=6,
@@ -243,6 +246,14 @@ class Gui:
         self.log_panel.grid(row=1, column=0, sticky='nsew')
         self.log_panel.apply_theme('light')
 
+        # 4. Bottom Telemetry Bar spanning full width
+        self.telemetry_bar = TelemetryBar(
+            self.root,
+            on_stop=self.request_stop_operation,
+            padding=(8, 2),
+        )
+        self.telemetry_bar.grid(row=2, column=0, columnspan=2, sticky='ew', padx=10, pady=(0, 6))
+
         # Expose legacy attributes for 100% backward compatibility
         self.entry_paths: EntryPaths = self.paths_panel.entry_paths
         self.entry_exclusions: EntryExclusions = self.paths_panel.entry_exclusions
@@ -251,6 +262,7 @@ class Gui:
 
         self.button_quick_compare = self.actions_panel.button_quick_compare
         self.button_open_report = self.actions_panel.button_open_report
+        self.button_report_history = self.actions_panel.button_report_history
         self.button_sync_now = self.actions_panel.button_sync_now
         self.button_schedule_sync = self.actions_panel.button_schedule_sync
         self.button_new_config = self.actions_panel.button_new_config
@@ -380,6 +392,10 @@ class Gui:
         else:
             logger.error(f'Could not open last report because it was not found in directory <{logger.log_dir}>')
 
+    def button_action_open_report_history(self):
+        """Open past reports browser dialog."""
+        ReportsWindow(self.root)
+
     def button_action_quick_compare(self):
         self.toggle_state_quick_compare = not self.toggle_state_quick_compare
 
@@ -421,9 +437,11 @@ class Gui:
         """Request cancellation/stopping of currently running background process."""
         if self.backend_thread_status == BackendThreadStatus.RUNNING:
             logger.info('---------------------------------')
-            logger.info('Stopping background process via system tray request')
+            logger.info('Stopping background process upon cancellation request')
             self.toggle_state_quick_compare = False
             self.toggle_state_sync_now = False
+            if hasattr(self, 'telemetry_bar'):
+                self.root.after(0, lambda: self.telemetry_bar.lbl_status.config(text='Stopping...'))
             if hasattr(self, '_active_sync') and self._active_sync is not None:
                 with contextlib.suppress(Exception):
                     self._active_sync.cancel()
@@ -506,6 +524,9 @@ class Gui:
 
         mirror = MirrorDatabase(exclusions=self.entry_exclusions.get())
 
+        if hasattr(self, 'telemetry_bar'):
+            self.root.after(0, lambda: self.telemetry_bar.set_indeterminate('Scanning and comparing files...'))
+
         compare = CompareDirs(
             mirror=mirror,
             dirs=dirs,
@@ -522,6 +543,28 @@ class Gui:
         try:
             if also_sync:
                 default_actions = self.checkbox_default_actions.get_as_actions()
+
+                def _on_sync_progress(
+                    action: str,
+                    current: int,
+                    total: int,
+                    bytes_transferred: int,
+                    current_file: str,
+                    speed: str,
+                ):
+                    if hasattr(self, 'telemetry_bar'):
+                        self.root.after(
+                            0,
+                            lambda: self.telemetry_bar.set_determinate(
+                                action=action,
+                                current=current,
+                                total=total,
+                                bytes_transferred=bytes_transferred,
+                                current_file=current_file,
+                                speed=speed,
+                            ),
+                        )
+
                 self._active_sync = SyncDirs(
                     files_to_copy=compare.files_to_copy,
                     files_to_move=compare.files_to_move,
@@ -532,6 +575,7 @@ class Gui:
                     default_actions=default_actions,
                     increment_mirror=not self.checkbox_var_build_mirror.get(),
                     confirm_sync=self.checkbox_var_confirm_sync.get(),
+                    progress_callback=_on_sync_progress,
                 )
                 self.root.after(
                     0,
@@ -554,6 +598,8 @@ class Gui:
                 )
         finally:
             self._active_sync = None
+            if hasattr(self, 'telemetry_bar'):
+                self.root.after(0, lambda: self.telemetry_bar.reset('Ready'))
 
         logger.debug('Processing thread was properly closed')
 

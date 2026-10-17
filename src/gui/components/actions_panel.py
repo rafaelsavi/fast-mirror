@@ -25,6 +25,7 @@ class ActionsPanel(ttk.LabelFrame):
         on_open_report: Callable[[], None],
         on_sync_now: Callable[[], None],
         on_schedule_sync: Callable[[], None],
+        on_report_history: Callable[[], None] | None = None,
         **kwargs,
     ):
         super().__init__(master, text=' Actions & Operations ', **kwargs)
@@ -40,6 +41,7 @@ class ActionsPanel(ttk.LabelFrame):
         self.on_save_config = on_save_config
         self.on_quick_compare = on_quick_compare
         self.on_open_report = on_open_report
+        self.on_report_history = on_report_history
         self.on_sync_now = on_sync_now
         self.on_schedule_sync = on_schedule_sync
 
@@ -94,11 +96,21 @@ class ActionsPanel(ttk.LabelFrame):
             cmp_frame,
             text='Open Report',
             command=self.on_open_report,
-            width=12,
+            width=11,
             font=('Segoe UI', 9),
             relief=TkinterCfgRelief.RAISED.value,
         )
         self.button_open_report.pack(side='left', padx=3)
+
+        self.button_report_history = tk.Button(
+            cmp_frame,
+            text='History...',
+            command=self._handle_report_history,
+            width=9,
+            font=('Segoe UI', 9),
+            relief=TkinterCfgRelief.RAISED.value,
+        )
+        self.button_report_history.pack(side='left', padx=3)
 
         # Section 3: Synchronization
         sync_frame = ttk.Frame(self)
@@ -207,6 +219,14 @@ class ActionsPanel(ttk.LabelFrame):
         )
         cb_del.pack(side='left', padx=6)
 
+    def _handle_report_history(self):
+        if self.on_report_history:
+            self.on_report_history()
+        else:
+            from gui.components.reports_window import ReportsWindow
+
+            ReportsWindow(self.winfo_toplevel())
+
     def set_enabled(self, enabled: bool, leave_sunken_enabled: bool = False):
         """Enable or disable interactive controls in the actions panel."""
         state = 'normal' if enabled else 'disabled'
@@ -214,6 +234,8 @@ class ActionsPanel(ttk.LabelFrame):
             self.button_new_config,
             self.button_save_config,
             self.button_quick_compare,
+            self.button_open_report,
+            self.button_report_history,
             self.button_sync_now,
             self.button_schedule_sync,
         ]

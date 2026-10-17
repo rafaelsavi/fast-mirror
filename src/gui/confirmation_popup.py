@@ -201,6 +201,8 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             'modification date (source)': src_mtime_str,
             'modification date (target)': tgt_mtime_str,
             'size in bytes': size_bytes,
+            'bytes (source)': src_bytes,
+            'bytes (target)': tgt_bytes,
         }
 
     def select_all(self):
@@ -231,6 +233,43 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         """Collapse all action groups."""
         for group in self.get_children(''):
             self.item(group, open=False)
+
+
+def get_file_type_badge(path: str) -> tuple[str, str]:
+    """Return an icon and readable file type category for a given path."""
+    if not path or path in ('-', '(none)'):
+        return ('📄', 'File')
+    ext = os.path.splitext(path)[1].lower()
+    if ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico'):
+        return ('🖼️', f'Image ({ext})')
+    if ext in ('.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mp3', '.wav', '.flac', '.m4a'):
+        return ('🎬', f'Media ({ext})')
+    if ext in ('.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.txt', '.csv', '.rtf'):
+        return ('📄', f'Document ({ext})')
+    if ext in ('.zip', '.tar', '.gz', '.7z', '.rar', '.bz2', '.xz'):
+        return ('📦', f'Archive ({ext})')
+    if ext in (
+        '.py',
+        '.js',
+        '.ts',
+        '.html',
+        '.css',
+        '.json',
+        '.xml',
+        '.yaml',
+        '.yml',
+        '.md',
+        '.sh',
+        '.bat',
+        '.ps1',
+        '.sql',
+    ):
+        return ('💻', f'Code/Config ({ext})')
+    if ext in ('.exe', '.msi', '.dll'):
+        return ('⚙️', f'Binary ({ext})')
+    if ext:
+        return ('📄', f'{ext.upper()[1:]} File')
+    return ('📄', 'File')
 
 
 class ActionSelection:
@@ -511,31 +550,52 @@ class ActionSelection:
         bottom_frame.grid(row=3, column=0, sticky='ew')
         bottom_frame.grid_columnconfigure(0, weight=1)
 
-        # Path Inspector panel
-        inspector_frame = ttk.LabelFrame(bottom_frame, text=' Selected Item Details ')
+        # Side-by-Side Comparison & Diff Card
+        inspector_frame = ttk.LabelFrame(bottom_frame, text=' Selected Item Comparison & Diff ')
         inspector_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 8))
-        inspector_frame.grid_columnconfigure(1, weight=1)
+        inspector_frame.grid_columnconfigure(0, weight=1)
 
-        lbl_s = ttk.Label(inspector_frame, text='Source:', font=('Segoe UI', 8, 'bold'))
-        lbl_s.grid(row=0, column=0, sticky='w', padx=(6, 4), pady=2)
-        self.lbl_inspector_source = ttk.Label(
-            inspector_frame, text='(select an item to view path)', font=('Segoe UI', 8)
+        # Header: File Category Badge + Diff Summary + Copy Path button
+        hdr = ttk.Frame(inspector_frame)
+        hdr.grid(row=0, column=0, sticky='ew', padx=6, pady=(3, 4))
+        hdr.grid_columnconfigure(1, weight=1)
+
+        self.lbl_inspector_badge = ttk.Label(hdr, text='📄 File', font=('Segoe UI', 8, 'bold'))
+        self.lbl_inspector_badge.grid(row=0, column=0, sticky='w')
+
+        self.lbl_inspector_diff = ttk.Label(
+            hdr, text='(select an item to view comparison)', font=('Segoe UI', 8), foreground='#005a9e'
         )
-        self.lbl_inspector_source.grid(row=0, column=1, sticky='ew', padx=(0, 4), pady=2)
+        self.lbl_inspector_diff.grid(row=0, column=1, sticky='w', padx=(10, 0))
 
-        lbl_t = ttk.Label(inspector_frame, text='Target:', font=('Segoe UI', 8, 'bold'))
-        lbl_t.grid(row=1, column=0, sticky='w', padx=(6, 4), pady=2)
-        self.lbl_inspector_target = ttk.Label(inspector_frame, text='-', font=('Segoe UI', 8))
-        self.lbl_inspector_target.grid(row=1, column=1, sticky='ew', padx=(0, 4), pady=2)
-
-        # Copy Path button
         btn_copy_path = ttk.Button(
-            inspector_frame,
+            hdr,
             text='📋 Copy Path',
             command=self._copy_selected_path_to_clipboard,
-            width=12,
+            width=11,
         )
-        btn_copy_path.grid(row=0, column=2, rowspan=2, padx=(4, 6), pady=2)
+        btn_copy_path.grid(row=0, column=2, sticky='e')
+
+        # Details: Source row and Target row
+        details_frame = ttk.Frame(inspector_frame)
+        details_frame.grid(row=1, column=0, sticky='ew', padx=6, pady=(0, 4))
+        details_frame.grid_columnconfigure(1, weight=1)
+
+        lbl_s = ttk.Label(details_frame, text='Source:', font=('Segoe UI', 8, 'bold'), width=7)
+        lbl_s.grid(row=0, column=0, sticky='w', pady=1)
+        self.lbl_inspector_source = ttk.Label(details_frame, text='(select an item to view path)', font=('Segoe UI', 8))
+        self.lbl_inspector_source.grid(row=0, column=1, sticky='w', pady=1)
+
+        self.lbl_inspector_src_meta = ttk.Label(details_frame, text='', font=('Segoe UI', 7), foreground='#555555')
+        self.lbl_inspector_src_meta.grid(row=1, column=1, sticky='w', pady=(0, 2))
+
+        lbl_t = ttk.Label(details_frame, text='Target:', font=('Segoe UI', 8, 'bold'), width=7)
+        lbl_t.grid(row=2, column=0, sticky='w', pady=1)
+        self.lbl_inspector_target = ttk.Label(details_frame, text='-', font=('Segoe UI', 8))
+        self.lbl_inspector_target.grid(row=2, column=1, sticky='w', pady=1)
+
+        self.lbl_inspector_tgt_meta = ttk.Label(details_frame, text='', font=('Segoe UI', 7), foreground='#555555')
+        self.lbl_inspector_tgt_meta.grid(row=3, column=1, sticky='w', pady=(0, 2))
 
         # Bottom Buttons
         btn_box = ttk.Frame(bottom_frame)
@@ -589,20 +649,81 @@ class ActionSelection:
             return
         item_id = selected[0]
         item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
+        action: Action | None = None
+        source_path = ''
+        target_path = ''
+        row_data = None
+
         if item_info is not None:
-            _, source_path, target_path = item_info
-            self.lbl_inspector_source.config(text=source_path if source_path else '(none)')
-            self.lbl_inspector_target.config(text=target_path if target_path else '(none)')
+            action, source_path, target_path = item_info
+            if action in self.tree._data and item_id in self.tree._data[action]:
+                row_data = self.tree._data[action][item_id]
         elif '::' in item_id:
             parts = item_id.split('::', 2)
             if len(parts) >= 3:
                 source_path = parts[1] if parts[1] else '(none)'
                 target_path = parts[2] if parts[2] else '(none)'
-                self.lbl_inspector_source.config(text=source_path)
-                self.lbl_inspector_target.config(text=target_path)
+                with contextlib.suppress(Exception):
+                    action = Action(parts[0])
         else:
+            self.lbl_inspector_badge.config(text='📁 Group')
+            self.lbl_inspector_diff.config(text=f'Category: {item_id.upper()}')
             self.lbl_inspector_source.config(text=f'Group: {item_id.upper()}')
             self.lbl_inspector_target.config(text='-')
+            self.lbl_inspector_src_meta.config(text='')
+            self.lbl_inspector_tgt_meta.config(text='')
+            return
+
+        self.lbl_inspector_source.config(text=source_path if source_path else '(none)')
+        self.lbl_inspector_target.config(text=target_path if target_path else '(none)')
+
+        # Determine file type badge
+        inspect_path = source_path if (source_path and source_path != '(none)') else target_path
+        icon, cat = get_file_type_badge(inspect_path)
+        self.lbl_inspector_badge.config(text=f'{icon} {cat}')
+
+        # Determine metadata and comparison diff
+        src_meta = ''
+        tgt_meta = ''
+        diff_text = ''
+
+        if row_data:
+            src_sz = str(row_data.get('size (source)', ''))
+            src_dt = str(row_data.get('modification date (source)', ''))
+            tgt_sz = str(row_data.get('size (target)', ''))
+            tgt_dt = str(row_data.get('modification date (target)', ''))
+
+            if src_sz or src_dt:
+                src_meta = f'Size: {src_sz or "-"}  •  Modified: {src_dt or "-"}'
+            if tgt_sz or tgt_dt:
+                tgt_meta = f'Size: {tgt_sz or "-"}  •  Modified: {tgt_dt or "-"}'
+
+            src_bytes = float(row_data.get('bytes (source)', 0) or 0)
+            tgt_bytes = float(row_data.get('bytes (target)', 0) or 0)
+
+            if action == Action.DELETE:
+                diff_text = f'⚠️ File will be removed from target ({tgt_sz})'
+            elif action == Action.MOVE:
+                diff_text = '🔄 File will be moved/renamed at destination'
+            elif not tgt_dt or tgt_sz in ('0', '0 B', ''):
+                diff_text = f'✨ New file on target • {src_sz}'
+            else:
+                parts = []
+                if src_bytes != tgt_bytes:
+                    diff_bytes = src_bytes - tgt_bytes
+                    sign = '+' if diff_bytes > 0 else ''
+                    parts.append(f'Size diff: {sign}{format_size(diff_bytes)}')
+                else:
+                    parts.append('Identical size')
+                if src_dt and tgt_dt:
+                    parts.append('Same timestamp' if src_dt == tgt_dt else f'Source: {src_dt}')
+                diff_text = ' • '.join(parts)
+        elif action:
+            diff_text = f'Action: {action.value.upper()}'
+
+        self.lbl_inspector_src_meta.config(text=src_meta)
+        self.lbl_inspector_tgt_meta.config(text=tgt_meta)
+        self.lbl_inspector_diff.config(text=diff_text)
 
     def _update_banner_stats(self):
         cached = getattr(self.tree, '_cached_checked_by_action', None)

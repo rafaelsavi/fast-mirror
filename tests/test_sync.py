@@ -519,3 +519,54 @@ def test_copy_files_skips_when_source_missing(tmp_path):
 
     assert sync.files_copied == [((str(missing_source), str(target_file)), False)]
     assert not target_file.exists()
+
+
+def test_sync_dirs_progress_callback(tmp_path):
+    source_dir = tmp_path / 'Source'
+    target_dir = tmp_path / 'Target'
+    source_dir.mkdir()
+    target_dir.mkdir()
+
+    f1 = source_dir / 'f1.txt'
+    f2 = source_dir / 'f2.txt'
+    f1.write_text('content1')
+    f2.write_text('content2')
+
+    db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=db_path)
+    dirs = [DirectoryPair(source=str(source_dir), target=str(target_dir))]
+
+    progress_events: list[tuple[str, int, int]] = []
+
+    def on_progress(action: str, current: int, total: int, bytes_transferred: int, current_file: str, speed: str):
+        progress_events.append((action, current, total))
+        if current == 1:
+            # Deliberately raise exception to test callback robustness
+            raise RuntimeError('Simulated transient UI callback error')
+
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+        progress_callback=on_progress,
+    )
+    sync.files_requested_to_copy = [
+        (str(f1), str(target_dir / 'f1.txt')),
+        (str(f2), str(target_dir / 'f2.txt')),
+    ]
+    sync.copy_files()
+
+    # Verify both files copied successfully despite callback exception
+    assert (target_dir / 'f1.txt').exists()
+    assert (target_dir / 'f2.txt').exists()
+    assert len(sync.files_copied) == 2
+    assert all(success for _, success in sync.files_copied)
+
+    # Verify callback was called for both items
+    assert len(progress_events) == 2
+    assert progress_events[0] == ('copy', 1, 2)
+    assert progress_events[1] == ('copy', 2, 2)

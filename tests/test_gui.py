@@ -1,3 +1,4 @@
+import datetime
 import os
 import sys
 import tkinter as tk
@@ -546,3 +547,169 @@ def test_panels_set_enabled():
     assert str(a_panel.button_sync_now.cget('state')) == 'normal'
 
     root.destroy()
+
+
+def test_telemetry_bar_states_and_callbacks():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.telemetry_bar import TelemetryBar
+
+    stopped = []
+    bar = TelemetryBar(root, on_stop=lambda: stopped.append(True))
+
+    assert bar.lbl_status.cget('text') == 'Ready'
+
+    # 1. Indeterminate mode
+    bar.set_indeterminate('Scanning files...')
+    assert bar.lbl_status.cget('text') == 'Scanning files...'
+    assert str(bar.progress.cget('mode')) == 'indeterminate'
+
+    # 2. Determinate mode
+    bar.set_determinate(
+        action='copy',
+        current=5,
+        total=10,
+        bytes_transferred=1024,
+        current_file='D:\\long\\nested\\folder\\path\\to\\my_sample_backup_file.txt',
+        speed='50.0 MB/s',
+    )
+    assert bar.progress['value'] == 50.0
+    assert 'Copy: 5 of 10 (50.0%)' in bar.lbl_status.cget('text')
+    assert '50.0 MB/s' in bar.lbl_status.cget('text')
+    assert 'my_sample_backup_file.txt' in bar.lbl_details.cget('text')
+
+    # 3. Stop callback
+    bar.btn_stop.invoke()
+    assert stopped == [True]
+
+    # 4. Reset
+    bar.reset('Ready')
+    assert bar.lbl_status.cget('text') == 'Ready'
+    assert bar.progress['value'] == 0
+
+    root.destroy()
+
+
+def test_log_panel_search_and_copy():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.log_panel import LogPanel
+
+    log_panel = LogPanel(root)
+    log_panel.text_logger.insert('Error 404 file not found\n', 'ERROR')
+    log_panel.text_logger.insert('Info synchronization finished successfully\n', 'INFO')
+    log_panel.text_logger.insert('Warning slow network share access\n', 'WARNING')
+
+    # Test search query matching
+    log_panel.search_var.set('network')
+    assert len(log_panel._search_matches) == 1
+    assert '1 of 1 match' in log_panel.search_count_var.get()
+
+    # Test next / prev navigation
+    log_panel.search_var.set('file')
+    assert len(log_panel._search_matches) >= 1
+    log_panel._next_match()
+    log_panel._prev_match()
+
+    # Test clear search
+    log_panel._clear_search()
+    assert log_panel.search_var.get() == ''
+    assert len(log_panel._search_matches) == 0
+
+    # Test copy log
+    log_panel.copy_log()
+
+    root.destroy()
+
+
+def test_health_check_probes(tmp_path):
+    from gui.health_check import TargetHealth, probe_single_target
+
+    valid_dir = str(tmp_path / 'backup_target')
+    os.makedirs(valid_dir, exist_ok=True)
+
+    # Valid local target
+    health_ok = probe_single_target(valid_dir)
+    assert isinstance(health_ok, TargetHealth)
+    assert health_ok.is_online is True
+    assert health_ok.free_bytes >= 0
+    assert health_ok.free_str != 'N/A'
+
+    # Invalid / missing target
+    invalid_dir = str(tmp_path / 'does_not_exist_anywhere')
+    health_bad = probe_single_target(invalid_dir)
+    assert health_bad.is_online is False
+    assert health_bad.free_bytes == 0
+
+
+def test_reports_window_listing_and_cleanup(tmp_path, monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.reports_window import ReportsWindow
+    from utils.logger import logger
+
+    # Point logger.log_dir to temporary directory
+    monkeypatch.setattr(logger, 'log_dir', str(tmp_path))
+
+    # Create dummy reports
+    rep1 = tmp_path / 'compare_report_2026-10-15_10-00-00.xlsx'
+    rep2 = tmp_path / 'compare_report_2026-09-01_08-30-00.xlsx'  # Old report (> 30 days)
+    rep1.write_text('dummy1')
+    rep2.write_text('dummy2')
+
+    # Fake os.path.getmtime for old report
+    old_time = (datetime.datetime.now() - datetime.timedelta(days=45)).timestamp()
+    os.utime(str(rep2), (old_time, old_time))
+
+    win = ReportsWindow(root)
+    items = win.tree.get_children('')
+    assert len(items) == 2
+
+    # Clean reports older than 30 days
+    monkeypatch.setattr('tkinter.messagebox.askyesno', lambda *args, **kwargs: True)
+    win.btn_clean.invoke()
+
+    assert os.path.exists(str(rep1))
+    assert not os.path.exists(str(rep2))
+
+    win.window.destroy()
+    root.destroy()
+
+
+def test_confirmation_popup_file_type_badges():
+    from gui.confirmation_popup import get_file_type_badge
+
+    icon, name = get_file_type_badge('D:\\test\\photo.jpg')
+    assert icon == '🖼️'
+    assert 'Image' in name
+
+    icon, name = get_file_type_badge('D:\\test\\script.py')
+    assert icon == '💻'
+    assert 'Code' in name
+
+    icon, name = get_file_type_badge('D:\\test\\data.pdf')
+    assert icon == '📄'
+    assert 'Document' in name
+
+    icon, name = get_file_type_badge('D:\\test\\archive.zip')
+    assert icon == '📦'
+    assert 'Archive' in name
+
+    icon, name = get_file_type_badge('D:\\test\\movie.mp4')
+    assert icon == '🎬'
+    assert 'Media' in name
+
+    icon, name = get_file_type_badge('')
+    assert icon == '📄'

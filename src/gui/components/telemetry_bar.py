@@ -1,0 +1,107 @@
+import tkinter as tk
+from collections.abc import Callable
+from tkinter import ttk
+
+
+class TelemetryBar(ttk.Frame):
+    """Modern real-time telemetry bar showing animated progress, transfer speed, and current file."""
+
+    def __init__(
+        self,
+        master: tk.Misc,
+        on_stop: Callable[[], None] | None = None,
+        **kwargs,
+    ):
+        super().__init__(master, **kwargs)
+        self.on_stop = on_stop
+
+        self._active_mode: str | None = None
+        self._create_widgets()
+
+    def _create_widgets(self):
+        self.columnconfigure(1, weight=1)
+
+        # Row 0: Status label on left, Stop button on right
+        self.lbl_status = ttk.Label(
+            self,
+            text='Ready',
+            font=('Segoe UI', 9, 'bold'),
+        )
+        self.lbl_status.grid(row=0, column=0, sticky='w', padx=(4, 8), pady=(2, 2))
+
+        self.lbl_details = ttk.Label(
+            self,
+            text='',
+            font=('Segoe UI', 8),
+            foreground='#555555',
+        )
+        self.lbl_details.grid(row=0, column=1, sticky='w', padx=(0, 8), pady=(2, 2))
+
+        self.btn_stop = ttk.Button(
+            self,
+            text='⏹ Stop',
+            command=self._handle_stop,
+            width=9,
+            style='Secondary.TButton',
+        )
+        self.btn_stop.grid(row=0, column=2, rowspan=2, sticky='e', padx=(4, 4), pady=(2, 2))
+
+        # Row 1: Modern Progress Bar
+        self.progress = ttk.Progressbar(
+            self,
+            orient='horizontal',
+            mode='indeterminate',
+        )
+        self.progress.grid(row=1, column=0, columnspan=2, sticky='ew', padx=(4, 8), pady=(2, 4))
+
+    def _handle_stop(self):
+        if self.on_stop:
+            self.on_stop()
+
+    def set_indeterminate(self, message: str = 'Scanning files...'):
+        """Switch to smooth indeterminate animated progress during directory scanning."""
+        self._active_mode = 'indeterminate'
+        self.lbl_status.config(text=message)
+        self.lbl_details.config(text='')
+        self.progress.config(mode='indeterminate')
+        self.progress.start(15)
+
+    def set_determinate(
+        self,
+        action: str,
+        current: int,
+        total: int,
+        bytes_transferred: int = 0,
+        current_file: str = '',
+        speed: str = '',
+    ):
+        """Update determinate progress with live file counter, speed, and truncated path."""
+        if self._active_mode != 'determinate':
+            self.progress.stop()
+            self.progress.config(mode='determinate')
+            self._active_mode = 'determinate'
+
+        pct = (current / total * 100.0) if total > 0 else 0.0
+        self.progress['value'] = pct
+
+        action_title = action.title()
+        status_text = f'{action_title}: {current:,} of {total:,} ({pct:.1f}%)'
+        if speed:
+            status_text += f' • {speed}'
+        self.lbl_status.config(text=status_text)
+
+        # Truncate filename if too long for display
+        if current_file:
+            display_file = current_file if len(current_file) <= 75 else f'...{current_file[-72:]}'
+            self.lbl_details.config(text=f'Current: {display_file}')
+        else:
+            self.lbl_details.config(text='')
+
+    def reset(self, message: str = 'Ready'):
+        """Stop animation and return to standby state."""
+        self._active_mode = None
+        self.progress.stop()
+        self.progress['value'] = 0
+        self.progress.config(mode='indeterminate')
+        self.lbl_status.config(text=message)
+        self.lbl_details.config(text='')

@@ -4,5 +4,12 @@
 - remove all personal paths and information from project
 - [x] modernize GUI (Sun Valley ttk light theme, modular panel components, pystray tray management)
 - [x] make action selection popup more useful; find a way of improving the load-up speed and submit/close speed when there are thousands of files (optimized single-pass O(N) grouping, deferred rendering, direct metadata extraction, and O(1) submission lookup)
+- [x] implement rich frontend productivity enhancements:
+  - [x] real-time Telemetry Bar (animated scanning, determinate progress, file count, transfer speed, current file display, and direct stop button)
+  - [x] pre-flight Target Health & Storage Diagnostics (non-blocking background probe of target reachability and remaining disk capacity)
+  - [x] smart exclusion preset chips (`[✓ OS Junk]`, `[✓ Dev Folders]`, `[✓ Temp Files]`)
+  - [x] past reports and history browser (`ReportsWindow` for browsing, opening in Excel, and cleaning past reports)
+  - [x] side-by-side visual diff inspector card in confirmation popup with file type badges and date/size deltas
+  - [x] log console live search with match stepping and quick clipboard copy
 - make better strategy for place to store db and configuration files
 - [ ] evaluate and implement backend/core architecture simplifications (see [ARCHITECTURE_SIMPLIFICATIONS.md](ARCHITECTURE_SIMPLIFICATIONS.md))
