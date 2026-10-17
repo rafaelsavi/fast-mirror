@@ -30,6 +30,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self._data: dict[Action, dict[str, dict[str, float | str]]] = {}
         self._item_actions: dict[str, tuple[Action, str, str]] = {}
         self._cached_checked_by_action: dict[str, list[str]] = {}
+        self._all_group_children: dict[str, list[str]] = {}
         self.on_stats_changed = on_stats_changed
 
         # Configure Treeview columns and headers
@@ -80,7 +81,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self._cached_checked_by_action = checked_by_action
 
         for action_str, selected_lines in checked_by_action.items():
-            n_children = len(self.get_children(action_str))
+            n_children = len(self._all_group_children.get(action_str, self.get_children(action_str)))
             selected_number = len(selected_lines)
             action_enum = Action.from_str(action_str)
             action_data = self._data.get(action_enum, {})
@@ -91,7 +92,8 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
             selected_size = format_size(sum(size_list))  # type: ignore[arg-type]
             # Maintain exact substring format expected by existing tests: '<action> <size> (<X> of <Y>)'
-            self.item(action_str, text=f'{action_str} {selected_size} ({selected_number} of {n_children})')
+            if self.exists(action_str):
+                self.item(action_str, text=f'{action_str} {selected_size} ({selected_number} of {n_children})')
 
         if self.on_stats_changed:
             self.on_stats_changed()
@@ -124,6 +126,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             default_active = []
 
         self._item_actions.clear()
+        self._all_group_children.clear()
 
         for action, file_list in file_lists.items():
             self._data[action] = {}
@@ -152,8 +155,10 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                 tags=(state_tag,),
                 open=True,
             )
+            self._all_group_children[action.value] = []
             action_style_tag = f'{action.value}_tag'
             for key, row in rows.items():
+                self._all_group_children[action.value].append(key)
                 self.insert(
                     parent=group_item,
                     index='end',
@@ -172,6 +177,15 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
     def get_checked(self) -> list[str]:
         """High-performance retrieval of checked leaf items."""
         checked: list[str] = []
+        if self._all_group_children:
+            for group, children in self._all_group_children.items():
+                if self.exists(group) and self.tag_has('unchecked', group):
+                    continue
+                for child in children:
+                    if self.exists(child) and self.tag_has('checked', child):
+                        checked.append(child)
+            return checked
+
         for group in self.get_children(''):
             # If the group is marked unchecked, all its descendants are unchecked
             if self.tag_has('unchecked', group):
@@ -239,20 +253,23 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
     def select_all(self):
         """Check all group and child items that contain files."""
-        for group in self.get_children(''):
-            if self.get_children(group):
+        groups = self._all_group_children if self._all_group_children else self.get_children('')
+        for group in groups:
+            if self.exists(group):
                 self.change_state(group, 'checked')
         self.refresh_group_stats()
 
     def deselect_all(self):
         """Uncheck all group and child items."""
-        for group in self.get_children(''):
-            self.change_state(group, 'unchecked')
+        groups = self._all_group_children if self._all_group_children else self.get_children('')
+        for group in groups:
+            if self.exists(group):
+                self.change_state(group, 'unchecked')
         self.refresh_group_stats()
 
     def uncheck_action(self, action: Action):
         """Uncheck all items under a specific action (e.g. Action.DELETE)."""
-        if action.value in self.get_children(''):
+        if self.exists(action.value):
             self.change_state(action.value, 'unchecked')
         self.refresh_group_stats()
 
@@ -265,6 +282,81 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         """Collapse all action groups."""
         for group in self.get_children(''):
             self.item(group, open=False)
+
+    def filter_items(self, query: str) -> tuple[int, str | None]:
+        """
+        Filter the displayed tree items by search query.
+
+        Detaches non-matching leaf items and empty groups, and reattaches matching items.
+        Returns (match_count, first_match_id).
+        """
+        query = query.strip().lower()
+        first_match: str | None = None
+        match_count = 0
+
+        # If query is empty, restore all items and groups in their original order
+        if not query:
+            if not getattr(self, '_is_filtered', False):
+                return 0, None
+            self._is_filtered = False
+            for group, children in self._all_group_children.items():
+                if self.exists(group):
+                    if group not in self.get_children(''):
+                        self.reattach(group, '', 'end')
+                    for child in children:
+                        if self.exists(child):
+                            if child not in self.get_children(group):
+                                self.reattach(child, group, 'end')
+                            tags = [t for t in self.item(child, 'tags') if t != 'highlight_match']
+                            self.item(child, tags=tuple(tags))
+            return 0, None
+
+        self._is_filtered = True
+        # Filter items by query
+        for group, children in self._all_group_children.items():
+            if not self.exists(group):
+                continue
+
+            group_matches = []
+            action_data = self._data.get(Action.from_str(group), {})
+
+            for child in children:
+                if not self.exists(child):
+                    continue
+
+                row = action_data.get(child, {})
+                src = str(row.get('source', '')).lower()
+                tgt = str(row.get('target', '')).lower()
+
+                if query in src or query in tgt or query in child.lower():
+                    match_count += 1
+                    group_matches.append(child)
+                    if first_match is None:
+                        first_match = child
+
+                    if child not in self.get_children(group):
+                        self.reattach(child, group, 'end')
+
+                    tags = list(self.item(child, 'tags'))
+                    if 'highlight_match' not in tags:
+                        tags.append('highlight_match')
+                        self.item(child, tags=tuple(tags))
+                else:
+                    if child in self.get_children(group):
+                        self.detach(child)
+
+                    tags = [t for t in self.item(child, 'tags') if t != 'highlight_match']
+                    self.item(child, tags=tuple(tags))
+
+            if group_matches:
+                if group not in self.get_children(''):
+                    self.reattach(group, '', 'end')
+                self.item(group, open=True)
+            else:
+                if group in self.get_children(''):
+                    self.detach(group)
+
+        return match_count, first_match
 
 
 def get_file_type_badge(path: str) -> tuple[str, str]:
@@ -767,33 +859,10 @@ class ActionSelection:
         self.lbl_stat_delete.config(text=f'🔴 Delete: {del_count} files ({format_size(del_bytes)})')
 
     def _on_filter_changed(self, *args):
-        query = self.filter_var.get().strip().lower()
-        first_match = None
-        match_count = 0
+        query = self.filter_var.get()
+        match_count, first_match = self.tree.filter_items(query)
 
-        for group in self.tree.get_children(''):
-            children = self.tree.get_children(group)
-            group_matched = False
-            for child in children:
-                matches = bool(query and query in child.lower())
-                curr_tags = list(self.tree.item(child, 'tags'))
-                if matches:
-                    match_count += 1
-                    group_matched = True
-                    if first_match is None:
-                        first_match = child
-                    if 'highlight_match' not in curr_tags:
-                        curr_tags.append('highlight_match')
-                        self.tree.item(child, tags=tuple(curr_tags))
-                else:
-                    if 'highlight_match' in curr_tags:
-                        curr_tags.remove('highlight_match')
-                        self.tree.item(child, tags=tuple(curr_tags))
-
-            if query and group_matched:
-                self.tree.item(group, open=True)
-
-        if query:
+        if query.strip():
             self.lbl_filter_count.config(text=f'({match_count} match{"es" if match_count != 1 else ""})')
             if first_match is not None:
                 self.tree.see(first_match)
@@ -808,6 +877,9 @@ class ActionSelection:
         logger.info('Saving selection of actions')
         self.finished = True
         self.proceed = True
+
+        # Restore treeview filter before collecting output selections
+        self.tree.filter_items('')
 
         self.files_requested_to_copy = list()
         self.files_requested_to_move = list()

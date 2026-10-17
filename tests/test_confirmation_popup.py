@@ -1061,3 +1061,62 @@ def test_action_selection_row_highlighting_on_selection(tmp_path, monkeypatch):
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_action_selection_filter_hides_non_matching_rows(tmp_path, monkeypatch):
+    """Verify that filter text hides non-matching rows and restores them when cleared."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+    f1 = src / 'alpha_document.txt'
+    f2 = src / 'beta_image.png'
+    f1.write_text('alpha')
+    f2.write_text('beta')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[
+                (CstmPath(f1, root_dir=src), CstmPath(tgt / 'alpha_document.txt', root_dir=tgt)),
+                (CstmPath(f2, root_dir=src), CstmPath(tgt / 'beta_image.png', root_dir=tgt)),
+            ],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+
+        # Initially 2 children under copy
+        assert len(popup.tree.get_children(Action.COPY.value)) == 2
+
+        # 1. Filter by 'alpha': only alpha row should be visible
+        popup.filter_var.set('alpha')
+        visible_children = popup.tree.get_children(Action.COPY.value)
+        assert len(visible_children) == 1
+        assert 'alpha_document' in visible_children[0]
+        assert '1 match' in popup.lbl_filter_count.cget('text')
+
+        # Checked items still returns both (or checked items)
+        checked = popup.tree.get_checked()
+        assert len(checked) == 2
+
+        # 2. Filter by 'nonexistent_query': 0 matches, copy group detached / hidden
+        popup.filter_var.set('SX')
+        assert '0 matches' in popup.lbl_filter_count.cget('text')
+        assert Action.COPY.value not in popup.tree.get_children('')
+
+        # 3. Clear filter: all rows and groups restored
+        popup.filter_var.set('')
+        assert Action.COPY.value in popup.tree.get_children('')
+        assert len(popup.tree.get_children(Action.COPY.value)) == 2
+        assert popup.lbl_filter_count.cget('text') == ''
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
