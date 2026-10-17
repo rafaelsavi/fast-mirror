@@ -940,3 +940,50 @@ def test_text_logger_insert_batch_and_o1_line_check():
     assert logger_widget.level_counts['ERROR'] > 0
 
     root.destroy()
+
+
+def test_directory_pairs_modal_and_syntax_highlighting(tmp_path):
+    """Verify EntryPaths syntax tags and DirectoryPairsModal workflow."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.directory_pairs_modal import DirectoryPairsModal
+    from gui.widgets import DirectoryPair, EntryPaths
+
+    src_dir = tmp_path / 'source'
+    src_dir.mkdir()
+    tgt_dir = tmp_path / 'target'
+    tgt_dir.mkdir()
+
+    ep = EntryPaths(root)
+    ep.set([DirectoryPair(source=str(src_dir), target=str(tgt_dir))])
+
+    # Check syntax highlighting tags
+    tags = ep.tag_names()
+    assert 'pair_arrow' in tags
+    assert 'pair_source' in tags
+    assert 'pair_target' in tags
+
+    # Test modal
+    changed_flag = []
+    modal = DirectoryPairsModal(root, ep, on_changed=lambda: changed_flag.append(True))
+    assert len(modal._pairs) == 1
+    assert modal.tree.get_children()
+
+    # Add a second pair
+    src_dir2 = tmp_path / 'source2'
+    src_dir2.mkdir()
+    tgt_dir2 = tmp_path / 'target2'
+    tgt_dir2.mkdir()
+    modal._pairs.append((str(src_dir2), str(tgt_dir2)))
+    modal._populate_table()
+    assert len(modal.tree.get_children()) == 2
+
+    modal._apply_and_close()
+    assert len(ep.get()) == 2
+    assert changed_flag == [True]
+
+    root.destroy()

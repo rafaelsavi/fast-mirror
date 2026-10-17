@@ -57,6 +57,14 @@ class PathsPanel(ttk.LabelFrame):
         )
         self.btn_add_path.pack(side='left', padx=2)
 
+        self.btn_manage_paths = ttk.Button(
+            toolbar,
+            text='⚙️ Manage...',
+            command=self.open_pairs_manager,
+            width=12,
+        )
+        self.btn_manage_paths.pack(side='left', padx=2)
+
         self.btn_check_targets = ttk.Button(
             toolbar,
             text='🩺 Health Check',
@@ -137,6 +145,21 @@ class PathsPanel(ttk.LabelFrame):
     def _handle_add_path(self):
         if self.on_add_path:
             self.on_add_path()
+
+    def open_pairs_manager(self):
+        """Open the interactive directory pairs manager modal."""
+        from gui.components.directory_pairs_modal import DirectoryPairsModal
+
+        def _on_pairs_changed():
+            top = self.winfo_toplevel()
+            if hasattr(top, 'update_overview_stats'):
+                top.update_overview_stats()
+            self.lbl_health_status.config(
+                text='Directory pairs updated. Click "Health Check" to probe reachability.',
+                foreground='#1565c0',
+            )
+
+        DirectoryPairsModal(self.winfo_toplevel(), self.entry_paths, on_changed=_on_pairs_changed)
 
     def run_target_health_check(self):
         """Asynchronously probe all configured paths, check source existence and target free disk space."""
@@ -257,6 +280,7 @@ class PathsPanel(ttk.LabelFrame):
         """Enable or disable interactive widgets in the paths panel."""
         state: Literal['normal', 'disabled'] = 'normal' if enabled else 'disabled'
         self.btn_add_path.configure(state=state)
+        self.btn_manage_paths.configure(state=state)
         self.btn_check_targets.configure(state=state)
         self.btn_open_selected.configure(state=state)
         self.cb_preset_junk.configure(state=state)

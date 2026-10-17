@@ -16,6 +16,69 @@ class EntryPaths(ScrolledText):
         if 'font' not in kwargs:
             kwargs['font'] = ('Consolas', 9)
         super().__init__(*args, **kwargs)
+        self.bind('<KeyRelease>', lambda e: self.highlight_syntax())
+        self._setup_context_menu()
+
+    def _setup_context_menu(self):
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label='📂 Open in Explorer', command=self._context_open_explorer)
+        menu.add_separator()
+        menu.add_command(label='✂️ Cut', command=lambda: self.event_generate('<<Cut>>'))
+        menu.add_command(label='📋 Copy', command=lambda: self.event_generate('<<Copy>>'))
+        menu.add_command(label='📥 Paste', command=lambda: self.event_generate('<<Paste>>'))
+        menu.add_separator()
+        menu.add_command(label='Select All', command=lambda: self.tag_add(tk.SEL, '1.0', tk.END))
+
+        def _show_menu(event):
+            with contextlib.suppress(Exception):
+                menu.tk_popup(event.x_root, event.y_root)
+
+        self.bind('<Button-3>', _show_menu)
+
+    def _context_open_explorer(self):
+        line = self.get('insert linestart', 'insert lineend').strip()
+        target = ''
+        if ' -> ' in line:
+            src, tgt = [p.strip().strip('"\'') for p in line.split(' -> ', 1)]
+            target = src if os.path.exists(src) else tgt
+        elif os.path.exists(line.strip('"\'')):
+            target = line.strip('"\'')
+        if target and os.path.exists(target):
+            with contextlib.suppress(Exception):
+                if hasattr(os, 'startfile'):
+                    os.startfile(target)
+                else:
+                    import subprocess
+
+                    subprocess.Popen(['explorer', target])
+
+    def highlight_syntax(self):
+        """Apply clean syntax highlighting to source paths, arrows, and target paths."""
+        try:
+            self.tag_configure('pair_arrow', foreground='#0d9488', font=('Segoe UI', 9, 'bold'))
+            self.tag_configure('pair_source', foreground='#0f172a', font=('Consolas', 9, 'bold'))
+            self.tag_configure('pair_target', foreground='#0284c7', font=('Consolas', 9))
+            self.tag_configure('pair_error', foreground='#dc2626', underline=True)
+
+            self.tag_remove('pair_arrow', '1.0', tk.END)
+            self.tag_remove('pair_source', '1.0', tk.END)
+            self.tag_remove('pair_target', '1.0', tk.END)
+            self.tag_remove('pair_error', '1.0', tk.END)
+
+            raw = super().get('1.0', tk.END)
+            for line_idx, line in enumerate(raw.splitlines(), start=1):
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                if ' -> ' in line:
+                    arrow_idx = line.find(' -> ')
+                    self.tag_add('pair_source', f'{line_idx}.0', f'{line_idx}.{arrow_idx}')
+                    self.tag_add('pair_arrow', f'{line_idx}.{arrow_idx}', f'{line_idx}.{arrow_idx + 4}')
+                    self.tag_add('pair_target', f'{line_idx}.{arrow_idx + 4}', f'{line_idx}.end')
+                else:
+                    self.tag_add('pair_error', f'{line_idx}.0', f'{line_idx}.end')
+        except Exception:
+            pass
 
     def get_text(self, start: str = '1.0', end: str = tk.END) -> str:
         return super().get(start, end)
@@ -73,6 +136,7 @@ class EntryPaths(ScrolledText):
             self.configure(state=TkinterCfgState.NORMAL.value)
         super().delete('1.0', tk.END)  # delete current text
         super().insert('1.0', raw)  # add at line 1, col 0
+        self.highlight_syntax()
         if was_disabled:
             self.configure(state=TkinterCfgState.DISABLED.value)
 
