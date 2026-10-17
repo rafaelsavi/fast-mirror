@@ -46,6 +46,14 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             else:
                 self.column(column, width=330, minwidth=180)
 
+        # Configure Treeview selection highlight colors
+        style = ttk.Style(self)
+        style.map(
+            'Checkbox.Treeview',
+            background=[('selected', '#0078d7')],
+            foreground=[('selected', '#ffffff')],
+        )
+
         self.apply_theme_tags()
 
     def apply_theme_tags(self):
@@ -54,6 +62,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self.tag_configure('move_tag', background='#f0f7ff')
         self.tag_configure('delete_tag', background='#fff5f5')
         self.tag_configure('highlight_match', background='#fff59d')
+        self.tag_configure('selected_row', background='#0078d7', foreground='#ffffff')
 
     def _box_click(self, event):
         super()._box_click(event)
@@ -649,6 +658,27 @@ class ActionSelection:
         selected = self.tree.selection()
         if not selected:
             return
+
+        # Prominently highlight currently selected row and restore previous selection
+        prev_selected = getattr(self, '_prev_selected_items', set())
+        curr_selected = set(selected)
+        for unsel_id in prev_selected - curr_selected:
+            if self.tree.exists(unsel_id):
+                tags = [t for t in self.tree.item(unsel_id, 'tags') if t != 'selected_row']
+                action_info = getattr(self.tree, '_item_actions', {}).get(unsel_id)
+                if action_info:
+                    action_tag = f'{action_info[0].value}_tag'
+                    if action_tag not in tags:
+                        tags.append(action_tag)
+                self.tree.item(unsel_id, tags=tuple(tags))
+        for sel_id in curr_selected:
+            if self.tree.exists(sel_id):
+                tags = [t for t in self.tree.item(sel_id, 'tags') if not t.endswith('_tag')]
+                if 'selected_row' not in tags:
+                    tags.insert(0, 'selected_row')
+                self.tree.item(sel_id, tags=tuple(tags))
+        self._prev_selected_items = curr_selected
+
         item_id = selected[0]
         item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
         action: Action | None = None

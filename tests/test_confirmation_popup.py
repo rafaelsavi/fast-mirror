@@ -1005,3 +1005,59 @@ def test_action_selection_summary_badges_show_size(tmp_path, monkeypatch):
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_action_selection_row_highlighting_on_selection(tmp_path, monkeypatch):
+    """Verify that clicking/selecting a row prominently highlights it with selected_row tag."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+    f1 = src / 'row1.txt'
+    f2 = src / 'row2.txt'
+    f1.write_text('1')
+    f2.write_text('2')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[
+                (CstmPath(f1, root_dir=src), CstmPath(tgt / 'row1.txt', root_dir=tgt)),
+                (CstmPath(f2, root_dir=src), CstmPath(tgt / 'row2.txt', root_dir=tgt)),
+            ],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+
+        children = popup.tree.get_children(Action.COPY.value)
+        assert len(children) == 2
+        item1, item2 = children[0], children[1]
+
+        # Select first item
+        popup.tree.selection_set(item1)
+        popup._on_item_selected(None)
+
+        tags1 = popup.tree.item(item1, 'tags')
+        assert 'selected_row' in tags1
+        assert 'selected_row' not in popup.tree.item(item2, 'tags')
+
+        # Select second item
+        popup.tree.selection_set(item2)
+        popup._on_item_selected(None)
+
+        tags2 = popup.tree.item(item2, 'tags')
+        assert 'selected_row' in tags2
+        # First item reverted
+        assert 'selected_row' not in popup.tree.item(item1, 'tags')
+        assert 'copy_tag' in popup.tree.item(item1, 'tags')
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
