@@ -13,3 +13,5 @@
   - [x] log console live search with match stepping and quick clipboard copy
 - make better strategy for place to store db and configuration files
 - [ ] evaluate and implement backend/core architecture simplifications (see [ARCHITECTURE_SIMPLIFICATIONS.md](ARCHITECTURE_SIMPLIFICATIONS.md))
+- I dont understand how the "Classification" of ignore pattern works. Is this really necessary? or is it a bloated display artifact
+- Fix drag delay by finding first commit where it began

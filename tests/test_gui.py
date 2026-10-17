@@ -1028,12 +1028,12 @@ def test_exclusions_modal_and_chips_workflow():
     assert '*.bak' in excl.get()
     assert changed_flag == [True]
 
-    # Test PathsPanel chip rendering
+    # Test PathsPanel text exclusions rendering
     panel = PathsPanel(root, entry_exclusions=excl)
     assert panel.lbl_excl_count.cget('text') == f'{len(excl.get())} patterns'
-    assert len(panel.chips_box.winfo_children()) > 0
+    assert panel.entry_exclusions.get() == excl.get()
 
-    # Test removing a single exclusion via chip action
+    # Test removing a single exclusion
     panel._remove_single_exclusion('*.bak')
     assert '*.bak' not in excl.get()
 
@@ -1226,7 +1226,7 @@ def test_smooth_drag_interceptor_lifecycle():
     root.destroy()
 
 
-def test_paths_panel_visual_cards_lifecycle(tmp_path):
+def test_paths_panel_text_mode_lifecycle(tmp_path):
     try:
         root = tk.Tk()
         root.withdraw()
@@ -1236,11 +1236,10 @@ def test_paths_panel_visual_cards_lifecycle(tmp_path):
     from gui.components.paths_panel import PathsPanel
 
     panel = PathsPanel(root)
-    assert panel._view_mode == 'cards'
+    assert panel._view_mode == 'text'
 
-    # Empty state card
-    panel.refresh_cards()
-    assert len(panel.cards_frame.winfo_children()) >= 1
+    # Empty state count
+    assert '0 configured' in panel.lbl_pair_count.cget('text')
 
     # Add pairs
     src1 = tmp_path / 'Src1'
@@ -1250,13 +1249,7 @@ def test_paths_panel_visual_cards_lifecycle(tmp_path):
 
     panel.entry_paths.set([(str(src1), str(tgt1))])
     panel.refresh_cards()
-    assert len(panel.cards_frame.winfo_children()) == 1
-
-    # Toggle view to text and back
-    panel._toggle_view()
-    assert panel._view_mode == 'text'
-    panel._toggle_view()
-    assert panel._view_mode == 'cards'
+    assert '1 configured' in panel.lbl_pair_count.cget('text')
 
     # Drag and drop folder addition
     src2 = tmp_path / 'Src2'
@@ -1265,9 +1258,11 @@ def test_paths_panel_visual_cards_lifecycle(tmp_path):
     tgt2.mkdir()
     panel.add_dropped_paths([str(src2), str(tgt2)])
     assert len(panel.entry_paths.get()) == 2
+    assert '2 configured' in panel.lbl_pair_count.cget('text')
 
     # Remove single pair
     panel._remove_single_pair(str(src2), str(tgt2))
     assert len(panel.entry_paths.get()) == 1
+    assert '1 configured' in panel.lbl_pair_count.cget('text')
 
     root.destroy()
