@@ -504,8 +504,6 @@ def test_gui_initialization_with_light_theme(monkeypatch):
     except tk.TclError:
         pytest.skip('Tkinter display not available')
 
-    import sv_ttk
-
     from gui.gui import Gui
 
     monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
@@ -514,7 +512,13 @@ def test_gui_initialization_with_light_theme(monkeypatch):
     monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
 
     gui = Gui()
-    assert sv_ttk.get_theme() == 'light'
+    assert gui.current_theme == 'native'
+    # Test theme toggle
+    gui.button_action_toggle_theme()
+    assert gui.current_theme == 'sv_ttk'
+    gui.button_action_toggle_theme()
+    assert gui.current_theme == 'native'
+
     assert gui.status_bar is not None
     assert gui.paths_panel is not None
     assert gui.actions_panel is not None

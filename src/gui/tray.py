@@ -15,14 +15,14 @@ class TrayableTk(tk.Tk):
     """Tkinter root window with modern cross-platform system tray integration via pystray."""
 
     def __init__(self):
-        # Enable Per-Monitor v2 DPI awareness on Windows to prevent DWM bitmap scaling lag
+        # Enable System DPI awareness on Windows to prevent DWM bitmap scaling blur without drag stutter
         if hasattr(ctypes, 'windll'):
             with contextlib.suppress(Exception):
-                # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+                # DPI_AWARENESS_CONTEXT_SYSTEM_AWARE = -2
                 if hasattr(ctypes.windll, 'user32') and hasattr(ctypes.windll.user32, 'SetProcessDpiAwarenessContext'):
-                    ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+                    ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-2))
                 elif hasattr(ctypes.windll, 'shcore') and hasattr(ctypes.windll.shcore, 'SetProcessDpiAwareness'):
-                    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+                    ctypes.windll.shcore.SetProcessDpiAwareness(1)
 
         super().__init__()
         self._tray_icon: pystray.Icon | None = None

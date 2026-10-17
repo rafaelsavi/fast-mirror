@@ -52,10 +52,7 @@ class Gui:
                 self.root.iconbitmap(icon_path)
         self.root.title('Automatic Backup Tool')
 
-        # Apply modern Sun Valley light theme
-        with contextlib.suppress(Exception):
-            sv_ttk.set_theme('light')
-
+        self.current_theme = 'native'
         self.config_path = os.path.join(ROOT_DIR, 'config.json')
 
         # State variables
@@ -86,10 +83,13 @@ class Gui:
         # Build GUI modular components
         self.create_widgets()
 
-        # Update overview card dynamically on setting changes
-        self.checkbox_var_use_mirror.trace_add('write', lambda *_: self.update_overview_stats())
-        self.checkbox_var_build_mirror.trace_add('write', lambda *_: self.update_overview_stats())
-        self.checkbox_var_confirm_sync.trace_add('write', lambda *_: self.update_overview_stats())
+        # Apply default theme (hardware-accelerated native theme)
+        self.apply_theme(self.current_theme)
+
+        # Update overview card mode labels dynamically on setting changes without remote network I/O
+        self.checkbox_var_use_mirror.trace_add('write', lambda *_: self.update_mode_labels())
+        self.checkbox_var_build_mirror.trace_add('write', lambda *_: self.update_mode_labels())
+        self.checkbox_var_confirm_sync.trace_add('write', lambda *_: self.update_mode_labels())
 
         # Register tray actions and update initial tray state
         self.root.set_tray_callbacks(
@@ -235,6 +235,7 @@ class Gui:
             on_report_history=self.button_action_open_report_history,
             on_sync_now=self.button_action_sync_now,
             on_schedule_sync=self.button_action_schedule_sync,
+            on_toggle_theme=self.button_action_toggle_theme,
             padding=6,
         )
         self.actions_panel.pack(fill='x', pady=(0, 6))
@@ -289,6 +290,44 @@ class Gui:
 
         self._gui_initialized = True
 
+    def apply_theme(self, theme_name: str = 'native'):
+        """Apply either fast hardware-accelerated Windows native theme or Sun Valley theme."""
+        self.current_theme = theme_name
+        style = ttk.Style()
+        if theme_name == 'native':
+            # Select best available hardware-accelerated theme
+            available = style.theme_names()
+            for cand in ['vista', 'xpnative', 'clam', 'default']:
+                if cand in available:
+                    with contextlib.suppress(Exception):
+                        style.theme_use(cand)
+                    break
+
+            # Modern crisp Segoe UI typography and visual tokens
+            style.configure('.', font=('Segoe UI', 9))
+            style.configure('TLabelframe', relief='groove', borderwidth=1)
+            style.configure('TLabelframe.Label', font=('Segoe UI', 9, 'bold'), foreground='#003366')
+            style.configure('Accent.TButton', font=('Segoe UI', 9, 'bold'), foreground='#004488')
+            style.configure('ActiveToggle.TButton', font=('Segoe UI', 9, 'bold'), foreground='#006600')
+            style.configure('Stop.TButton', font=('Segoe UI', 9, 'bold'), foreground='#cc0000')
+
+            if hasattr(self, 'actions_panel') and hasattr(self.actions_panel, 'button_toggle_theme'):
+                self.actions_panel.button_toggle_theme.config(text='Theme: Native (Fast)')
+        else:
+            with contextlib.suppress(Exception):
+                sv_ttk.set_theme('light')
+            if hasattr(self, 'actions_panel') and hasattr(self.actions_panel, 'button_toggle_theme'):
+                self.actions_panel.button_toggle_theme.config(text='Theme: Sun Valley')
+
+        if hasattr(self, 'log_panel'):
+            self.log_panel.apply_theme('light')
+
+    def button_action_toggle_theme(self):
+        """Toggle between hardware-accelerated native theme and Sun Valley theme."""
+        next_theme = 'sv_ttk' if self.current_theme == 'native' else 'native'
+        self.apply_theme(next_theme)
+        logger.info(f'GUI theme switched to {next_theme}')
+
     def button_action_reset_config(self, ask_confirmation=True):
         if ask_confirmation:
             confirmation = messagebox.askyesno(
@@ -315,6 +354,8 @@ class Gui:
             self.toggle_state_sync_now = False
             with contextlib.suppress(Exception):
                 os.remove(self.config_path)
+            if getattr(self, 'current_theme', 'native') != 'native':
+                self.apply_theme('native')
             self.get_next_appointment()
             self.update_overview_stats()
             logger.info('GUI configuration was reset')
@@ -342,6 +383,7 @@ class Gui:
                 'checkbox_var_save_report',
             ]
             config_vars = {name: getattr(self, name).get() for name in config_var_names}
+            config_vars['theme'] = getattr(self, 'current_theme', 'native')
             with open(self.config_path, 'w') as f:
                 json.dump(config_vars, f, indent=4)
             logger.info('Configuration was successfully saved')
@@ -359,6 +401,11 @@ class Gui:
                         gui_element = getattr(self, name)
                         gui_element.set(value)
 
+                if 'theme' in config_vars:
+                    saved_theme = config_vars['theme']
+                    if saved_theme in ('native', 'sv_ttk') and saved_theme != getattr(self, 'current_theme', None):
+                        self.apply_theme(saved_theme)
+
                 self.text_logger.set_log_levels(self.log_levels.get())
                 if show_success_msg:
                     logger.info('Configuration was successfully loaded')
@@ -373,10 +420,29 @@ class Gui:
         self.get_next_appointment()
         self.update_overview_stats()
 
+    def update_mode_labels(self):
+        """Instantaneous update of mode labels on the overview card without disk or network I/O."""
+        if not hasattr(self, 'overview_card'):
+            return
+        if hasattr(self, 'checkbox_var_use_mirror'):
+            use_mirror = self.checkbox_var_use_mirror.get()
+            build_mirror = self.checkbox_var_build_mirror.get() if hasattr(self, 'checkbox_var_build_mirror') else False
+            if build_mirror:
+                self.overview_card.text_var_mirror_status.set('Rebuild Mode (WAL)')
+            elif use_mirror:
+                self.overview_card.text_var_mirror_status.set('Active (WAL cache)')
+            else:
+                self.overview_card.text_var_mirror_status.set('Direct Scan (Disabled)')
+
+        if hasattr(self, 'checkbox_var_confirm_sync'):
+            confirm = self.checkbox_var_confirm_sync.get()
+            self.overview_card.text_var_confirm_status.set('Interactive Approval' if confirm else 'Direct / Automatic')
+
     def update_overview_stats(self):
         """Update system overview card with live counts and modes."""
         if not hasattr(self, 'overview_card'):
             return
+        self.update_mode_labels()
         try:
             raw_pairs = self.entry_paths.get_raw_pairs()
             total_count = len(raw_pairs)
@@ -392,6 +458,10 @@ class Gui:
                 # Instantly display count on main thread without blocking on SMB network I/O
                 self.overview_card.text_var_pairs_count.set(f'{len(valid_pairs)} online / {total_count} configured')
 
+                if getattr(self, '_probe_thread_active', False):
+                    return
+                self._probe_thread_active = True
+
                 def _async_probe():
                     try:
                         online = len([p for p in valid_pairs if os.path.isdir(p.source) and os.path.isdir(p.target)])
@@ -403,25 +473,13 @@ class Gui:
                         )
                     except Exception:
                         pass
+                    finally:
+                        self._probe_thread_active = False
 
                 threading.Thread(target=_async_probe, daemon=True).start()
         except Exception as e:
             logger.error(f'update_overview_stats failed: {e}')
             self.overview_card.text_var_pairs_count.set('0 configured')
-
-        if hasattr(self, 'checkbox_var_use_mirror'):
-            use_mirror = self.checkbox_var_use_mirror.get()
-            build_mirror = self.checkbox_var_build_mirror.get() if hasattr(self, 'checkbox_var_build_mirror') else False
-            if build_mirror:
-                self.overview_card.text_var_mirror_status.set('Rebuild Mode (WAL)')
-            elif use_mirror:
-                self.overview_card.text_var_mirror_status.set('Active (WAL cache)')
-            else:
-                self.overview_card.text_var_mirror_status.set('Direct Scan (Disabled)')
-
-        if hasattr(self, 'checkbox_var_confirm_sync'):
-            confirm = self.checkbox_var_confirm_sync.get()
-            self.overview_card.text_var_confirm_status.set('Interactive Approval' if confirm else 'Direct / Automatic')
 
     def button_action_add_path(self):
         source = filedialog.askdirectory(title='Select source folder')
