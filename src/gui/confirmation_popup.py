@@ -303,6 +303,10 @@ class ActionSelection:
         self.popup = tk.Toplevel(self.root_gui)
         self.popup.withdraw()
         self.popup.title('Automatic Backup - Confirm Actions')
+        icon_path = os.path.join(os.path.dirname(__file__), 'app_icon.ico')
+        if os.path.isfile(icon_path):
+            with contextlib.suppress(Exception):
+                self.popup.iconbitmap(icon_path)
         self.popup.minsize(940, 600)
         self.popup.transient(self.root_gui)
         self.popup.protocol('WM_DELETE_WINDOW', self.button_cancel_click)
