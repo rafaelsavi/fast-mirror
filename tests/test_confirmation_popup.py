@@ -963,3 +963,45 @@ def test_cstmpath_scandir_caches_stats(tmp_path):
         # Accessing size and date must not fail or raise
         assert p.get_st_size() == p._stats.st_size
         assert isinstance(p.get_st_mtime(as_date_str=True), str)
+
+
+def test_action_selection_summary_badges_show_size(tmp_path, monkeypatch):
+    """Verify that summary badges display both file count and total size."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+    f1 = src / 'f1.txt'
+    f1.write_bytes(b'x' * 1024)  # 1 KB
+    f2 = tgt / 'del.txt'
+    f2.write_bytes(b'y' * 2048)  # 2 KB
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[(CstmPath(f1, root_dir=src), CstmPath(tgt / 'f1.txt', root_dir=tgt))],
+            files_available_to_move=[],
+            files_available_to_delete=[CstmPath(f2, root_dir=tgt)],
+            default_actions=[Action.COPY, Action.DELETE],
+        )
+
+        copy_badge_text = popup.lbl_stat_copy.cget('text')
+        move_badge_text = popup.lbl_stat_move.cget('text')
+        del_badge_text = popup.lbl_stat_delete.cget('text')
+
+        assert '1 files' in copy_badge_text
+        assert '1.00KB' in copy_badge_text
+        assert '0 files' in move_badge_text
+        assert '0' in move_badge_text
+        assert '1 files' in del_badge_text
+        assert '2.00KB' in del_badge_text
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

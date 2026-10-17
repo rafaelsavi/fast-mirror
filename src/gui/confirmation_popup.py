@@ -87,6 +87,25 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         if self.on_stats_changed:
             self.on_stats_changed()
 
+    def get_action_stats(self, action: Action) -> tuple[int, int | float]:
+        """Return (checked_file_count, total_checked_bytes) for the given action."""
+        action_data = self._data.get(action, {})
+        cached = getattr(self, '_cached_checked_by_action', None)
+        if cached is not None:
+            lines = cached.get(action.value, [])
+        else:
+            checked = self.get_checked()
+            prefix = f'{action.value}::'
+            lines = [x for x in checked if prefix in x]
+
+        total_bytes: float = 0.0
+        for x in lines:
+            if x in action_data:
+                val = action_data[x].get('size in bytes')
+                if isinstance(val, int | float):
+                    total_bytes += float(val)
+        return len(lines), total_bytes
+
     def add_file_lists(
         self,
         file_lists: dict[Action, list[tuple[CstmPath, CstmPath]] | list[CstmPath]],
@@ -179,8 +198,19 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                 mtime_str = p.to_date_str(cached_st.st_mtime) if hasattr(p, 'to_date_str') else str(cached_st.st_mtime)
                 return (p_str, size_str, bytes_val, mtime_str)
 
-            # Never perform blocking network or disk I/O on the main GUI thread
-            return (p_str, '0', 0, '')
+            # Never query remote network UNC paths synchronously on the GUI thread
+            if p_str.startswith(r'\\') or p_str.startswith('//'):
+                return (p_str, '0', 0, '')
+
+            # Safe local-only query
+            try:
+                st = p.stats
+                bytes_val = st.st_size
+                size_str = format_size(bytes_val)
+                mtime_str = p.to_date_str(st.st_mtime) if hasattr(p, 'to_date_str') else str(st.st_mtime)
+                return (p_str, size_str, bytes_val, mtime_str)
+            except Exception:
+                return (p_str, '0', 0, '')
 
         src_str, src_size_str, src_bytes, src_mtime_str = _extract_meta(source)
         tgt_str, tgt_size_str, tgt_bytes, tgt_mtime_str = _extract_meta(target)
@@ -393,7 +423,7 @@ class ActionSelection:
 
         self.lbl_stat_copy = tk.Label(
             badge_frame,
-            text='🟢 Copy: 0 files',
+            text='🟢 Copy: 0 files (0 B)',
             font=('Segoe UI', 9),
             bg='#e8f5e9',
             fg='#2e7d32',
@@ -405,7 +435,7 @@ class ActionSelection:
 
         self.lbl_stat_move = tk.Label(
             badge_frame,
-            text='🔵 Move: 0 files',
+            text='🔵 Move: 0 files (0 B)',
             font=('Segoe UI', 9),
             bg='#e3f2fd',
             fg='#1565c0',
@@ -417,7 +447,7 @@ class ActionSelection:
 
         self.lbl_stat_delete = tk.Label(
             badge_frame,
-            text='🔴 Delete: 0 files',
+            text='🔴 Delete: 0 files (0 B)',
             font=('Segoe UI', 9),
             bg='#ffebee',
             fg='#c62828',
@@ -698,20 +728,13 @@ class ActionSelection:
         self.lbl_inspector_diff.config(text=diff_text)
 
     def _update_banner_stats(self):
-        cached = getattr(self.tree, '_cached_checked_by_action', None)
-        if cached is not None:
-            copy_lines = cached.get('copy', [])
-            move_lines = cached.get('move', [])
-            del_lines = cached.get('delete', [])
-        else:
-            checked = self.tree.get_checked()
-            copy_lines = [x for x in checked if 'copy::' in x]
-            move_lines = [x for x in checked if 'move::' in x]
-            del_lines = [x for x in checked if 'delete::' in x]
+        copy_count, copy_bytes = self.tree.get_action_stats(Action.COPY)
+        move_count, move_bytes = self.tree.get_action_stats(Action.MOVE)
+        del_count, del_bytes = self.tree.get_action_stats(Action.DELETE)
 
-        self.lbl_stat_copy.config(text=f'🟢 Copy: {len(copy_lines)} files')
-        self.lbl_stat_move.config(text=f'🔵 Move: {len(move_lines)} files')
-        self.lbl_stat_delete.config(text=f'🔴 Delete: {len(del_lines)} files')
+        self.lbl_stat_copy.config(text=f'🟢 Copy: {copy_count} files ({format_size(copy_bytes)})')
+        self.lbl_stat_move.config(text=f'🔵 Move: {move_count} files ({format_size(move_bytes)})')
+        self.lbl_stat_delete.config(text=f'🔴 Delete: {del_count} files ({format_size(del_bytes)})')
 
     def _on_filter_changed(self, *args):
         query = self.filter_var.get().strip().lower()
