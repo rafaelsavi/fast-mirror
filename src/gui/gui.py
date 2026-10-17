@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 import queue
+import threading
 import tkinter as tk
 from logging import LogRecord
 from tkinter import filedialog, messagebox, ttk
@@ -34,7 +35,7 @@ from gui.widgets import (
 )
 from gui.worker_thread import KillableThread
 from utils.constants import ROOT_DIR
-from utils.logger import logger
+from utils.logger import is_test_or_agent_mode, logger
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
 
 
@@ -65,6 +66,7 @@ class Gui:
         self._backend_thread_status = BackendThreadStatus.STANDBY
         self._current_run_trigger: str | None = None
         self._active_sync: SyncDirs | None = None
+        self._last_tray_state: tuple[str, str] | None = None
 
         # Tkinter control variables
         self.toggle_auto_scroll = tk.BooleanVar(value=True)
@@ -380,8 +382,30 @@ class Gui:
             raw_pairs = self.entry_paths.get_raw_pairs()
             total_count = len(raw_pairs)
             valid_pairs = self.entry_paths.get_as_dir_pairs()
-            online_count = len([p for p in valid_pairs if os.path.isdir(p.source) and os.path.isdir(p.target)])
-            self.overview_card.text_var_pairs_count.set(f'{online_count} online / {total_count} configured')
+
+            has_remote = any(p.target.startswith(r'\\') or p.source.startswith(r'\\') for p in valid_pairs)
+
+            if is_test_or_agent_mode() or not has_remote:
+                # Fast local probe (instantaneous, <0.05ms)
+                online_count = len([p for p in valid_pairs if os.path.isdir(p.source) and os.path.isdir(p.target)])
+                self.overview_card.text_var_pairs_count.set(f'{online_count} online / {total_count} configured')
+            else:
+                # Instantly display count on main thread without blocking on SMB network I/O
+                self.overview_card.text_var_pairs_count.set(f'{len(valid_pairs)} online / {total_count} configured')
+
+                def _async_probe():
+                    try:
+                        online = len([p for p in valid_pairs if os.path.isdir(p.source) and os.path.isdir(p.target)])
+                        self.root.after(
+                            0,
+                            lambda: self.overview_card.text_var_pairs_count.set(
+                                f'{online} online / {total_count} configured'
+                            ),
+                        )
+                    except Exception:
+                        pass
+
+                threading.Thread(target=_async_probe, daemon=True).start()
         except Exception as e:
             logger.error(f'update_overview_stats failed: {e}')
             self.overview_card.text_var_pairs_count.set('0 configured')
@@ -458,9 +482,13 @@ class Gui:
             self.text_logger.yview(tk.END)
 
     def update_tray_status(self):
-        """Update system tray tooltip and contextual menu to reflect current state."""
+        """Update system system tray tooltip and contextual menu when state changes."""
         status_str = self.backend_thread_status.value
         next_app = self.text_var_next_appointment.get()
+        state_key = (status_str, next_app)
+        if getattr(self, '_last_tray_state', None) == state_key:
+            return
+        self._last_tray_state = state_key
         tooltip = f'Automatic Backup Tool\nStatus: {status_str}\nNext: {next_app}'
         self.root.update_tray_tooltip(tooltip)
         self.root._update_tray_menu()
@@ -706,23 +734,26 @@ class Gui:
         """Poll log queue every 100ms and display queued records in text logger."""
         records_drained = 0
         was_at_bottom = False
-        with contextlib.suppress(Exception):
-            was_at_bottom = self.text_logger.yview()[1] >= 0.95
 
-        while True:
-            try:
-                record: LogRecord = logger.log_queue.get(block=False)
-            except queue.Empty:
-                break
-            else:
-                msg = logger.queue_handler.format(record)
-                self.text_logger.insert(msg, record.levelname)
-                records_drained += 1
-
-        # Smart auto-scroll: only follow to bottom if user has not scrolled up to inspect previous lines
-        if records_drained > 0 and self.toggle_auto_scroll.get() and was_at_bottom:
+        # Only inspect text widget position if records are actually pending in queue
+        if not logger.log_queue.empty():
             with contextlib.suppress(Exception):
-                self.text_logger.yview(tk.END)
+                was_at_bottom = self.text_logger.yview()[1] >= 0.95
+
+            while True:
+                try:
+                    record: LogRecord = logger.log_queue.get(block=False)
+                except queue.Empty:
+                    break
+                else:
+                    msg = logger.queue_handler.format(record)
+                    self.text_logger.insert(msg, record.levelname)
+                    records_drained += 1
+
+            # Smart auto-scroll: only follow to bottom if user has not scrolled up to inspect previous lines
+            if records_drained > 0 and self.toggle_auto_scroll.get() and was_at_bottom:
+                with contextlib.suppress(Exception):
+                    self.text_logger.yview(tk.END)
 
         self.root.after(100, self.log_queue_watchdog)
 

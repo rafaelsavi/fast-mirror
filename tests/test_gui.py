@@ -132,6 +132,7 @@ def test_gui_reset_config_restores_safe_defaults(tmp_path, monkeypatch):
     try:
         root = tk.Tk()
         root.withdraw()
+        root.destroy()
     except tk.TclError:
         pytest.skip('Tkinter display not available')
 
