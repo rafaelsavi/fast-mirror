@@ -145,20 +145,48 @@ class LogPanel(ttk.LabelFrame):
         )
         lbl_count.pack(side='left', padx=(6, 0))
 
-        # Severity stats on the right side of search bar
+        # Severity stats on the right side of search bar (styled pill badges)
         self.stats_frame = ttk.Frame(search_bar)
         self.stats_frame.pack(side='right', padx=(0, 2))
 
-        self.lbl_stat_info = ttk.Label(self.stats_frame, text='Info: 0', font=('Segoe UI', 9), foreground='#2b2b2b')
-        self.lbl_stat_info.pack(side='left', padx=4)
-
-        self.lbl_stat_warning = ttk.Label(
-            self.stats_frame, text='Warnings: 0', font=('Segoe UI', 9), foreground='#71717a'
+        self.lbl_stat_info = tk.Label(
+            self.stats_frame,
+            text='Info: 0',
+            font=('Segoe UI', 8),
+            bg='#f1f5f9',
+            fg='#475569',
+            padx=7,
+            pady=2,
+            relief='solid',
+            bd=1,
         )
-        self.lbl_stat_warning.pack(side='left', padx=4)
+        self.lbl_stat_info.pack(side='left', padx=3)
 
-        self.lbl_stat_error = ttk.Label(self.stats_frame, text='Errors: 0', font=('Segoe UI', 9), foreground='#71717a')
-        self.lbl_stat_error.pack(side='left', padx=4)
+        self.lbl_stat_warning = tk.Label(
+            self.stats_frame,
+            text='Warnings: 0',
+            font=('Segoe UI', 8),
+            bg='#f8fafc',
+            fg='#94a3b8',
+            padx=7,
+            pady=2,
+            relief='flat',
+            bd=1,
+        )
+        self.lbl_stat_warning.pack(side='left', padx=3)
+
+        self.lbl_stat_error = tk.Label(
+            self.stats_frame,
+            text='Errors: 0',
+            font=('Segoe UI', 8),
+            bg='#f8fafc',
+            fg='#94a3b8',
+            padx=7,
+            pady=2,
+            relief='flat',
+            bd=1,
+        )
+        self.lbl_stat_error.pack(side='left', padx=3)
 
         # Main Log Text View (Row 2)
         if text_logger is not None:
@@ -302,32 +330,54 @@ class LogPanel(ttk.LabelFrame):
         warn_count = counts.get('WARNING', 0)
         error_count = counts.get('ERROR', 0) + counts.get('CRITICAL', 0)
 
-        self.lbl_stat_info.config(text=f'Info: {info_count:,}')
+        # Info badge
+        self.lbl_stat_info.config(
+            text=f'Info: {info_count:,}',
+            font=('Segoe UI', 8, 'bold') if info_count > 0 else ('Segoe UI', 8),
+            bg='#e2e8f0' if info_count > 0 else '#f1f5f9',
+            fg='#0f172a' if info_count > 0 else '#475569',
+            relief='solid',
+            bd=1,
+        )
 
+        # Warning badge
         if warn_count > 0:
             self.lbl_stat_warning.config(
                 text=f'⚠️ Warnings: {warn_count:,}',
-                foreground='#d97706',
-                font=('Segoe UI', 9, 'bold'),
+                font=('Segoe UI', 8, 'bold'),
+                bg='#fef3c7',
+                fg='#b45309',
+                relief='solid',
+                bd=1,
             )
         else:
             self.lbl_stat_warning.config(
                 text='Warnings: 0',
-                foreground='#71717a',
-                font=('Segoe UI', 9),
+                font=('Segoe UI', 8),
+                bg='#f8fafc',
+                fg='#94a3b8',
+                relief='flat',
+                bd=1,
             )
 
+        # Error badge
         if error_count > 0:
             self.lbl_stat_error.config(
                 text=f'❌ Errors: {error_count:,}',
-                foreground='#dc2626',
-                font=('Segoe UI', 9, 'bold'),
+                font=('Segoe UI', 8, 'bold'),
+                bg='#fee2e2',
+                fg='#b91c1c',
+                relief='solid',
+                bd=1,
             )
         else:
             self.lbl_stat_error.config(
                 text='Errors: 0',
-                foreground='#71717a',
-                font=('Segoe UI', 9),
+                font=('Segoe UI', 8),
+                bg='#f8fafc',
+                fg='#94a3b8',
+                relief='flat',
+                bd=1,
             )
 
     def apply_theme(self, theme_name: str = 'light'):
