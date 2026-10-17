@@ -76,14 +76,14 @@ class PathsPanel(ttk.LabelFrame):
         if entry_paths is not None:
             self.entry_paths = entry_paths
         else:
-            self.entry_paths = EntryPaths(self, width=110, height=3)
+            self.entry_paths = EntryPaths(self, width=85, height=3)
         self.entry_paths.grid(row=0, column=2, sticky='ew', padx=(4, 8), pady=(4, 2))
 
         # Row 1: Health Diagnostic Status Line
         self.lbl_health_status = ttk.Label(
             self,
             text='Targets not verified. Click "Health Check" to probe reachability and storage.',
-            font=('Segoe UI', 8),
+            font=('Segoe UI', 9),
             foreground='#666666',
         )
         self.lbl_health_status.grid(row=1, column=2, sticky='w', padx=(4, 8), pady=(0, 4))
@@ -95,14 +95,14 @@ class PathsPanel(ttk.LabelFrame):
         if entry_exclusions is not None:
             self.entry_exclusions = entry_exclusions
         else:
-            self.entry_exclusions = EntryExclusions(self, width=110)
+            self.entry_exclusions = EntryExclusions(self, width=85)
         self.entry_exclusions.grid(row=2, column=2, sticky='ew', padx=(4, 8), pady=(4, 2))
 
         # Row 3: Exclusion Presets Chips
         chips_frame = ttk.Frame(self)
         chips_frame.grid(row=3, column=2, sticky='w', padx=(4, 8), pady=(0, 6))
 
-        lbl_presets = ttk.Label(chips_frame, text='Presets:', font=('Segoe UI', 8, 'bold'), foreground='#555555')
+        lbl_presets = ttk.Label(chips_frame, text='Presets:', font=('Segoe UI', 9, 'bold'), foreground='#555555')
         lbl_presets.pack(side='left', padx=(0, 6))
 
         self.cb_preset_junk = ttk.Checkbutton(

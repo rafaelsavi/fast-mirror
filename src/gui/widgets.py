@@ -13,6 +13,8 @@ from utils.utils import DirectoryPair, sanitize_path
 
 class EntryPaths(ScrolledText):
     def __init__(self, *args, **kwargs):
+        if 'font' not in kwargs:
+            kwargs['font'] = ('Consolas', 9)
         super().__init__(*args, **kwargs)
 
     def get_text(self, start: str = '1.0', end: str = tk.END) -> str:
@@ -96,6 +98,8 @@ class EntryPaths(ScrolledText):
 class EntryExclusions(tk.Entry):
     def __init__(self, *args, **kwargs):
         self.var = tk.StringVar()
+        if 'font' not in kwargs:
+            kwargs['font'] = ('Consolas', 9)
         super().__init__(*args, textvariable=self.var, **kwargs)
         self.reset()
 
@@ -114,6 +118,8 @@ class EntryExclusions(tk.Entry):
 
 class EntryTimes(ScrolledText):
     def __init__(self, *args, **kwargs):
+        if 'font' not in kwargs:
+            kwargs['font'] = ('Consolas', 9)
         super().__init__(*args, **kwargs)
 
     def get(self, *args, **kwargs) -> list[str]:  # type: ignore[override]
@@ -276,7 +282,7 @@ class TextLogger(ScrolledText):
         self.limit_lines = 50000
         self.on_log_updated = on_log_updated
         self._level_counts: dict[str, int] = {'DEBUG': 0, 'INFO': 0, 'WARNING': 0, 'ERROR': 0, 'CRITICAL': 0}
-        self.configure(font='TkFixedFont')
+        self.configure(font=('Consolas', 10))
         self.tag_config('DEBUG', foreground='gray')
         self.tag_config('INFO', foreground='black')
         self.tag_config('WARNING', foreground='orange')

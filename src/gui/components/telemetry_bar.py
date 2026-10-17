@@ -36,7 +36,7 @@ class TelemetryBar(ttk.Frame):
         self.lbl_details = ttk.Label(
             self,
             text='',
-            font=('Segoe UI', 8),
+            font=('Segoe UI', 9),
             foreground='#555555',
         )
         self.lbl_details.grid(row=1, column=1, sticky='w', padx=(0, 8), pady=(2, 2))

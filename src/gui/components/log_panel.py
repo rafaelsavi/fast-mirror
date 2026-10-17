@@ -140,7 +140,7 @@ class LogPanel(ttk.LabelFrame):
         lbl_count = ttk.Label(
             search_bar,
             textvariable=self.search_count_var,
-            font=('Segoe UI', 8),
+            font=('Segoe UI', 9),
             foreground='#555555',
         )
         lbl_count.pack(side='left', padx=(6, 0))
@@ -149,15 +149,15 @@ class LogPanel(ttk.LabelFrame):
         self.stats_frame = ttk.Frame(search_bar)
         self.stats_frame.pack(side='right', padx=(0, 2))
 
-        self.lbl_stat_info = ttk.Label(self.stats_frame, text='Info: 0', font=('Segoe UI', 8), foreground='#2b2b2b')
+        self.lbl_stat_info = ttk.Label(self.stats_frame, text='Info: 0', font=('Segoe UI', 9), foreground='#2b2b2b')
         self.lbl_stat_info.pack(side='left', padx=4)
 
         self.lbl_stat_warning = ttk.Label(
-            self.stats_frame, text='Warnings: 0', font=('Segoe UI', 8), foreground='#71717a'
+            self.stats_frame, text='Warnings: 0', font=('Segoe UI', 9), foreground='#71717a'
         )
         self.lbl_stat_warning.pack(side='left', padx=4)
 
-        self.lbl_stat_error = ttk.Label(self.stats_frame, text='Errors: 0', font=('Segoe UI', 8), foreground='#71717a')
+        self.lbl_stat_error = ttk.Label(self.stats_frame, text='Errors: 0', font=('Segoe UI', 9), foreground='#71717a')
         self.lbl_stat_error.pack(side='left', padx=4)
 
         # Main Log Text View (Row 2)
@@ -166,7 +166,7 @@ class LogPanel(ttk.LabelFrame):
             self.text_logger.on_log_updated = self.update_stats
         else:
             self.text_logger = TextLogger(
-                self, state=TkinterCfgState.DISABLED.value, height=28, width=135, on_log_updated=self.update_stats
+                self, state=TkinterCfgState.DISABLED.value, height=22, width=90, on_log_updated=self.update_stats
             )
         self.text_logger.set_log_levels(self.log_levels.get())
         self.text_logger.grid(row=2, column=0, sticky='nsew', padx=8, pady=(0, 8))
@@ -308,26 +308,26 @@ class LogPanel(ttk.LabelFrame):
             self.lbl_stat_warning.config(
                 text=f'⚠️ Warnings: {warn_count:,}',
                 foreground='#d97706',
-                font=('Segoe UI', 8, 'bold'),
+                font=('Segoe UI', 9, 'bold'),
             )
         else:
             self.lbl_stat_warning.config(
                 text='Warnings: 0',
                 foreground='#71717a',
-                font=('Segoe UI', 8),
+                font=('Segoe UI', 9),
             )
 
         if error_count > 0:
             self.lbl_stat_error.config(
                 text=f'❌ Errors: {error_count:,}',
                 foreground='#dc2626',
-                font=('Segoe UI', 8, 'bold'),
+                font=('Segoe UI', 9, 'bold'),
             )
         else:
             self.lbl_stat_error.config(
                 text='Errors: 0',
                 foreground='#71717a',
-                font=('Segoe UI', 8),
+                font=('Segoe UI', 9),
             )
 
     def apply_theme(self, theme_name: str = 'light'):

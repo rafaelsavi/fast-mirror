@@ -385,7 +385,7 @@ class ActionSelection:
         lbl_desc = tk.Label(
             title_box,
             text='Inspect planned filesystem changes. Check or uncheck items to customize what will be executed.',
-            font=('Segoe UI', 8),
+            font=('Segoe UI', 9),
             bg='#f8f9fa',
             fg='#6c757d',
         )
@@ -487,7 +487,7 @@ class ActionSelection:
             command=lambda: self.tree.uncheck_action(Action.DELETE),
             padx=8,
             pady=2,
-            font=('Segoe UI', 8, 'bold'),
+            font=('Segoe UI', 9, 'bold'),
             fg='#d32f2f',
             relief='groove',
         )
@@ -510,7 +510,7 @@ class ActionSelection:
         )
         btn_clear_filter.pack(side='left', padx=(0, 6))
 
-        self.lbl_filter_count = ttk.Label(toolbar_frame, text='', font=('Segoe UI', 8))
+        self.lbl_filter_count = ttk.Label(toolbar_frame, text='', font=('Segoe UI', 9))
         self.lbl_filter_count.pack(side='left')
 
     def create_table(self):
@@ -560,11 +560,11 @@ class ActionSelection:
         hdr.grid(row=0, column=0, sticky='ew', padx=6, pady=(3, 4))
         hdr.grid_columnconfigure(1, weight=1)
 
-        self.lbl_inspector_badge = ttk.Label(hdr, text='📄 File', font=('Segoe UI', 8, 'bold'))
+        self.lbl_inspector_badge = ttk.Label(hdr, text='📄 File', font=('Segoe UI', 9, 'bold'))
         self.lbl_inspector_badge.grid(row=0, column=0, sticky='w')
 
         self.lbl_inspector_diff = ttk.Label(
-            hdr, text='(select an item to view comparison)', font=('Segoe UI', 8), foreground='#005a9e'
+            hdr, text='(select an item to view comparison)', font=('Segoe UI', 9), foreground='#005a9e'
         )
         self.lbl_inspector_diff.grid(row=0, column=1, sticky='w', padx=(10, 0))
 
@@ -581,20 +581,20 @@ class ActionSelection:
         details_frame.grid(row=1, column=0, sticky='ew', padx=6, pady=(0, 4))
         details_frame.grid_columnconfigure(1, weight=1)
 
-        lbl_s = ttk.Label(details_frame, text='Source:', font=('Segoe UI', 8, 'bold'), width=7)
+        lbl_s = ttk.Label(details_frame, text='Source:', font=('Segoe UI', 9, 'bold'), width=7)
         lbl_s.grid(row=0, column=0, sticky='w', pady=1)
-        self.lbl_inspector_source = ttk.Label(details_frame, text='(select an item to view path)', font=('Segoe UI', 8))
+        self.lbl_inspector_source = ttk.Label(details_frame, text='(select an item to view path)', font=('Segoe UI', 9))
         self.lbl_inspector_source.grid(row=0, column=1, sticky='w', pady=1)
 
-        self.lbl_inspector_src_meta = ttk.Label(details_frame, text='', font=('Segoe UI', 7), foreground='#555555')
+        self.lbl_inspector_src_meta = ttk.Label(details_frame, text='', font=('Segoe UI', 8), foreground='#555555')
         self.lbl_inspector_src_meta.grid(row=1, column=1, sticky='w', pady=(0, 2))
 
-        lbl_t = ttk.Label(details_frame, text='Target:', font=('Segoe UI', 8, 'bold'), width=7)
+        lbl_t = ttk.Label(details_frame, text='Target:', font=('Segoe UI', 9, 'bold'), width=7)
         lbl_t.grid(row=2, column=0, sticky='w', pady=1)
-        self.lbl_inspector_target = ttk.Label(details_frame, text='-', font=('Segoe UI', 8))
+        self.lbl_inspector_target = ttk.Label(details_frame, text='-', font=('Segoe UI', 9))
         self.lbl_inspector_target.grid(row=2, column=1, sticky='w', pady=1)
 
-        self.lbl_inspector_tgt_meta = ttk.Label(details_frame, text='', font=('Segoe UI', 7), foreground='#555555')
+        self.lbl_inspector_tgt_meta = ttk.Label(details_frame, text='', font=('Segoe UI', 8), foreground='#555555')
         self.lbl_inspector_tgt_meta.grid(row=3, column=1, sticky='w', pady=(0, 2))
 
         # Bottom Buttons

@@ -49,7 +49,7 @@ class ReportsWindow:
         lbl_desc = ttk.Label(
             header,
             text='Browse past comparison reports. Double-click or select an item to open it in Microsoft Excel.',
-            font=('Segoe UI', 8),
+            font=('Segoe UI', 9),
             foreground='#555555',
         )
         lbl_desc.pack(anchor='w')
@@ -86,7 +86,7 @@ class ReportsWindow:
         bottom = ttk.Frame(self.window, padding=(10, 6, 10, 10))
         bottom.grid(row=2, column=0, sticky='ew')
 
-        self.lbl_count = ttk.Label(bottom, text='0 reports found', font=('Segoe UI', 8))
+        self.lbl_count = ttk.Label(bottom, text='0 reports found', font=('Segoe UI', 9))
         self.lbl_count.pack(side='left', padx=(4, 0))
 
         self.btn_close = ttk.Button(bottom, text='Close', command=self.window.destroy, width=10)

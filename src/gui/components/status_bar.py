@@ -25,13 +25,13 @@ class StatusBar(ttk.Frame):
         status_box = ttk.Frame(self)
         status_box.grid(row=0, column=0, sticky='w', padx=(4, 16), pady=2)
 
-        lbl_status_title = ttk.Label(status_box, text='Engine Status: ', font=('Segoe UI', 9, 'bold'))
+        lbl_status_title = ttk.Label(status_box, text='Engine Status: ', font=('Segoe UI', 10, 'bold'))
         lbl_status_title.pack(side='left')
 
         self.lbl_status_val = ttk.Label(
             status_box,
             textvariable=self.text_var_status,
-            font=('Segoe UI', 9, 'bold'),
+            font=('Segoe UI', 10, 'bold'),
         )
         self.lbl_status_val.pack(side='left')
 
@@ -39,7 +39,7 @@ class StatusBar(ttk.Frame):
         sched_box = ttk.Frame(self)
         sched_box.grid(row=0, column=1, sticky='e', padx=8, pady=2)
 
-        lbl_sched_title = ttk.Label(sched_box, text='Next Sync: ', font=('Segoe UI', 9, 'bold'))
+        lbl_sched_title = ttk.Label(sched_box, text='Next Sync: ', font=('Segoe UI', 10, 'bold'))
         lbl_sched_title.pack(side='left')
 
         lbl_sched_val = ttk.Label(
