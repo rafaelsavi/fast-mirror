@@ -7,6 +7,72 @@ from gui.enums import TkinterCfgRelief
 from gui.widgets import Action, DefaultActions
 
 
+class ModernButton(ttk.Button):
+    """Modern themed button maintaining full backward compatibility with .config('relief') toggle checks."""
+
+    def __init__(
+        self,
+        master: tk.Misc | None = None,
+        relief: str = TkinterCfgRelief.RAISED.value,
+        default_style: str = '',
+        **kwargs,
+    ):
+        self._relief = relief
+        self._default_style = default_style
+        kwargs.pop('relief', None)
+        kwargs.pop('font', None)
+        style = default_style or 'TButton'
+        if relief == TkinterCfgRelief.SUNKEN.value:
+            style = 'Accent.TButton'
+        if 'style' not in kwargs and style:
+            kwargs['style'] = style
+        super().__init__(master, **kwargs)
+
+    def _apply_style(self):
+        if self._relief == TkinterCfgRelief.SUNKEN.value:
+            self.configure(style='Accent.TButton')
+        elif self._default_style:
+            self.configure(style=self._default_style)
+        else:
+            self.configure(style='TButton')
+
+    def config(self, *args, **kwargs):
+        if 'relief' in kwargs:
+            self._relief = kwargs.pop('relief')
+            self._apply_style()
+        if 'font' in kwargs:
+            kwargs.pop('font')
+        if args and len(args) == 1 and args[0] == 'relief':
+            return ('relief', 'relief', 'Relief', TkinterCfgRelief.RAISED.value, self._relief)
+        if args or kwargs:
+            return super().config(*args, **kwargs)
+        res = super().config()
+        if isinstance(res, dict):
+            res['relief'] = ('relief', 'relief', 'Relief', TkinterCfgRelief.RAISED.value, self._relief)
+        return res
+
+    configure = config
+
+    def cget(self, key):
+        if key == 'relief':
+            return self._relief
+        return super().cget(key)
+
+    def __getitem__(self, key):
+        if key == 'relief':
+            return self._relief
+        return super().__getitem__(key)
+
+    def __setitem__(self, key, value):
+        if key == 'relief':
+            self._relief = value
+            self._apply_style()
+        elif key == 'font':
+            pass
+        else:
+            super().__setitem__(key, value)
+
+
 class ActionsPanel(ttk.LabelFrame):
     """Panel managing backup triggers, comparison options, and default action preferences."""
 
@@ -59,33 +125,27 @@ class ActionsPanel(ttk.LabelFrame):
         lbl_cfg = ttk.Label(cfg_frame, text='Configuration:', font=('Segoe UI', 9, 'bold'), width=14)
         lbl_cfg.pack(side='left')
 
-        self.button_new_config = tk.Button(
+        self.button_new_config = ModernButton(
             cfg_frame,
             text='Reset',
             command=self.on_reset_config,
             width=8,
-            font=('Segoe UI', 9),
-            relief=TkinterCfgRelief.RAISED.value,
         )
         self.button_new_config.pack(side='left', padx=2)
 
-        self.button_save_config = tk.Button(
+        self.button_save_config = ModernButton(
             cfg_frame,
             text='Save',
             command=self.on_save_config,
             width=8,
-            font=('Segoe UI', 9),
-            relief=TkinterCfgRelief.RAISED.value,
         )
         self.button_save_config.pack(side='left', padx=2)
 
-        self.button_toggle_theme = tk.Button(
+        self.button_toggle_theme = ModernButton(
             cfg_frame,
             text='Theme: Native (Fast)',
             command=self.on_toggle_theme,
-            width=17,
-            font=('Segoe UI', 9),
-            relief=TkinterCfgRelief.RAISED.value,
+            width=18,
         )
         if self.on_toggle_theme is not None:
             self.button_toggle_theme.pack(side='left', padx=2)
@@ -97,33 +157,27 @@ class ActionsPanel(ttk.LabelFrame):
         lbl_cmp = ttk.Label(cmp_frame, text='Comparison:', font=('Segoe UI', 9, 'bold'), width=14)
         lbl_cmp.pack(side='left')
 
-        self.button_quick_compare = tk.Button(
+        self.button_quick_compare = ModernButton(
             cmp_frame,
             text='Start Compare',
             command=self.on_quick_compare,
-            width=12,
-            font=('Segoe UI', 9),
-            relief=TkinterCfgRelief.RAISED.value,
+            width=14,
         )
         self.button_quick_compare.pack(side='left', padx=3)
 
-        self.button_open_report = tk.Button(
+        self.button_open_report = ModernButton(
             cmp_frame,
             text='Open Report',
             command=self.on_open_report,
-            width=11,
-            font=('Segoe UI', 9),
-            relief=TkinterCfgRelief.RAISED.value,
+            width=12,
         )
         self.button_open_report.pack(side='left', padx=3)
 
-        self.button_report_history = tk.Button(
+        self.button_report_history = ModernButton(
             cmp_frame,
             text='History...',
             command=self._handle_report_history,
-            width=9,
-            font=('Segoe UI', 9),
-            relief=TkinterCfgRelief.RAISED.value,
+            width=10,
         )
         self.button_report_history.pack(side='left', padx=3)
 
@@ -134,23 +188,20 @@ class ActionsPanel(ttk.LabelFrame):
         lbl_sync = ttk.Label(sync_frame, text='Synchronization:', font=('Segoe UI', 9, 'bold'), width=14)
         lbl_sync.pack(side='left')
 
-        self.button_sync_now = tk.Button(
+        self.button_sync_now = ModernButton(
             sync_frame,
             text='Sync Now',
             command=self.on_sync_now,
-            width=12,
-            font=('Segoe UI', 9, 'bold'),
-            relief=TkinterCfgRelief.RAISED.value,
+            width=14,
+            default_style='Accent.TButton',
         )
         self.button_sync_now.pack(side='left', padx=3)
 
-        self.button_schedule_sync = tk.Button(
+        self.button_schedule_sync = ModernButton(
             sync_frame,
             text='Schedule (OFF)',
             command=self.on_schedule_sync,
-            width=13,
-            font=('Segoe UI', 9),
-            relief=TkinterCfgRelief.RAISED.value,
+            width=14,
         )
         self.button_schedule_sync.pack(side='left', padx=3)
 
