@@ -1,5 +1,10 @@
 import tkinter as tk
-from collections.abc import Callable
+from tkinter import ttk
+
+from utils.utils import format_size
+
+
+import tkinter as tk
 from tkinter import ttk
 
 
@@ -9,11 +14,9 @@ class TelemetryBar(ttk.Frame):
     def __init__(
         self,
         master: tk.Misc,
-        on_stop: Callable[[], None] | None = None,
         **kwargs,
     ):
         super().__init__(master, **kwargs)
-        self.on_stop = on_stop
 
         self._active_mode: str | None = None
         self._create_widgets()
@@ -23,9 +26,9 @@ class TelemetryBar(ttk.Frame):
 
         # Row 0: Top Framing Separator
         sep = ttk.Separator(self, orient='horizontal')
-        sep.grid(row=0, column=0, columnspan=3, sticky='ew', pady=(0, 4))
+        sep.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 4))
 
-        # Row 1: Status label on left, Stop button on right
+        # Row 1: Status label on left, Details on right
         self.lbl_status = ttk.Label(
             self,
             text='Ready',
@@ -39,16 +42,7 @@ class TelemetryBar(ttk.Frame):
             font=('Segoe UI', 9),
             foreground='#555555',
         )
-        self.lbl_details.grid(row=1, column=1, sticky='w', padx=(0, 8), pady=(2, 2))
-
-        self.btn_stop = ttk.Button(
-            self,
-            text='⏹ Stop',
-            command=self._handle_stop,
-            width=9,
-            style='Secondary.TButton',
-        )
-        self.btn_stop.grid(row=1, column=2, rowspan=2, sticky='e', padx=(4, 4), pady=(2, 2))
+        self.lbl_details.grid(row=1, column=1, sticky='w', padx=(0, 4), pady=(2, 2))
 
         # Row 2: Modern Progress Bar
         self.progress = ttk.Progressbar(
@@ -56,11 +50,7 @@ class TelemetryBar(ttk.Frame):
             orient='horizontal',
             mode='indeterminate',
         )
-        self.progress.grid(row=2, column=0, columnspan=2, sticky='ew', padx=(4, 8), pady=(2, 4))
-
-    def _handle_stop(self):
-        if self.on_stop:
-            self.on_stop()
+        self.progress.grid(row=2, column=0, columnspan=2, sticky='ew', padx=(4, 4), pady=(2, 4))
 
     def set_indeterminate(self, message: str = 'Scanning files...'):
         """Switch to smooth indeterminate animated progress during directory scanning."""
