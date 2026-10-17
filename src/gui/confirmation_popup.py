@@ -179,15 +179,8 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                 mtime_str = p.to_date_str(cached_st.st_mtime) if hasattr(p, 'to_date_str') else str(cached_st.st_mtime)
                 return (p_str, size_str, bytes_val, mtime_str)
 
-            # Fallback: Single attempt to fetch stats without multi-attempt network retries
-            try:
-                st = p.stats
-                bytes_val = st.st_size
-                size_str = format_size(bytes_val)
-                mtime_str = p.to_date_str(st.st_mtime) if hasattr(p, 'to_date_str') else str(st.st_mtime)
-                return (p_str, size_str, bytes_val, mtime_str)
-            except Exception:
-                return (p_str, '0', 0, '')
+            # Never perform blocking network or disk I/O on the main GUI thread
+            return (p_str, '0', 0, '')
 
         src_str, src_size_str, src_bytes, src_mtime_str = _extract_meta(source)
         tgt_str, tgt_size_str, tgt_bytes, tgt_mtime_str = _extract_meta(target)
@@ -308,7 +301,6 @@ class ActionSelection:
             with contextlib.suppress(Exception):
                 self.popup.iconbitmap(icon_path)
         self.popup.minsize(940, 600)
-        self.popup.transient(self.root_gui)
         self.popup.protocol('WM_DELETE_WINDOW', self.button_cancel_click)
 
         # Center window over root or screen
