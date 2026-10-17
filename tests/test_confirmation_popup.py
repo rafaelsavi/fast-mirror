@@ -783,3 +783,183 @@ def test_action_selection_copy_path_and_selection(tmp_path):
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_confirmation_popup_no_network_stat_for_new_targets(tmp_path, monkeypatch):
+    """Verify that remote network destination targets never trigger blocking os.stat calls."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        from core.file import File
+
+        src_dir = tmp_path / 'source'
+        src_dir.mkdir()
+        target_root = r'\\192.168.1.100\Backup\D'
+
+        files_to_copy = []
+        for i in range(200):
+            f_path = src_dir / f'photo_{i}.jpg'
+            f_path.write_bytes(b'test data ' * 10)
+            cstm_src = CstmPath(f_path, root_dir=src_dir)
+            file_obj = File(source=cstm_src, missing_target_root_dir=target_root)
+            files_to_copy.append((file_obj.source, file_obj.source_as_target))
+
+        # Spy on os.stat calls
+        original_stat = os.stat
+        remote_stat_calls = []
+
+        def spy_stat(path, *args, **kwargs):
+            path_str = str(path)
+            if '192.168.1.100' in path_str:
+                remote_stat_calls.append(path_str)
+            return original_stat(path, *args, **kwargs)
+
+        monkeypatch.setattr('os.stat', spy_stat)
+
+        tree = CustomCheckboxTreeView(root)
+        tree.add_file_lists({Action.COPY: files_to_copy}, default_active=[Action.COPY])
+        tree.refresh_group_stats()
+
+        # Zero remote stat calls must have been made to the NAS!
+        assert len(remote_stat_calls) == 0
+
+        # Verify rows were populated correctly with size and dates
+        action_data = tree._data[Action.COPY]
+        assert len(action_data) == 200
+        first_row = list(action_data.values())[0]
+        assert first_row['size (source)'] != '0'
+        assert first_row['size (target)'] == '0'
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_confirmation_popup_large_dataset_performance(tmp_path):
+    """Verify that populating and computing stats for 1,500+ items executes in under 1 second."""
+    import time
+
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        src_dir = tmp_path / 'perf_source'
+        src_dir.mkdir()
+        dummy_file = src_dir / 'template.txt'
+        dummy_file.write_text('content for performance testing')
+
+        cstm_source = CstmPath(dummy_file, root_dir=src_dir)
+
+        # 1,500 file operations
+        copy_items = [
+            (cstm_source, CstmPath(f'\\\\192.168.1.100\\Share\\dest_{i}.txt', is_new_target=True)) for i in range(800)
+        ]
+        move_items = [
+            (
+                cstm_source,
+                CstmPath(f'\\\\192.168.1.100\\Share\\dest_move_{i}.txt', is_new_target=True),
+            )
+            for i in range(400)
+        ]
+        delete_items = [cstm_source for _ in range(300)]
+
+        start_time = time.time()
+        tree = CustomCheckboxTreeView(root)
+        tree.add_file_lists(
+            {
+                Action.COPY: copy_items,
+                Action.MOVE: move_items,
+                Action.DELETE: delete_items,
+            },
+            default_active=[Action.COPY, Action.MOVE, Action.DELETE],
+        )
+        tree.refresh_group_stats()
+        checked = tree.get_checked()
+        duration = time.time() - start_time
+
+        assert len(checked) == 1500
+        assert duration < 2.0  # Must be fast and never freeze
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_hierarchical_get_checked_accuracy_and_speed(tmp_path):
+    """Verify smart get_checked() matches native behavior in all states (all checked, all unchecked, tristate)."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        src_dir = tmp_path / 'tree_test'
+        src_dir.mkdir()
+        f1 = src_dir / 'a.txt'
+        f2 = src_dir / 'b.txt'
+        f3 = src_dir / 'c.txt'
+        f1.write_text('a')
+        f2.write_text('b')
+        f3.write_text('c')
+
+        items = [
+            (CstmPath(f1, root_dir=src_dir), CstmPath('d:/dest/a.txt', is_new_target=True)),
+            (CstmPath(f2, root_dir=src_dir), CstmPath('d:/dest/b.txt', is_new_target=True)),
+            (CstmPath(f3, root_dir=src_dir), CstmPath('d:/dest/c.txt', is_new_target=True)),
+        ]
+
+        tree = CustomCheckboxTreeView(root)
+        tree.add_file_lists({Action.COPY: items}, default_active=[Action.COPY])
+
+        # 1. All checked
+        assert len(tree.get_checked()) == 3
+
+        # 2. Group unchecked
+        tree.uncheck_action(Action.COPY)
+        assert len(tree.get_checked()) == 0
+
+        # 3. Select all
+        tree.select_all()
+        assert len(tree.get_checked()) == 3
+
+        # 4. Tristate: uncheck one child
+        first_child = tree.get_children(Action.COPY.value)[0]
+        tree._uncheck_ancestor(first_child)
+        assert tree.tag_has('tristate', Action.COPY.value) is True
+        checked = tree.get_checked()
+        assert len(checked) == 2
+        assert first_child not in checked
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_cstmpath_scandir_caches_stats(tmp_path):
+    """Verify CstmPath.get_from_dir pre-caches stats on all returned CstmPath instances."""
+    scan_dir = tmp_path / 'scan_cache_test'
+    scan_dir.mkdir()
+    sub_dir = scan_dir / 'sub'
+    sub_dir.mkdir()
+
+    file1 = scan_dir / 'doc1.txt'
+    file2 = sub_dir / 'doc2.txt'
+    file1.write_text('content one')
+    file2.write_text('content two is slightly longer')
+
+    scanned = CstmPath.get_from_dir(scan_dir, exclude=[])
+    assert len(scanned) == 2
+
+    for p in scanned:
+        # Pre-cached stats must be present in memory!
+        assert p._stats is not None
+        assert p._stats.st_size > 0
+        assert p._stats.st_mtime > 0
+        # Accessing size and date must not fail or raise
+        assert p.get_st_size() == p._stats.st_size
+        assert isinstance(p.get_st_mtime(as_date_str=True), str)

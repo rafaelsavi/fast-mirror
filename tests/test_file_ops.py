@@ -196,3 +196,36 @@ def test_unlock_file_attributes(tmp_path):
 def test_unlock_file_attributes_non_existent_path(tmp_path):
     missing_path = tmp_path / 'does_not_exist.txt'
     assert unlock_file_attributes(missing_path) is False
+
+
+def test_robust_copy_overwrites_existing_file(tmp_path):
+    source = tmp_path / 'source.txt'
+    target = tmp_path / 'target.txt'
+    source.write_text('new updated version')
+    target.write_text('old obsolete version')
+
+    robust_copy(source, target)
+    assert target.is_file()
+    assert target.read_text() == 'new updated version'
+
+
+def test_cstmpath_refresh_stats_after_overwrite(tmp_path):
+    from core.file import CstmPath
+
+    source = tmp_path / 'source.txt'
+    target = tmp_path / 'target.txt'
+    source.write_text('longer content for updated file')
+    target.write_text('short')
+
+    cstm_target = CstmPath(target, root_dir=tmp_path)
+    old_size = cstm_target.get_st_size()
+    assert old_size == len('short')
+
+    robust_copy(source, target)
+    # Target file on disk has changed
+    assert target.read_text() == 'longer content for updated file'
+
+    # Calling refresh_stats updates in-memory cache to new file stats
+    new_stats = cstm_target.refresh_stats()
+    assert new_stats.st_size == len('longer content for updated file')
+    assert cstm_target.get_st_size() == len('longer content for updated file')

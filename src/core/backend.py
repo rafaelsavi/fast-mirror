@@ -1,3 +1,4 @@
+import contextlib
 import datetime
 import filecmp
 import os
@@ -518,6 +519,9 @@ class SyncDirs:
                     initial_delay=self.retry_delay,
                     backoff_factor=self.backoff_factor,
                 )
+                if isinstance(target, CstmPath):
+                    with contextlib.suppress(Exception):
+                        target.refresh_stats()
 
                 if self.increment_mirror:
                     self.mirror.add_path(root_dir=dir_pair.target, path=target)
@@ -585,6 +589,9 @@ class SyncDirs:
                     initial_delay=self.retry_delay,
                     backoff_factor=self.backoff_factor,
                 )
+                if isinstance(target, CstmPath):
+                    with contextlib.suppress(Exception):
+                        target.refresh_stats()
                 if self.increment_mirror:
                     self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
                 log_progress('Moved', i, n_files, start_time, interval=log_interval)

@@ -48,15 +48,24 @@ def get_stats_hash(path: CstmPathType) -> StatsHash:
 
 
 class CstmPath(Path):
-    def __init__(self, *paths: CstmPathType, root_dir: CstmPathType | None = None, stats_hash: StatsHash | None = None):
+    def __init__(
+        self,
+        *paths: CstmPathType,
+        root_dir: CstmPathType | None = None,
+        stats_hash: StatsHash | None = None,
+        stats: Stats | None = None,
+        is_new_target: bool = False,
+    ):
         super().__init__(*paths)
         self.root_dir = Path(root_dir) if root_dir else None
         self._rel_to_root = Path(self).relative_to(self.root_dir) if self.root_dir else None
 
         if self.root_dir and self.root_dir not in self.parents:
             raise CustomException(f'Root directory {self.root_dir} is not a parent of {self}')
-        self._stats: Stats | None = None  # Cached stats
+        self._stats: Stats | None = stats  # Cached stats
         self._stats_hash: StatsHash | None = stats_hash  # Cached encoded stats
+        self._is_new_target: bool = is_new_target
+        self._stat_failed: bool = is_new_target
 
     def check_length(self) -> str:
         return f'File path is too long ({len(str(self))}): {self}' if len(str(self)) > 255 else ''
@@ -68,10 +77,12 @@ class CstmPath(Path):
     @property
     def stats(self) -> Stats:
         if self._stats is None:
+            if getattr(self, '_stat_failed', False) or getattr(self, '_is_new_target', False):
+                raise FileNotFoundError(f'Stats not available for non-existent path: {self}')
             try:
                 self._stats = _get_stats(self)
             except Exception as e:
-                # logger.warning(f'Could not get stats of {self}. Exception: {e}')
+                self._stat_failed = True
                 raise e
         return self._stats
 
@@ -80,6 +91,14 @@ class CstmPath(Path):
         if self._stats_hash is None:
             self._stats_hash = _encode_stats(self.stats)
         return self._stats_hash
+
+    def refresh_stats(self) -> Stats:
+        """Reset cached stats and re-read fresh metadata from disk."""
+        self._stats = None
+        self._stats_hash = None
+        self._is_new_target = False
+        self._stat_failed = False
+        return self.stats
 
     def get_st_size(self, as_str=False) -> str | int:
         size_ = self.stats.st_size
@@ -111,23 +130,41 @@ class CstmPath(Path):
         logger.info(f'Scanning files from {dir_path}. This may take a while')
         # pathspec needs frontslashes
         spec = pathspec.PathSpec.from_lines('gitwildmatch', map(lambda x: x.replace('\\', '/'), exclude))
-        all_paths = set()
+        all_paths: set[CstmPath] = set()
         start_time = time.time()
 
-        for root, dirs, files in os.walk(dir_path):
-            rel_root = Path(root).relative_to(dir_path)
+        base_path = Path(dir_path)
+        stack = [base_path]
 
-            # Improve walk efficiency prune in-place directories that match ignore patterns
-            dirs[:] = [d for d in dirs if not spec.match_file((rel_root / d).as_posix())]
+        while stack:
+            curr_dir = stack.pop()
+            rel_dir = curr_dir.relative_to(base_path)
 
-            for f in files:
-                if f.endswith('.tmp') or '.tmp.' in f:
-                    continue
-                rel_path = rel_root / f
-                if not spec.match_file(rel_path.as_posix()):
-                    full_path = Path(root) / f
-                    all_paths.add(CstmPath(full_path, root_dir=dir_path))
-                    log_progress('Scanned', len(all_paths), None, start_time, interval=10_000)
+            try:
+                with os.scandir(curr_dir) as entries:
+                    for entry in entries:
+                        name = entry.name
+                        if name.endswith('.tmp') or '.tmp.' in name:
+                            continue
+
+                        rel_entry = rel_dir / name
+                        rel_posix = rel_entry.as_posix()
+
+                        try:
+                            if entry.is_dir(follow_symlinks=False):
+                                # Skip directory if excluded by pattern
+                                if not (spec.match_file(rel_posix) or spec.match_file(rel_posix + '/')):
+                                    stack.append(Path(entry.path))
+                            elif entry.is_file(follow_symlinks=False) and not spec.match_file(rel_posix):
+                                st = entry.stat()
+                                stable_stats = Stats(st.st_size, st.st_mtime)
+                                p = CstmPath(entry.path, root_dir=dir_path, stats=stable_stats)
+                                all_paths.add(p)
+                                log_progress('Scanned', len(all_paths), None, start_time, interval=10_000)
+                        except (PermissionError, FileNotFoundError, OSError):
+                            continue
+            except (PermissionError, FileNotFoundError, OSError) as e:
+                logger.warning(f'Could not scan directory <{curr_dir}>: {e}')
 
         logger.info(f'Finished scanning {dir_path} with {len(all_paths):,} files in {format_elapsed_time(start_time)}.')
         return all_paths
@@ -182,7 +219,7 @@ class File:
             raise CustomException(
                 'Neither target nor missing_target_root_dir is set. Cannot convert source to target path.'
             )
-        return CstmPath(target_root_dir / self.source.rel_to_root, root_dir=target_root_dir)
+        return CstmPath(target_root_dir / self.source.rel_to_root, root_dir=target_root_dir, is_new_target=True)
 
     @property
     def any_path(self) -> str:

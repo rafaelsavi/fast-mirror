@@ -141,31 +141,53 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                     tags=(action_style_tag,),
                 )
 
+    def get_checked(self) -> list[str]:
+        """High-performance retrieval of checked leaf items."""
+        checked: list[str] = []
+        for group in self.get_children(''):
+            # If the group is marked unchecked, all its descendants are unchecked
+            if self.tag_has('unchecked', group):
+                continue
+
+            children = self.get_children(group)
+            if not children:
+                if self.tag_has('checked', group):
+                    checked.append(group)
+                continue
+
+            for child in children:
+                if self.tag_has('checked', child):
+                    checked.append(child)
+        return checked
+
     @staticmethod
     def get_row(source: CstmPath | None, target: CstmPath | None) -> dict[str, float | str]:
         def _extract_meta(p: CstmPath | None) -> tuple[str, str, int | float, str]:
             if p is None:
                 return ('', '0', 0, '')
             p_str = str(p)
-            with contextlib.suppress(Exception):
-                st = getattr(p, 'stats', None)
-                if st is not None:
-                    bytes_val = st.st_size
-                    size_str = format_size(bytes_val)
-                    mtime_str = p.to_date_str(st.st_mtime) if hasattr(p, 'to_date_str') else str(st.st_mtime)
-                    return (p_str, size_str, bytes_val, mtime_str)
 
-            size_str = '0'
-            bytes_val = 0
-            mtime_str = ''
-            if hasattr(p, 'get_st_size'):
-                with contextlib.suppress(Exception):
-                    size_str = str(p.get_st_size(as_str=True))
-                    bytes_val = p.get_st_size(as_str=False)
-            if hasattr(p, 'get_st_mtime'):
-                with contextlib.suppress(Exception):
-                    mtime_str = str(p.get_st_mtime(as_date_str=True))
-            return (p_str, size_str, bytes_val, mtime_str)
+            # Fast-path 1: Known new target that does not exist yet on disk/network
+            if getattr(p, '_is_new_target', False) or getattr(p, '_stat_failed', False):
+                return (p_str, '0', 0, '')
+
+            # Fast-path 2: Pre-cached stats in memory (0 syscalls, 0 network calls)
+            cached_st = getattr(p, '_stats', None)
+            if cached_st is not None:
+                bytes_val = cached_st.st_size
+                size_str = format_size(bytes_val)
+                mtime_str = p.to_date_str(cached_st.st_mtime) if hasattr(p, 'to_date_str') else str(cached_st.st_mtime)
+                return (p_str, size_str, bytes_val, mtime_str)
+
+            # Fallback: Single attempt to fetch stats without multi-attempt network retries
+            try:
+                st = p.stats
+                bytes_val = st.st_size
+                size_str = format_size(bytes_val)
+                mtime_str = p.to_date_str(st.st_mtime) if hasattr(p, 'to_date_str') else str(st.st_mtime)
+                return (p_str, size_str, bytes_val, mtime_str)
+            except Exception:
+                return (p_str, '0', 0, '')
 
         src_str, src_size_str, src_bytes, src_mtime_str = _extract_meta(source)
         tgt_str, tgt_size_str, tgt_bytes, tgt_mtime_str = _extract_meta(target)
