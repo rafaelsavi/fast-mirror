@@ -4,7 +4,8 @@ This document records the architectural complexity audit conducted on 2026-10-17
 
 ---
 
-## 1. Dual Thread Cancellation Systems & `sys.settrace`
+## 1. Dual Thread Cancellation Systems & `sys.settrace` [RESOLVED]
+- **Status**: Completed (2026-10-17). Replaced `KillableThread` with `WorkerThread` utilizing purely cooperative cancellation via `threading.Event` across `CompareDirs` and `SyncDirs`. Removed `sys.settrace` entirely.
 - **Location**: [`src/gui/worker_thread.py`](../src/gui/worker_thread.py) vs [`src/core/backend.py`](../src/core/backend.py)
 - **Current Pattern**:
   `KillableThread` hooks into the Python interpreter on every line via `sys.settrace(self.globaltrace)` to raise `SystemExit` asynchronously when killed. Concurrently, `SyncDirs` implements cooperative cancellation via `cancel_requested: threading.Event()`.
@@ -79,3 +80,4 @@ This document records the architectural complexity audit conducted on 2026-10-17
   Each of the three methods implements identical boilerplate for cancellation checking, progress intervals, path length formatting, and exception collection (~120 duplicated lines).
 - **Proposal**:
   Consolidate into a unified `_execute_batch(items, action_name, action_fn)` pipeline that encapsulates progress, retry handling, and logging.
+

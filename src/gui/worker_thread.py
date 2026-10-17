@@ -1,4 +1,3 @@
-import sys
 import threading
 import traceback
 
@@ -6,27 +5,42 @@ from core.file import CustomException
 from utils.logger import logger
 
 
-class KillableThread(threading.Thread):
-    """A subclass of threading.Thread with a kill() method using line trace."""
+class WorkerThread(threading.Thread):
+    """Background worker thread supporting cooperative cancellation and exception capture."""
 
-    def __init__(self, *args, **keywords):
-        super().__init__(*args, **keywords)
-        self.killed = False
+    def __init__(
+        self,
+        *args,
+        cancel_event: threading.Event | None = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.cancel_event: threading.Event = cancel_event if cancel_event is not None else threading.Event()
         self.exc: BaseException | None = None
 
-    def start(self):
-        """Start the thread."""
-        self.__run_backup = self.run
-        self.run = self.__run  # Force the Thread to install our trace.
-        super().start()
+    def cancel(self):
+        """Signal cooperative cancellation to the running thread."""
+        self.cancel_event.set()
 
-    def __run(self):
-        """Hacked run function, which installs the trace."""
+    def kill(self):
+        """Signal cooperative cancellation (alias for cancel for backward compatibility)."""
+        self.cancel()
+
+    @property
+    def is_cancelled(self) -> bool:
+        """Check if cancellation was requested."""
+        return self.cancel_event.is_set()
+
+    @property
+    def killed(self) -> bool:
+        """Compatibility property for legacy cancellation checks."""
+        return self.is_cancelled
+
+    def run(self):
+        """Execute the thread target with exception capture and logging."""
         self.exc = None
         try:
-            sys.settrace(self.globaltrace)
-            self.__run_backup()
-            self.run = self.__run_backup
+            super().run()
         except CustomException as e:
             self.exc = e
             logger.critical(f'Processing thread was stopped abruptly because of exception: {e}')
@@ -34,22 +48,12 @@ class KillableThread(threading.Thread):
             self.exc = e
             logger.critical(f'Processing thread was stopped abruptly because of exception:\n{traceback.format_exc()}')
 
-    def globaltrace(self, frame, why, arg):
-        if why == 'call':
-            return self.localtrace
-        else:
-            return None
-
-    def localtrace(self, frame, why, arg):
-        if self.killed and why == 'line':
-            logger.warning('Background process was stopped')
-            raise SystemExit()
-        return self.localtrace
-
-    def kill(self):
-        self.killed = True
-
     def join(self, timeout: float | None = None):
+        """Wait until thread terminates; re-raises any captured exception."""
         super().join(timeout=timeout)
         if self.exc:
             raise self.exc
+
+
+# Backwards compatibility alias
+KillableThread = WorkerThread

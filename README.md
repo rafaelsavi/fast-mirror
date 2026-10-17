@@ -144,7 +144,7 @@ automatic-backup/
 │   │   ├── health_check.py   # Non-blocking target reachability & disk space prober
 │   │   ├── tray.py           # TrayableTk system tray integration
 │   │   ├── enums.py          # Tkinter & Thread state enums
-│   │   ├── worker_thread.py  # KillableThread with sys.settrace hooks
+│   │   ├── worker_thread.py  # WorkerThread background execution & cooperative cancellation
 │   │   ├── widgets.py        # Custom Tkinter controls (Paths, Exclusions, Loggers)
 │   │   ├── components/       # Modular GUI panels (Actions, Log, Paths, Schedule, Status, Telemetry)
 │   │   └── app_icon.ico      # Application and tray icon

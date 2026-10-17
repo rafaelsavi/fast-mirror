@@ -26,7 +26,7 @@ This document provides an in-depth technical analysis of the design, internal da
    - [Isolation & Table Name Derivation](#isolation--table-name-derivation)
    - [Incremental Maintenance](#incremental-maintenance)
 6. [GUI & Concurrency Architecture](#gui--concurrency-architecture)
-   - [KillableThread & Trace Injection](#killablethread--trace-injection)
+   - [WorkerThread & Cooperative Cancellation](#workerthread--cooperative-cancellation)
    - [Watchdog State Machine](#watchdog-state-machine)
    - [Thread-Safe Logging](#thread-safe-logging)
    - [Custom TreeView with Dynamic Grouping](#custom-treeview-with-dynamic-grouping)
@@ -44,7 +44,7 @@ The application is structured into three clean layers:
 │  [Gui] ─── [TrayableTk] ─── [CustomCheckboxTreeView]   │
 │         │                                              │
 │         ▼                                              │
-│  [KillableThread] (Background Worker)                  │
+│  [WorkerThread] (Background Worker)                    │
 └─────────┬──────────────────────────────────────────────┘
           │
           ▼
@@ -263,20 +263,23 @@ The mirror manages a single SQLite database (`local_mirror.db`) backed by `sqlit
 
 ## GUI & Concurrency Architecture
 
-### KillableThread & Trace Injection
+### WorkerThread & Cooperative Cancellation
 Implemented in [`src/gui/worker_thread.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/worker_thread.py).
 
-Standard Python `threading.Thread` lacks an external `stop()` or `kill()` method. `KillableThread` solves this by attaching a trace function using `sys.settrace()`:
+Background synchronization and comparison run asynchronously in a dedicated `WorkerThread` that uses purely cooperative cancellation via `threading.Event`:
 
 ```python
-def localtrace(self, frame, why, arg):
-    if self.killed and why == 'line':
-        logger.warning('Background process was stopped')
-        raise SystemExit()
-    return self.localtrace
+class WorkerThread(threading.Thread):
+    def __init__(self, *args, cancel_event: threading.Event | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cancel_event = cancel_event if cancel_event is not None else threading.Event()
+        self.exc: BaseException | None = None
+
+    def cancel(self):
+        self.cancel_event.set()
 ```
 
-When the user requests cancellation, `thread.kill()` sets `self.killed = True`. On the very next bytecode execution step, the trace callback raises `SystemExit`, terminating the thread without leaking resources or leaving the backend in an unkillable loop.
+When cancellation is requested (either via the UI Stop button, tray icon, or scheduler disable), `cancel()` sets the cancellation event. The core loops in `CompareDirs` and `SyncDirs` check `cancel_requested.is_set()` at every file iteration, aborting safely between operations without corrupting filesystem state, leaking file locks, or imposing `sys.settrace` interpreter overhead.
 
 ### Watchdog State Machine
 Implemented in [`src/gui/gui.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/gui.py).
