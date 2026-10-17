@@ -79,6 +79,16 @@ class Gui:
         # Build GUI modular components
         self.create_widgets()
 
+        # Register tray actions and update initial tray state
+        self.root.set_tray_callbacks(
+            on_sync_now=self.tray_action_sync_now,
+            on_quick_compare=self.tray_action_quick_compare,
+            on_stop_operation=self.request_stop_operation,
+            on_open_report=self.button_action_open_report,
+            is_running=lambda: self.backend_thread_status == BackendThreadStatus.RUNNING,
+        )
+        self.update_tray_status()
+
         # Start parallel threads
         self.backend_thread_holder = None
         self.backend_watchdog()
@@ -109,6 +119,9 @@ class Gui:
             self.set_gui_enable_state(general_state=False, leave_sunken_enabled=True)
         elif status == BackendThreadStatus.STOPPING:
             self.set_gui_enable_state(general_state=False, leave_sunken_enabled=False)
+
+        if self._gui_initialized:
+            self.update_tray_status()
 
     def set_gui_enable_state(self, general_state: bool, leave_sunken_enabled=False):
         def convert_child_state(child_: tk.Widget, b: bool):
@@ -409,6 +422,39 @@ class Gui:
         if self.toggle_auto_scroll.get():
             self.text_logger.yview(tk.END)
 
+    def update_tray_status(self):
+        """Update system tray tooltip and contextual menu to reflect current state."""
+        status_str = self.backend_thread_status.value
+        next_app = self.text_var_next_appointment.get()
+        tooltip = f'Automatic Backup Tool\nStatus: {status_str}\nNext: {next_app}'
+        self.root.update_tray_tooltip(tooltip)
+        self.root._update_tray_menu()
+
+    def tray_action_sync_now(self):
+        """Trigger immediate synchronization from the system tray menu."""
+        if self.backend_thread_status == BackendThreadStatus.STANDBY:
+            self.toggle_state_sync_now = True
+
+    def tray_action_quick_compare(self):
+        """Trigger quick comparison from the system tray menu."""
+        if self.backend_thread_status == BackendThreadStatus.STANDBY:
+            self.toggle_state_quick_compare = True
+
+    def request_stop_operation(self):
+        """Request cancellation/stopping of currently running background process."""
+        if self.backend_thread_status == BackendThreadStatus.RUNNING:
+            logger.info('---------------------------------')
+            logger.info('Stopping background process via system tray request')
+            self.toggle_state_quick_compare = False
+            self.toggle_state_sync_now = False
+            if hasattr(self, '_active_sync') and self._active_sync is not None:
+                with contextlib.suppress(Exception):
+                    self._active_sync.cancel()
+            if self.backend_thread_holder is not None:
+                with contextlib.suppress(Exception):
+                    self.backend_thread_holder.kill()
+            self.backend_thread_status = BackendThreadStatus.STOPPING
+
     def backend_watchdog(self):
         # Check if backend thread finished
         if self.backend_thread_holder is not None and not self.backend_thread_holder.is_alive():
@@ -510,6 +556,25 @@ class Gui:
                     increment_mirror=not self.checkbox_var_build_mirror.get(),
                     confirm_sync=self.checkbox_var_confirm_sync.get(),
                 )
+                self.root.after(
+                    0,
+                    lambda: self.root.notify(
+                        message='Backup synchronization completed successfully.',
+                        title='Automatic Backup',
+                    ),
+                )
+            else:
+                summary_msg = (
+                    f'Comparison completed: {len(compare.files_to_copy)} to copy, '
+                    f'{len(compare.files_to_move)} to move, {len(compare.files_to_delete)} to delete.'
+                )
+                self.root.after(
+                    0,
+                    lambda: self.root.notify(
+                        message=summary_msg,
+                        title='Automatic Backup',
+                    ),
+                )
         finally:
             self._active_sync = None
 
@@ -540,6 +605,8 @@ class Gui:
             )
 
         self.text_var_next_appointment.set(string)
+        if self._gui_initialized:
+            self.update_tray_status()
         return next_appointment
 
     def log_queue_watchdog(self):

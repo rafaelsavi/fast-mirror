@@ -322,3 +322,147 @@ def test_gui_initialization_with_light_theme(monkeypatch):
     assert gui.log_panel is not None
 
     gui.root.destroy()
+
+
+def test_trayable_tk_menu_and_action_states():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.destroy()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.tray import TrayableTk
+
+    tray_window = TrayableTk()
+    tray_window.withdraw()
+
+    # In test mode, _tray_icon is None
+    assert tray_window._tray_icon is None
+
+    sync_called = []
+    compare_called = []
+    stop_called = []
+    report_called = []
+    is_running = False
+
+    tray_window.set_tray_callbacks(
+        on_sync_now=lambda: sync_called.append(True),
+        on_quick_compare=lambda: compare_called.append(True),
+        on_stop_operation=lambda: stop_called.append(True),
+        on_open_report=lambda: report_called.append(True),
+        is_running=lambda: is_running,
+    )
+
+    menu = tray_window._build_tray_menu()
+    items = list(menu)
+    assert len(items) == 8
+
+    # Item labels: Show Window, Separator, Sync Now, Quick Compare, Stop Operation, Open Last Report, Separator, Quit
+    item_labels = [item.text if hasattr(item, 'text') else str(item) for item in items]
+    assert 'Show Window' in item_labels
+    assert 'Sync Now' in item_labels
+    assert 'Quick Compare' in item_labels
+    assert 'Stop Operation' in item_labels
+    assert 'Open Last Report' in item_labels
+    assert 'Quit' in item_labels
+
+    # When idle: Sync and Compare are enabled, Stop is disabled
+    sync_item = next(it for it in items if getattr(it, 'text', '') == 'Sync Now')
+    compare_item = next(it for it in items if getattr(it, 'text', '') == 'Quick Compare')
+    stop_item = next(it for it in items if getattr(it, 'text', '') == 'Stop Operation')
+    report_item = next(it for it in items if getattr(it, 'text', '') == 'Open Last Report')
+
+    assert sync_item.enabled is True
+    assert compare_item.enabled is True
+    assert stop_item.enabled is False
+    assert report_item.enabled is True
+
+    # When running: Sync and Compare are disabled, Stop is enabled
+    is_running = True
+    assert sync_item.enabled is False
+    assert compare_item.enabled is False
+    assert stop_item.enabled is True
+
+    # Safe operations when _tray_icon is None
+    tray_window.update_tray_tooltip('A' * 200)
+    tray_window.notify('test message', 'test title')
+
+    tray_window.destroy()
+
+
+def test_trayable_tk_mock_icon():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.destroy()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from unittest.mock import MagicMock
+
+    from gui.tray import TrayableTk
+
+    tray_window = TrayableTk()
+    tray_window.withdraw()
+
+    mock_icon = MagicMock()
+    tray_window._tray_icon = mock_icon
+
+    # Tooltip truncation test
+    tray_window.update_tray_tooltip('A' * 200)
+    assert len(mock_icon.title) == 127
+
+    # Notify test
+    tray_window.notify('Backup done', 'Success')
+    mock_icon.notify.assert_called_once_with(message='Backup done', title='Success')
+
+    # Menu update test
+    tray_window._update_tray_menu()
+    assert mock_icon.menu is not None
+    mock_icon.update_menu.assert_called_once()
+
+    tray_window.finalize_quit()
+
+
+def test_gui_tray_status_and_actions(monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.enums import BackendThreadStatus
+    from gui.gui import Gui
+
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'load_config', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    gui = Gui()
+
+    # Verify tray actions are registered
+    assert gui.root._on_sync_now is not None
+    assert gui.root._on_quick_compare is not None
+    assert gui.root._on_stop_operation is not None
+    assert gui.root._on_open_report is not None
+
+    # Test tray_action_sync_now
+    assert not gui.toggle_state_sync_now
+    gui.tray_action_sync_now()
+    assert gui.toggle_state_sync_now
+
+    # Test tray_action_quick_compare
+    assert not gui.toggle_state_quick_compare
+    gui.tray_action_quick_compare()
+    assert gui.toggle_state_quick_compare
+
+    # Test request_stop_operation
+    gui.backend_thread_status = BackendThreadStatus.RUNNING
+    gui.request_stop_operation()
+    assert gui.backend_thread_status == BackendThreadStatus.STOPPING
+    assert not gui.toggle_state_sync_now
+    assert not gui.toggle_state_quick_compare
+
+    gui.root.destroy()
