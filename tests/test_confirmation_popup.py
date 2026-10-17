@@ -1120,3 +1120,55 @@ def test_action_selection_filter_hides_non_matching_rows(tmp_path, monkeypatch):
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_action_selection_see_in_folder_button(tmp_path, monkeypatch):
+    """Verify See in Folder button exists and invokes explorer with the selected file."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+    f1 = src / 'folder_test.txt'
+    f1.write_text('content')
+
+    explorer_calls = []
+
+    def mock_popen(cmd, *args, **kwargs):
+        explorer_calls.append(cmd)
+
+    monkeypatch.setattr('subprocess.Popen', mock_popen)
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[(CstmPath(f1, root_dir=src), CstmPath(tgt / 'folder_test.txt', root_dir=tgt))],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+
+        assert hasattr(popup, 'btn_see_in_folder')
+        assert 'See in Folder' in popup.btn_see_in_folder.cget('text')
+
+        # Select the item
+        children = popup.tree.get_children(Action.COPY.value)
+        assert len(children) == 1
+        popup.tree.selection_set(children[0])
+        popup._on_item_selected(None)
+
+        # Click "See in Folder"
+        popup.btn_see_in_folder.invoke()
+
+        assert len(explorer_calls) == 1
+        assert 'explorer.exe' in explorer_calls[0][0]
+        assert 'folder_test.txt' in explorer_calls[0][1]
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

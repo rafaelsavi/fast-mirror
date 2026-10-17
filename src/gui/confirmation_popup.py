@@ -1,5 +1,6 @@
 import contextlib
 import os
+import subprocess
 import tkinter as tk
 import winsound
 from collections.abc import Callable
@@ -671,13 +672,24 @@ class ActionSelection:
         )
         self.lbl_inspector_diff.grid(row=0, column=1, sticky='w', padx=(10, 0))
 
-        btn_copy_path = ttk.Button(
-            hdr,
+        btn_action_box = ttk.Frame(hdr)
+        btn_action_box.grid(row=0, column=2, sticky='e')
+
+        self.btn_see_in_folder = ttk.Button(
+            btn_action_box,
+            text='📁 See in Folder',
+            command=self._open_selected_in_folder,
+            width=14,
+        )
+        self.btn_see_in_folder.pack(side='left', padx=(0, 4))
+
+        self.btn_copy_path = ttk.Button(
+            btn_action_box,
             text='📋 Copy Path',
             command=self._copy_selected_path_to_clipboard,
             width=11,
         )
-        btn_copy_path.grid(row=0, column=2, sticky='e')
+        self.btn_copy_path.pack(side='left')
 
         # Details: Source row and Target row
         details_frame = ttk.Frame(inspector_frame)
@@ -730,21 +742,52 @@ class ActionSelection:
             self.popup.clipboard_append(path_to_copy)
             logger.info(f'Copied path to clipboard: {path_to_copy}')
 
-    def _on_item_double_click(self, event):
-        """Open parent folder of selected file in Windows Explorer upon double-click."""
+    def _open_selected_in_folder(self):
+        """Reveal selected file in Windows Explorer, highlighting the file if it exists."""
+        source_path = ''
+        target_path = ''
+
         selected = self.tree.selection()
-        if not selected:
+        if selected:
+            item_id = selected[0]
+            item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
+            if item_info is not None:
+                _, source_path, target_path = item_info
+
+        if not source_path and not target_path:
+            source_path = self.lbl_inspector_source.cget('text')
+            target_path = self.lbl_inspector_target.cget('text')
+
+        # Prioritize path that actually exists on disk (source is usually local and exists)
+        path_to_open = None
+        for p in (source_path, target_path):
+            if p and p not in ('-', '(none)', '(select an item to view path)'):
+                if os.path.exists(p):
+                    path_to_open = p
+                    break
+                elif path_to_open is None:
+                    path_to_open = p
+
+        if not path_to_open or path_to_open in ('-', '(none)', '(select an item to view path)'):
             return
-        item_id = selected[0]
-        item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
-        if item_info is not None:
-            _, source_path, target_path = item_info
-            path_to_open = source_path if (source_path and os.path.exists(source_path)) else target_path
-            if path_to_open:
-                dir_to_open = os.path.dirname(path_to_open) if os.path.isfile(path_to_open) else path_to_open
-                if os.path.isdir(dir_to_open):
-                    with contextlib.suppress(Exception):
-                        os.startfile(dir_to_open)
+
+        norm_path = os.path.normpath(path_to_open)
+        try:
+            if os.path.isfile(norm_path):
+                # /select,<path> highlights the specific file in Windows Explorer
+                subprocess.Popen(['explorer.exe', f'/select,{norm_path}'])
+            elif os.path.isdir(norm_path):
+                os.startfile(norm_path)
+            else:
+                parent_dir = os.path.dirname(norm_path)
+                if os.path.isdir(parent_dir):
+                    os.startfile(parent_dir)
+        except Exception as e:
+            logger.warning(f'Could not open folder for {norm_path}: {e}')
+
+    def _on_item_double_click(self, event):
+        """Open folder of selected file in Windows Explorer upon double-click."""
+        self._open_selected_in_folder()
 
     def _on_item_selected(self, event):
         selected = self.tree.selection()
