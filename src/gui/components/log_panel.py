@@ -1,9 +1,12 @@
+import datetime
+import os
 import tkinter as tk
 from collections.abc import Callable
-from tkinter import ttk
+from tkinter import filedialog, messagebox, ttk
 
 from gui.enums import TkinterCfgState
 from gui.widgets import LogLevels, TextLogger
+from utils.logger import logger
 
 
 class LogPanel(ttk.LabelFrame):
@@ -59,7 +62,7 @@ class LogPanel(ttk.LabelFrame):
             cb.pack(side='left', padx=4)
             self.check_box_log_level[level] = cb
 
-        # Right side: Auto-scroll, Clear, and Copy
+        # Right side: Auto-scroll, Clear, Copy, Export, and Open Folder
         self.checkbox_auto_scroll = ttk.Checkbutton(
             toolbar,
             text='Auto-scroll',
@@ -70,19 +73,35 @@ class LogPanel(ttk.LabelFrame):
 
         self.btn_clear = ttk.Button(
             toolbar,
-            text='Clear Log',
+            text='Clear',
             command=self.clear_log,
-            width=9,
+            width=7,
         )
-        self.btn_clear.pack(side='right', padx=3)
+        self.btn_clear.pack(side='right', padx=2)
 
         self.btn_copy = ttk.Button(
             toolbar,
-            text='📋 Copy Log',
+            text='📋 Copy',
             command=self.copy_log,
-            width=11,
+            width=8,
         )
-        self.btn_copy.pack(side='right', padx=3)
+        self.btn_copy.pack(side='right', padx=2)
+
+        self.btn_export = ttk.Button(
+            toolbar,
+            text='💾 Export...',
+            command=self.export_log,
+            width=10,
+        )
+        self.btn_export.pack(side='right', padx=2)
+
+        self.btn_open_folder = ttk.Button(
+            toolbar,
+            text='📁 Log Folder',
+            command=self.open_log_folder,
+            width=12,
+        )
+        self.btn_open_folder.pack(side='right', padx=2)
 
         # Toolbar Row 1: Search & Filter inside Log Console
         search_bar = ttk.Frame(self)
@@ -207,7 +226,44 @@ class LogPanel(ttk.LabelFrame):
             self.clipboard_clear()
             self.clipboard_append(content)
             self.btn_copy.config(text='✓ Copied!')
-            self.after(1500, lambda: self.btn_copy.config(text='📋 Copy Log'))
+            self.after(1500, lambda: self.btn_copy.config(text='📋 Copy'))
+
+    def export_log(self):
+        """Export current log content to a user-selected text file."""
+        content = self.text_logger.get('1.0', tk.END)
+        if not content.strip():
+            messagebox.showinfo('Export Log', 'The log is currently empty.')
+            return
+
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        default_filename = f'automatic_backup_log_{timestamp}.txt'
+        dest = filedialog.asksaveasfilename(
+            title='Export Log to File',
+            initialfile=default_filename,
+            defaultextension='.txt',
+            filetypes=[('Text Files', '*.txt'), ('All Files', '*.*')],
+        )
+        if dest:
+            try:
+                with open(dest, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                messagebox.showinfo('Export Log', f'Log successfully exported to:\n{dest}')
+            except Exception as e:
+                messagebox.showerror('Export Error', f'Failed to export log: {e}')
+
+    def open_log_folder(self):
+        """Open the application log directory in Windows File Explorer."""
+        log_dir = logger.log_dir
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            if hasattr(os, 'startfile'):
+                os.startfile(log_dir)
+            else:
+                import subprocess
+
+                subprocess.Popen(['explorer', log_dir])
+        except Exception as e:
+            messagebox.showerror('Log Folder Error', f'Could not open log folder: {e}')
 
     def clear_log(self):
         self.text_logger.configure(state=TkinterCfgState.NORMAL.value)

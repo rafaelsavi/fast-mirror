@@ -298,6 +298,40 @@ def test_log_panel_clear_and_styling():
     root.destroy()
 
 
+def test_log_panel_export_and_open_folder(tmp_path, monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from tkinter import filedialog, messagebox
+
+    from gui.components.log_panel import LogPanel
+
+    log_panel = LogPanel(root)
+    log_panel.text_logger.insert('exported log test line', 'INFO')
+
+    # Test export_log
+    export_file = tmp_path / 'exported_log.txt'
+    monkeypatch.setattr(filedialog, 'asksaveasfilename', lambda **kwargs: str(export_file))
+    monkeypatch.setattr(messagebox, 'showinfo', lambda *args: None)
+    log_panel.export_log()
+
+    assert export_file.is_file()
+    assert 'exported log test line' in export_file.read_text(encoding='utf-8')
+
+    # Test open_log_folder
+    opened_paths = []
+    if hasattr(os, 'startfile'):
+        monkeypatch.setattr(os, 'startfile', lambda p: opened_paths.append(p))
+    log_panel.open_log_folder()
+    if hasattr(os, 'startfile'):
+        assert len(opened_paths) == 1
+
+    root.destroy()
+
+
 def test_gui_initialization_with_light_theme(monkeypatch):
     try:
         root = tk.Tk()
