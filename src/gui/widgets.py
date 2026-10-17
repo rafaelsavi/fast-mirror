@@ -15,6 +15,7 @@ class EntryPaths(ScrolledText):
     def __init__(self, *args, **kwargs):
         if 'font' not in kwargs:
             kwargs['font'] = ('Consolas', 9)
+        self.on_changed: Callable[[], None] | None = None
         super().__init__(*args, **kwargs)
         self.bind('<KeyRelease>', lambda e: self.highlight_syntax())
         self._setup_context_menu()
@@ -79,6 +80,9 @@ class EntryPaths(ScrolledText):
                     self.tag_add('pair_error', f'{line_idx}.0', f'{line_idx}.end')
         except Exception:
             pass
+        if getattr(self, 'on_changed', None) is not None:
+            with contextlib.suppress(Exception):
+                self.on_changed()
 
     def get_text(self, start: str = '1.0', end: str = tk.END) -> str:
         return super().get(start, end)

@@ -1224,3 +1224,51 @@ def test_smooth_drag_interceptor_lifecycle():
     assert isinstance(res, bool)
     uninstall_smooth_drag_interceptor(root)
     root.destroy()
+
+
+def test_paths_panel_visual_cards_lifecycle(tmp_path):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.paths_panel import PathsPanel
+
+    panel = PathsPanel(root)
+    assert panel._view_mode == 'cards'
+
+    # Empty state card
+    panel.refresh_cards()
+    assert len(panel.cards_frame.winfo_children()) >= 1
+
+    # Add pairs
+    src1 = tmp_path / 'Src1'
+    tgt1 = tmp_path / 'Tgt1'
+    src1.mkdir()
+    tgt1.mkdir()
+
+    panel.entry_paths.set([(str(src1), str(tgt1))])
+    panel.refresh_cards()
+    assert len(panel.cards_frame.winfo_children()) == 1
+
+    # Toggle view to text and back
+    panel._toggle_view()
+    assert panel._view_mode == 'text'
+    panel._toggle_view()
+    assert panel._view_mode == 'cards'
+
+    # Drag and drop folder addition
+    src2 = tmp_path / 'Src2'
+    tgt2 = tmp_path / 'Tgt2'
+    src2.mkdir()
+    tgt2.mkdir()
+    panel.add_dropped_paths([str(src2), str(tgt2)])
+    assert len(panel.entry_paths.get()) == 2
+
+    # Remove single pair
+    panel._remove_single_pair(str(src2), str(tgt2))
+    assert len(panel.entry_paths.get()) == 1
+
+    root.destroy()
+

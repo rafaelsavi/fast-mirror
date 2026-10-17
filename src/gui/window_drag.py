@@ -71,8 +71,12 @@ def install_smooth_drag_interceptor(window: tk.Tk | tk.Toplevel, target_fps: int
         if not orig_wndproc:
             return False
 
-        def_wndproc = ctypes.cast(user32.DefWindowProcW, ctypes.c_void_p).value
-        call_wndproc = ctypes.cast(user32.CallWindowProcW, ctypes.c_void_p).value
+        def_val = ctypes.cast(user32.DefWindowProcW, ctypes.c_void_p).value
+        call_val = ctypes.cast(user32.CallWindowProcW, ctypes.c_void_p).value
+        if def_val is None or call_val is None:
+            return False
+        def_wndproc: int = def_val
+        call_wndproc: int = call_val
 
         # Memory layout (1 page = 4096 bytes):
         # 0x00: orig_wndproc (uint64)

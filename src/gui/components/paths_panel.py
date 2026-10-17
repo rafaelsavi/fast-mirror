@@ -6,7 +6,7 @@ from tkinter import messagebox, ttk
 from typing import Literal
 
 from gui.health_check import TargetHealth, probe_targets_async
-from gui.widgets import EntryExclusions, EntryPaths
+from gui.widgets import DirectoryPair, EntryExclusions, EntryPaths
 
 
 class PathsPanel(ttk.LabelFrame):
@@ -26,6 +26,9 @@ class PathsPanel(ttk.LabelFrame):
     ):
         super().__init__(master, text=' Directory Pairs & Exclusions ', **kwargs)
         self.on_add_path = on_add_path
+
+        self._pair_health_cache: dict[str, TargetHealth] = {}
+        self._view_mode: str = 'cards'
 
         self._preset_vars: dict[str, tk.BooleanVar] = {
             'os_junk': tk.BooleanVar(value=False),
@@ -81,12 +84,26 @@ class PathsPanel(ttk.LabelFrame):
         )
         self.btn_open_selected.pack(side='left', padx=2)
 
-        # Row 1: Full-Width Paths Editor
+        self.btn_toggle_view = ttk.Button(
+            toolbar,
+            text='📝 Raw Text',
+            command=self._toggle_view,
+            width=12,
+        )
+        self.btn_toggle_view.pack(side='right', padx=2)
+
+        # Row 1: Cards View & Raw Text Editor
+        self.cards_frame = ttk.Frame(self)
+        self.cards_frame.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
+        self.cards_frame.columnconfigure(0, weight=1)
+
         if entry_paths is not None:
             self.entry_paths = entry_paths
         else:
             self.entry_paths = EntryPaths(self, width=90, height=3)
-        self.entry_paths.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
+
+        self.entry_paths.on_changed = self.refresh_cards
+        self.refresh_cards()
 
         # Row 2: Health Diagnostic Status Line
         self.lbl_health_status = ttk.Label(
@@ -232,6 +249,10 @@ class PathsPanel(ttk.LabelFrame):
                 if not results:
                     return
 
+                for r in results:
+                    self._pair_health_cache[r.path] = r
+                self.refresh_cards()
+
                 all_online = all(r.is_online for r in results)
                 any_warning = any(r.warning for r in results if r.is_online)
 
@@ -262,6 +283,236 @@ class PathsPanel(ttk.LabelFrame):
 
         probe_targets_async(dirs, _on_results)
 
+    def _toggle_view(self):
+        """Toggle between modern visual cards view and raw monospace text editor."""
+        if self._view_mode == 'cards':
+            self.cards_frame.grid_remove()
+            self.entry_paths.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
+            self.btn_toggle_view.config(text='🗂️ Cards View')
+            self._view_mode = 'text'
+        else:
+            self.entry_paths.grid_remove()
+            self.cards_frame.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
+            self.btn_toggle_view.config(text='📝 Raw Text')
+            self._view_mode = 'cards'
+            self.refresh_cards()
+
+    def refresh_cards(self):
+        """Render modern interactive cards for each directory backup pair."""
+        if not hasattr(self, 'cards_frame'):
+            return
+
+        for child in self.cards_frame.winfo_children():
+            child.destroy()
+
+        pairs = self.entry_paths.get()
+        if not pairs:
+            empty_frame = tk.Frame(self.cards_frame, bg='#f8fafc', bd=1, relief='solid', padx=12, pady=10)
+            empty_frame.pack(fill='x', padx=2, pady=3)
+            lbl = tk.Label(
+                empty_frame,
+                text='📂 No directory backup pairs configured yet.\nClick "➕ Add Pair" or drag folders here.',
+                font=('Segoe UI', 9),
+                bg='#f8fafc',
+                fg='#64748b',
+                justify='center',
+            )
+            lbl.pack(pady=4)
+            return
+
+        for idx, (source, target) in enumerate(pairs):
+            card = tk.Frame(self.cards_frame, bg='#ffffff', bd=1, relief='solid', padx=8, pady=5)
+            card.pack(fill='x', padx=2, pady=2)
+            card.columnconfigure(1, weight=1)
+
+            lbl_idx = tk.Label(
+                card,
+                text=f'#{idx + 1}',
+                font=('Segoe UI', 8, 'bold'),
+                bg='#e2e8f0',
+                fg='#334155',
+                padx=5,
+                pady=1,
+            )
+            lbl_idx.grid(row=0, column=0, rowspan=2, padx=(0, 8), sticky='n')
+
+            path_row = tk.Frame(card, bg='#ffffff')
+            path_row.grid(row=0, column=1, sticky='w')
+
+            src_exists = os.path.isdir(source)
+            src_icon = '📁' if src_exists else '⚠️'
+            lbl_src = tk.Label(
+                path_row,
+                text=f'{src_icon} {source}',
+                font=('Segoe UI', 9, 'bold'),
+                bg='#ffffff',
+                fg='#0f172a' if src_exists else '#dc2626',
+                cursor='hand2',
+            )
+            lbl_src.pack(side='left')
+            lbl_src.bind('<Double-1>', lambda e, p=source: self._open_folder_path(p))
+
+            lbl_arrow = tk.Label(path_row, text=' ──▶ ', font=('Segoe UI', 9, 'bold'), bg='#ffffff', fg='#0d9488')
+            lbl_arrow.pack(side='left', padx=4)
+
+            tgt_exists = os.path.exists(target)
+            tgt_icon = '🖥️' if target.startswith('\\\\') else '📁'
+            lbl_tgt = tk.Label(
+                path_row,
+                text=f'{tgt_icon} {target}',
+                font=('Segoe UI', 9),
+                bg='#ffffff',
+                fg='#0284c7' if tgt_exists else '#64748b',
+                cursor='hand2',
+            )
+            lbl_tgt.pack(side='left')
+            lbl_tgt.bind('<Double-1>', lambda e, p=target: self._open_folder_path(p))
+
+            meta_row = tk.Frame(card, bg='#ffffff')
+            meta_row.grid(row=1, column=1, sticky='ew', pady=(3, 0))
+            meta_row.columnconfigure(0, weight=1)
+
+            cached = self._pair_health_cache.get(target)
+            if cached is not None:
+                if cached.is_online:
+                    h_text = f'🟢 Online ({cached.free_str} free)'
+                    h_bg, h_fg = '#dcfce7', '#15803d'
+                    if cached.warning:
+                        h_text += f' • {cached.warning}'
+                        h_bg, h_fg = '#fef3c7', '#b45309'
+                else:
+                    h_text = f'🔴 {cached.error or "Offline"}'
+                    h_bg, h_fg = '#fee2e2', '#b91c1c'
+            elif tgt_exists:
+                h_text = '🟢 Target Reachable'
+                h_bg, h_fg = '#dcfce7', '#15803d'
+            elif not src_exists:
+                h_text = '🔴 Source Missing'
+                h_bg, h_fg = '#fee2e2', '#b91c1c'
+            else:
+                h_text = '⚪ Ready to verify'
+                h_bg, h_fg = '#f1f5f9', '#475569'
+
+            lbl_health = tk.Label(
+                meta_row,
+                text=h_text,
+                font=('Segoe UI', 8),
+                bg=h_bg,
+                fg=h_fg,
+                padx=6,
+                pady=1,
+                relief='solid',
+                bd=1,
+            )
+            lbl_health.pack(side='left')
+
+            btn_box = tk.Frame(meta_row, bg='#ffffff')
+            btn_box.pack(side='right')
+
+            btn_exp = ttk.Button(
+                btn_box,
+                text='📂 Explorer',
+                width=10,
+                command=lambda s=source, t=target: self._open_pair_in_explorer(s, t),
+            )
+            btn_exp.pack(side='left', padx=2)
+
+            btn_prb = ttk.Button(
+                btn_box,
+                text='🩺 Probe',
+                width=8,
+                command=lambda s=source, t=target: self._probe_single_pair(s, t),
+            )
+            btn_prb.pack(side='left', padx=2)
+
+            btn_del = ttk.Button(
+                btn_box,
+                text='✕',
+                width=3,
+                command=lambda s=source, t=target: self._remove_single_pair(s, t),
+            )
+            btn_del.pack(side='left', padx=2)
+
+    def _probe_single_pair(self, source: str, target: str):
+        self.lbl_health_status.config(
+            text=f'⏳ Probing target {target}...',
+            foreground='#1565c0',
+        )
+
+        def _on_single_result(results: list[TargetHealth]):
+            def _update():
+                if results:
+                    r = results[0]
+                    self._pair_health_cache[r.path] = r
+                    self.refresh_cards()
+                    if r.is_online:
+                        msg = f'🟢 {r.path}: {r.free_str} free'
+                        if r.warning:
+                            msg += f' ({r.warning})'
+                        self.lbl_health_status.config(text=msg, foreground='#2e7d32' if not r.warning else '#e65100')
+                    else:
+                        self.lbl_health_status.config(
+                            text=f'🔴 {r.path}: {r.error or "Offline"}',
+                            foreground='#c62828',
+                        )
+
+            self.after(0, _update)
+
+        probe_targets_async([target], _on_single_result)
+
+    def _remove_single_pair(self, source: str, target: str):
+        pairs = self.entry_paths.get()
+        remaining = [p for p in pairs if not (p[0] == source and p[1] == target)]
+        self.entry_paths.set(remaining)
+        top = self.winfo_toplevel()
+        if hasattr(top, 'update_overview_stats'):
+            with contextlib.suppress(Exception):
+                top.update_overview_stats()
+
+    def _open_folder_path(self, path: str):
+        target = path.strip('"\'')
+        if not os.path.exists(target) and os.path.exists(os.path.dirname(target)):
+            target = os.path.dirname(target)
+        if target and os.path.exists(target):
+            with contextlib.suppress(Exception):
+                if hasattr(os, 'startfile'):
+                    os.startfile(target)
+                else:
+                    import subprocess
+
+                    subprocess.Popen(['explorer', target])
+
+    def _open_pair_in_explorer(self, source: str, target: str):
+        to_open = target if os.path.exists(target) else source
+        self._open_folder_path(to_open)
+
+    def add_dropped_paths(self, paths: list[str]):
+        """Handle folders dragged and dropped onto the paths panel."""
+        valid_dirs = [p for p in paths if os.path.isdir(p)]
+        if not valid_dirs:
+            return
+        if len(valid_dirs) >= 2:
+            self.entry_paths.add(DirectoryPair(source=valid_dirs[0], target=valid_dirs[1]))
+            top = self.winfo_toplevel()
+            if hasattr(top, 'update_overview_stats'):
+                with contextlib.suppress(Exception):
+                    top.update_overview_stats()
+            pair_str = f'{os.path.basename(valid_dirs[0])} -> {os.path.basename(valid_dirs[1])}'
+            self.lbl_health_status.config(
+                text=f'Added pair from drag & drop: {pair_str}',
+                foreground='#15803d',
+            )
+        elif len(valid_dirs) == 1:
+            from tkinter import filedialog
+
+            target = filedialog.askdirectory(title=f'Select destination folder for {os.path.basename(valid_dirs[0])}')
+            if target:
+                self.entry_paths.add(DirectoryPair(source=valid_dirs[0], target=target))
+                top = self.winfo_toplevel()
+                if hasattr(top, 'update_overview_stats'):
+                    with contextlib.suppress(Exception):
+                        top.update_overview_stats()
+
     def open_selected_folder(self):
         """Open the currently selected path or line under cursor in Windows File Explorer."""
         selected_text = ''
@@ -284,6 +535,9 @@ class PathsPanel(ttk.LabelFrame):
                     target_to_open = source
             elif os.path.exists(line_text.strip('"\'')):
                 target_to_open = line_text.strip('"\'')
+            elif self.entry_paths.get():
+                first_src, first_tgt = self.entry_paths.get()[0]
+                target_to_open = first_tgt if os.path.exists(first_tgt) else first_src
 
         if target_to_open and os.path.exists(target_to_open):
             try:
@@ -395,6 +649,8 @@ class PathsPanel(ttk.LabelFrame):
         self.btn_manage_paths.configure(state=state)
         self.btn_check_targets.configure(state=state)
         self.btn_open_selected.configure(state=state)
+        if hasattr(self, 'btn_toggle_view'):
+            self.btn_toggle_view.configure(state=state)
         self.btn_add_exclusion.configure(state=state)
         self.btn_manage_exclusions.configure(state=state)
         self.cb_preset_junk.configure(state=state)
