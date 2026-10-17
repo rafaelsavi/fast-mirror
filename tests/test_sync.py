@@ -570,3 +570,79 @@ def test_sync_dirs_progress_callback(tmp_path):
     assert len(progress_events) == 2
     assert progress_events[0] == ('copy', 1, 2)
     assert progress_events[1] == ('copy', 2, 2)
+
+
+def test_execute_batch_success_and_error(tmp_path):
+    dirs = [DirectoryPair(source=str(tmp_path / 'Source'), target=str(tmp_path / 'Target'))]
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=None,  # type: ignore[arg-type]
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+
+    items = ['item1.txt', 'item2.txt', 'item3.txt']
+
+    def mock_action(item: str, i: int, total: int) -> tuple[bool, int]:
+        if item == 'item2.txt':
+            raise OSError('Disk I/O failure')
+        if item == 'item3.txt':
+            return False, 0
+        return True, 1024
+
+    results = sync._execute_batch(items, 'copy', mock_action)
+    assert len(results) == 3
+    assert results[0] == ('item1.txt', True)
+    assert results[1] == ('item2.txt', False)
+    assert results[2] == ('item3.txt', False)
+
+
+def test_execute_batch_single_param_action_fn(tmp_path):
+    dirs = [DirectoryPair(source=str(tmp_path / 'Source'), target=str(tmp_path / 'Target'))]
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=None,  # type: ignore[arg-type]
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+
+    items = [('src1', 'tgt1'), ('src2', 'tgt2')]
+
+    def mock_action(item: tuple[str, str]) -> bool:
+        return item[0] == 'src1'
+
+    results = sync._execute_batch(items, 'move', mock_action)
+    assert results == [(('src1', 'tgt1'), True), (('src2', 'tgt2'), False)]
+
+
+def test_execute_batch_cancellation_midway(tmp_path):
+    dirs = [DirectoryPair(source=str(tmp_path / 'Source'), target=str(tmp_path / 'Target'))]
+    sync = SyncDirs(
+        files_to_copy=[],
+        files_to_move=[],
+        files_to_delete=[],
+        mirror=None,  # type: ignore[arg-type]
+        root_gui=None,
+        dirs=dirs,
+        confirm_sync=False,
+    )
+
+    items = ['a.txt', 'b.txt', 'c.txt']
+    processed = []
+
+    def mock_action(item: str, i: int, total: int) -> tuple[bool, int]:
+        processed.append(item)
+        if item == 'a.txt':
+            sync.cancel()
+        return True, 0
+
+    results = sync._execute_batch(items, 'delete', mock_action)
+    assert processed == ['a.txt']
+    assert len(results) == 1
+    assert results[0] == ('a.txt', True)

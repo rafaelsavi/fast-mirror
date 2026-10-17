@@ -1,6 +1,7 @@
 import contextlib
 import datetime
 import filecmp
+import inspect
 import os
 import threading
 import time
@@ -8,6 +9,7 @@ import tkinter as tk
 from collections import Counter
 from collections.abc import Callable
 from copy import copy
+from typing import Any
 
 import pandas as pd
 
@@ -53,6 +55,7 @@ class CompareDirs:
         use_mirror=False,
         increment_mirror=True,
         rebuild_mirror=False,
+        cancel_requested: threading.Event | None = None,
     ):
         logger.info('-----------------------------')
         logger.info('Initializing comparison')
@@ -65,6 +68,7 @@ class CompareDirs:
         self.dirs = dirs
         self.exclusions = exclusions
         self.comparison_method = comparison_method
+        self.cancel_requested = cancel_requested
 
         # Initialize comparison variables
         filecmp.clear_cache()
@@ -77,9 +81,21 @@ class CompareDirs:
         self.files_to_delete: list[CstmPath] = []
 
         self.scan_source_files()
+        if self.cancel_requested and self.cancel_requested.is_set():
+            logger.info('Comparison stopped upon cancellation request')
+            return
         self.scan_target_files(use_mirror, increment_mirror, rebuild_mirror)
+        if self.cancel_requested and self.cancel_requested.is_set():
+            logger.info('Comparison stopped upon cancellation request')
+            return
         self.link_files()
+        if self.cancel_requested and self.cancel_requested.is_set():
+            logger.info('Comparison stopped upon cancellation request')
+            return
         self.compare_files()
+        if self.cancel_requested and self.cancel_requested.is_set():
+            logger.info('Comparison stopped upon cancellation request')
+            return
         self.remove_compare_failures()
 
         self.get_files_to_copy()
@@ -87,7 +103,7 @@ class CompareDirs:
         self.get_files_to_delete()
 
         self.print_results()
-        if save_report:
+        if save_report and not (self.cancel_requested and self.cancel_requested.is_set()):
             self._save_report()
 
         # Estimate synchronization actions
@@ -96,9 +112,12 @@ class CompareDirs:
     def scan_source_files(self):
         logger.info('Starting to scan source files')
         start_time = time.time()
-        self.files_in_source = {
-            dir_pair.source: CstmPath.get_from_dir(dir_pair.source, exclude=self.exclusions) for dir_pair in self.dirs
-        }
+        self.files_in_source = {}
+        for dir_pair in self.dirs:
+            if self.cancel_requested and self.cancel_requested.is_set():
+                logger.info('Scanning source files aborted due to cancellation request')
+                break
+            self.files_in_source[dir_pair.source] = CstmPath.get_from_dir(dir_pair.source, exclude=self.exclusions)
         num_files = sum(len(files) for files in self.files_in_source.values())
         logger.info(
             f'Finished scanning all source files. Found {num_files:,} files in {format_elapsed_time(start_time)}'
@@ -113,6 +132,9 @@ class CompareDirs:
 
         start_time = time.time()
         for dir_pair in self.dirs:
+            if self.cancel_requested and self.cancel_requested.is_set():
+                logger.info('Scanning target files aborted due to cancellation request')
+                break
             mirror_exists = self.mirror.exists_table(dir_pair.target)
             if rebuild_mirror and mirror_exists:
                 self.mirror.reset(dir_pair.target)
@@ -147,6 +169,9 @@ class CompareDirs:
         self.linked_files = []
 
         for dir_pair in self.dirs:
+            if self.cancel_requested and self.cancel_requested.is_set():
+                logger.info('Linking files aborted due to cancellation request')
+                break
             files_in_source = copy(self.files_in_source.get(dir_pair.source, set()))
             files_in_target = copy(self.files_in_target.get(dir_pair.target, set()))
 
@@ -163,6 +188,8 @@ class CompareDirs:
 
             n_files = len(files_in_source)
             for i, source_file in enumerate(copy(files_in_source), 1):
+                if self.cancel_requested and self.cancel_requested.is_set():
+                    break
                 log_progress('Linked', i, n_files, start_time, interval=10_000)
                 target_file = target_rel_paths.get(source_file.rel_to_root, None)
                 if target_file is not None:
@@ -190,6 +217,8 @@ class CompareDirs:
 
             n_files = len(files_in_source)
             for i, source_file in enumerate(copy(files_in_source), 1):
+                if self.cancel_requested and self.cancel_requested.is_set():
+                    break
                 log_progress('Linked', i, n_files, start_time, interval=10_000)
                 # Check if the file name exists in both source and target
                 if source_file.name in target_filenames:
@@ -233,6 +262,9 @@ class CompareDirs:
         start_time = time.time()
         logger.info(f'Comparing {n_files:,} files that exist in both directories')
         for i, file in enumerate(files_in_both):
+            if self.cancel_requested and self.cancel_requested.is_set():
+                logger.info('Comparing files aborted due to cancellation request')
+                break
             log_progress('Compared', i, n_files, start_time, interval=5_000)
             file.compare(self.comparison_method)
 
@@ -359,6 +391,7 @@ class SyncDirs:
         retry_delay: float = 1.0,
         backoff_factor: float = 2.0,
         progress_callback: Callable[[str, int, int, int, str, str], None] | None = None,
+        cancel_requested: threading.Event | None = None,
     ):
         logger.info('---------------------------')
         logger.info('Initializing synchronization')
@@ -373,7 +406,7 @@ class SyncDirs:
         self.retry_delay = retry_delay
         self.backoff_factor = backoff_factor
         self.progress_callback = progress_callback
-        self.cancel_requested = threading.Event()
+        self.cancel_requested = cancel_requested if cancel_requested is not None else threading.Event()
 
         # Initialize variables
         self.files_available_to_copy: list[tuple[CstmPath, CstmPath]] = files_to_copy
@@ -404,9 +437,25 @@ class SyncDirs:
             if Action.DELETE in self.default_actions:
                 self.files_requested_to_delete = [str(f) for f in self.files_available_to_delete]
 
+        if self.cancel_requested.is_set():
+            logger.info('Synchronization aborted due to cancellation request')
+            return
+
         self.move_files()
+        if self.cancel_requested.is_set():
+            logger.info('Synchronization aborted due to cancellation request')
+            return
+
         self.delete_files()
+        if self.cancel_requested.is_set():
+            logger.info('Synchronization aborted due to cancellation request')
+            return
+
         self.copy_files()
+        if self.cancel_requested.is_set():
+            logger.info('Synchronization aborted due to cancellation request')
+            return
+
         self.delete_empty_dirs()
         logger.info('Finished synchronizing directories')
         self.print_errors()
@@ -431,9 +480,11 @@ class SyncDirs:
 
         try:
             while not result_event.is_set():
+                if hasattr(self, 'cancel_requested') and self.cancel_requested.is_set():
+                    return False
                 result_event.wait(0.2)
         finally:
-            if not result_event.is_set():
+            if not result_event.is_set() or (hasattr(self, 'cancel_requested') and self.cancel_requested.is_set()):
 
                 def cleanup_popup():
                     p = popup_holder.get('popup')
@@ -462,212 +513,204 @@ class SyncDirs:
         """Signal cooperative cancellation to stop processing after current file."""
         self.cancel_requested.set()
 
-    def copy_files(self):
-        n_files = len(self.files_requested_to_copy)
+    def _execute_batch(
+        self,
+        items: list[Any],
+        action_name: str,
+        action_fn: Callable[..., tuple[bool, int | float] | bool],
+        output_list: list[tuple[Any, bool]] | None = None,
+    ) -> list[tuple[Any, bool]]:
+        """
+        Execute a batch of file actions (copy, move, delete) with unified cancellation checking,
+        progress logging, error reporting, and progress callbacks.
+        """
+        meta_map = {
+            'copy': {'title': 'Copying', 'gerund': 'copying', 'past': 'Copied'},
+            'move': {'title': 'Moving', 'gerund': 'moving', 'past': 'Moved'},
+            'delete': {'title': 'Deleting', 'gerund': 'deleting', 'past': 'Deleted'},
+        }
+        meta = meta_map.get(
+            action_name,
+            {'title': action_name.capitalize(), 'gerund': action_name, 'past': action_name.capitalize()},
+        )
+
+        n_files = len(items)
         start_time = time.time()
         counter_size = 0
         copy_speed = ''
+        log_interval = min(100, max(1, n_files // 10))
+        results: list[tuple[Any, bool]] = output_list if output_list is not None else []
 
-        for i, (source, target) in enumerate(self.files_requested_to_copy, 1):
+        try:
+            num_params = len(inspect.signature(action_fn).parameters)
+        except (ValueError, TypeError):
+            num_params = 3
+
+        for i, item in enumerate(items, 1):
             if hasattr(self, 'cancel_requested') and self.cancel_requested.is_set():
-                logger.info('Copying aborted due to user cancellation request')
+                logger.info(f'{meta["title"]} aborted due to user cancellation request')
                 break
 
+            if isinstance(item, tuple):
+                primary_path = item[0]
+                length_check = str(check_length(item[0]) + '  ' + check_length(item[1])).strip()
+            else:
+                primary_path = item
+                length_check = check_length(item).strip()
+
             success = False
+            bytes_transferred: int | float = 0
             try:
-                # Pre-resolve dir_pair before any filesystem changes
-                dir_pair = get_dirs_from_path(target, self.dirs)
+                res = action_fn(item) if num_params == 1 else action_fn(item, i, n_files)
+                if isinstance(res, tuple):
+                    success, bytes_transferred = res
+                else:
+                    success, bytes_transferred = bool(res), 0
 
-                # Skip copy if source file no longer exists (e.g. transient file removed)
-                if not os.path.isfile(source):
-                    logger.warning(f'Copy skipped because source file no longer exists: <{source}>')
-                    self.files_copied.append(((source, target), False))
-                    if self.progress_callback is not None:
-                        with contextlib.suppress(Exception):
-                            self.progress_callback('copy', i, n_files, counter_size, str(source), copy_speed)
-                    continue
-
-                # JIT Self-Healing: If target file already physically exists and matches source, avoid re-copying
-                if os.path.isfile(target):
-                    try:
-                        source_stat = os.stat(source)
-                        target_stat = os.stat(target)
-                        if (
-                            source_stat.st_size == target_stat.st_size
-                            and abs(source_stat.st_mtime - target_stat.st_mtime) < 2.0
-                        ):
-                            logger.info(
-                                f'Target already exists and matches source: <{target}>. Self-healing mirror entry.'
-                            )
-                            if self.increment_mirror:
-                                self.mirror.add_path(root_dir=dir_pair.target, path=target)
-                            counter_size += target_stat.st_size
-                            success = True
-                            self.files_copied.append(((source, target), success))
-                            if self.progress_callback is not None:
-                                with contextlib.suppress(Exception):
-                                    self.progress_callback('copy', i, n_files, counter_size, str(source), copy_speed)
-                            continue
-                    except Exception as jit_err:
-                        logger.debug(f'JIT self-heal check skipped for <{target}>: {jit_err}')
-
-                size = get_size(source)
-                logger.debug(f'Copying file {i:,} of {n_files:,}: <{source}> -> <{target}> ({format_size(size)})')
-                robust_copy(
-                    source,
-                    target,
-                    max_retries=self.max_retries,
-                    initial_delay=self.retry_delay,
-                    backoff_factor=self.backoff_factor,
-                )
-                if isinstance(target, CstmPath):
-                    with contextlib.suppress(Exception):
-                        target.refresh_stats()
-
-                if self.increment_mirror:
-                    self.mirror.add_path(root_dir=dir_pair.target, path=target)
-                counter_size += size
-                copy_speed = f'Avg. copy speed: {format_size(counter_size / (time.time() - start_time))}/s'
-                log_interval = min(100, max(1, n_files // 10))
-                log_progress('Copied', i, n_files, start_time, interval=log_interval, cstm_msg=copy_speed)
-                success = True
+                if success:
+                    if action_name == 'copy':
+                        counter_size += int(bytes_transferred)
+                        elapsed = max(0.001, time.time() - start_time)
+                        copy_speed = f'Avg. copy speed: {format_size(counter_size / elapsed)}/s'
+                        log_progress('Copied', i, n_files, start_time, interval=log_interval, cstm_msg=copy_speed)
+                    else:
+                        log_progress(meta['past'], i, n_files, start_time, interval=log_interval)
             except Exception as e:
-                error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
-                error_msg = e if error_msg == '' else error_msg
-                logger.error(f'There was an error while copying file <{source}>. Exception: {error_msg}')
+                error_msg = e if length_check == '' else length_check
+                logger.error(f'There was an error while {meta["gerund"]} file <{primary_path}>. Exception: {error_msg}')
 
-            self.files_copied.append(((source, target), success))
+            results.append((item, success))
             if self.progress_callback is not None:
                 with contextlib.suppress(Exception):
-                    self.progress_callback('copy', i, n_files, counter_size, str(source), copy_speed)
+                    self.progress_callback(action_name, i, n_files, counter_size, str(primary_path), copy_speed)
+
+        return results
+
+    def _copy_file(self, item: tuple[CstmPath | str, CstmPath | str], i: int, n_files: int) -> tuple[bool, int | float]:
+        source, target = item
+        # Pre-resolve dir_pair before any filesystem changes
+        dir_pair = get_dirs_from_path(target, self.dirs or [])
+
+        # Skip copy if source file no longer exists (e.g. transient file removed)
+        if not os.path.isfile(source):
+            logger.warning(f'Copy skipped because source file no longer exists: <{source}>')
+            return False, 0
+
+        # JIT Self-Healing: If target file already physically exists and matches source, avoid re-copying
+        if os.path.isfile(target):
+            try:
+                source_stat = os.stat(source)
+                target_stat = os.stat(target)
+                if (
+                    source_stat.st_size == target_stat.st_size
+                    and abs(source_stat.st_mtime - target_stat.st_mtime) < 2.0
+                ):
+                    logger.info(f'Target already exists and matches source: <{target}>. Self-healing mirror entry.')
+                    if self.increment_mirror:
+                        self.mirror.add_path(root_dir=dir_pair.target, path=target)
+                    return True, target_stat.st_size
+            except Exception as jit_err:
+                logger.debug(f'JIT self-heal check skipped for <{target}>: {jit_err}')
+
+        size = get_size(str(source))
+        logger.debug(f'Copying file {i:,} of {n_files:,}: <{source}> -> <{target}> ({format_size(size)})')
+        robust_copy(
+            source,
+            target,
+            max_retries=self.max_retries,
+            initial_delay=self.retry_delay,
+            backoff_factor=self.backoff_factor,
+        )
+        if isinstance(target, CstmPath):
+            with contextlib.suppress(Exception):
+                target.refresh_stats()
+
+        if self.increment_mirror:
+            self.mirror.add_path(root_dir=dir_pair.target, path=target)
+        return True, size
+
+    def _move_file(self, item: tuple[CstmPath | str, CstmPath | str], i: int, n_files: int) -> tuple[bool, int | float]:
+        source, target = item
+        # Pre-resolve dir_pair before any filesystem changes
+        dir_pair = get_dirs_from_path(target, self.dirs or [])
+
+        # JIT Self-Healing & Phantom handling
+        if not os.path.isfile(source):
+            if os.path.isfile(target):
+                try:
+                    logger.info(f'Source is already missing and target exists: <{target}>. Self-healing mirror entry.')
+                    if self.increment_mirror:
+                        self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
+                    return True, 0
+                except Exception as jit_err:
+                    logger.debug(f'JIT move self-heal check skipped for <{target}>: {jit_err}')
+            else:
+                logger.warning(
+                    f'Move skipped because file is missing at both source and target: <{source}>. '
+                    'Purging phantom mirror record.'
+                )
+                try:
+                    if self.increment_mirror:
+                        self.mirror.remove_path(root_dir=dir_pair.target, path=source)
+                except Exception as rm_err:
+                    logger.debug(f'Could not remove phantom move source from mirror: {rm_err}')
+                return False, 0
+
+        size_str = get_size_as_str(str(source)) if os.path.isfile(source) else 'N/A'
+        logger.debug(f'Moving file {i:,} of {n_files:,}: <{source}> -> <{target}> ({size_str})')
+        robust_move(
+            source,
+            target,
+            max_retries=self.max_retries,
+            initial_delay=self.retry_delay,
+            backoff_factor=self.backoff_factor,
+        )
+        if isinstance(target, CstmPath):
+            with contextlib.suppress(Exception):
+                target.refresh_stats()
+        if self.increment_mirror:
+            self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
+        return True, 0
+
+    def _delete_file(self, path: CstmPath | str, i: int, n_files: int) -> tuple[bool, int | float]:
+        logger.debug(f'Deleting file {i:,} of {n_files:,}: <{path}> ({get_size_as_str(str(path))})')
+
+        try:
+            dir_pair = get_dirs_from_path(path, self.dirs or [])
+        except Exception as e:
+            logger.error(f'Could not identify root directory for deletion target <{path}>: {e}')
+            return False, 0
+
+        if not os.path.isfile(path):
+            logger.warning(f'Skipping deletion of file because it is already missing: <{path}>')
+            try:
+                if self.increment_mirror:
+                    self.mirror.remove_path(root_dir=dir_pair.target, path=path)
+            except Exception as e:
+                logger.debug(f'Could not remove phantom path from mirror: {e}')
+            return True, 0
+
+        robust_delete(
+            path,
+            max_retries=self.max_retries,
+            initial_delay=self.retry_delay,
+            backoff_factor=self.backoff_factor,
+        )
+        if self.increment_mirror:
+            self.mirror.remove_path(root_dir=dir_pair.target, path=path)
+        return True, 0
+
+    def copy_files(self):
+        self.files_copied = []
+        self._execute_batch(self.files_requested_to_copy, 'copy', self._copy_file, self.files_copied)
 
     def move_files(self):
-        n_files = len(self.files_requested_to_move)
-        start_time = time.time()
-        log_interval = min(100, max(1, n_files // 10))
-
-        for i, (source, target) in enumerate(self.files_requested_to_move, 1):
-            if hasattr(self, 'cancel_requested') and self.cancel_requested.is_set():
-                logger.info('Moving aborted due to user cancellation request')
-                break
-
-            success = False
-            try:
-                # Pre-resolve dir_pair before any filesystem changes
-                dir_pair = get_dirs_from_path(target, self.dirs)
-
-                # JIT Self-Healing & Phantom handling
-                if not os.path.isfile(source):
-                    if os.path.isfile(target):
-                        try:
-                            logger.info(
-                                f'Source is already missing and target exists: <{target}>. Self-healing mirror entry.'
-                            )
-                            if self.increment_mirror:
-                                self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
-                            success = True
-                            self.files_moved.append(((source, target), success))
-                            if self.progress_callback is not None:
-                                with contextlib.suppress(Exception):
-                                    self.progress_callback('move', i, n_files, 0, str(source), '')
-                            continue
-                        except Exception as jit_err:
-                            logger.debug(f'JIT move self-heal check skipped for <{target}>: {jit_err}')
-                    else:
-                        logger.warning(
-                            f'Move skipped because file is missing at both source and target: <{source}>. '
-                            'Purging phantom mirror record.'
-                        )
-                        try:
-                            if self.increment_mirror:
-                                self.mirror.remove_path(root_dir=dir_pair.target, path=source)
-                        except Exception as rm_err:
-                            logger.debug(f'Could not remove phantom move source from mirror: {rm_err}')
-                        success = False
-                        self.files_moved.append(((source, target), success))
-                        if self.progress_callback is not None:
-                            with contextlib.suppress(Exception):
-                                self.progress_callback('move', i, n_files, 0, str(source), '')
-                        continue
-
-                size_str = get_size_as_str(source) if os.path.isfile(source) else 'N/A'
-                logger.debug(f'Moving file {i:,} of {n_files:,}: <{source}> -> <{target}> ({size_str})')
-                robust_move(
-                    source,
-                    target,
-                    max_retries=self.max_retries,
-                    initial_delay=self.retry_delay,
-                    backoff_factor=self.backoff_factor,
-                )
-                if isinstance(target, CstmPath):
-                    with contextlib.suppress(Exception):
-                        target.refresh_stats()
-                if self.increment_mirror:
-                    self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
-                log_progress('Moved', i, n_files, start_time, interval=log_interval)
-                success = True
-            except Exception as e:
-                error_msg = str(check_length(source) + '  ' + check_length(target)).strip()
-                error_msg = e if error_msg == '' else error_msg
-                logger.error(f'There was an error while moving file <{source}>. Exception: {error_msg}')
-
-            self.files_moved.append(((source, target), success))
-            if self.progress_callback is not None:
-                with contextlib.suppress(Exception):
-                    self.progress_callback('move', i, n_files, 0, str(source), '')
+        self.files_moved = []
+        self._execute_batch(self.files_requested_to_move, 'move', self._move_file, self.files_moved)
 
     def delete_files(self):
-        n_files = len(self.files_requested_to_delete)
-        start_time = time.time()
-        log_interval = min(100, max(1, n_files // 10))
-
-        for i, path in enumerate(self.files_requested_to_delete, 1):
-            if hasattr(self, 'cancel_requested') and self.cancel_requested.is_set():
-                logger.info('Deleting aborted due to user cancellation request')
-                break
-
-            logger.debug(f'Deleting file {i:,} of {n_files:,}: <{path}> ({get_size_as_str(path)})')
-
-            try:
-                dir_pair = get_dirs_from_path(path, self.dirs)
-            except Exception as e:
-                logger.error(f'Could not identify root directory for deletion target <{path}>: {e}')
-                self.files_deleted.append((path, False))
-                if self.progress_callback is not None:
-                    with contextlib.suppress(Exception):
-                        self.progress_callback('delete', i, n_files, 0, str(path), '')
-                continue
-
-            if not os.path.isfile(path):
-                success = True
-                logger.warning(f'Skipping deletion of file because it is already missing: <{path}>')
-                try:
-                    if self.increment_mirror:
-                        self.mirror.remove_path(root_dir=dir_pair.target, path=path)
-                except Exception as e:
-                    logger.debug(f'Could not remove phantom path from mirror: {e}')
-            else:
-                success = False
-                try:
-                    robust_delete(
-                        path,
-                        max_retries=self.max_retries,
-                        initial_delay=self.retry_delay,
-                        backoff_factor=self.backoff_factor,
-                    )
-                    if self.increment_mirror:
-                        self.mirror.remove_path(root_dir=dir_pair.target, path=path)
-                    success = True
-                    log_progress('Deleted', i, n_files, start_time, interval=log_interval)
-                except Exception as e:
-                    error_msg = check_length(path)
-                    error_msg = e if error_msg == '' else error_msg
-                    logger.error(f'There was an error while deleting file <{path}>. Exception: {error_msg}')
-
-            self.files_deleted.append((path, success))
-            if self.progress_callback is not None:
-                with contextlib.suppress(Exception):
-                    self.progress_callback('delete', i, n_files, 0, str(path), '')
+        self.files_deleted = []
+        self._execute_batch(self.files_requested_to_delete, 'delete', self._delete_file, self.files_deleted)
 
     def delete_empty_dirs(self):
         """Delete empty directories from folders where files were deleted or moved from"""
@@ -688,6 +731,9 @@ class SyncDirs:
         logger.info('Deleting empty directories from folders where files were deleted or moved from')
 
         for dir_path in relevant_dirs:
+            if self.cancel_requested.is_set():
+                logger.info('Directory cleanup aborted due to user cancellation request')
+                break
             current = dir_path
             while True:
                 curr_path = _to_path(current)

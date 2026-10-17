@@ -72,7 +72,8 @@ This document records the architectural complexity audit conducted on 2026-10-17
 
 ---
 
-## 6. Duplicated Progress and Error Loops Across File Operations
+## 6. Duplicated Progress and Error Loops Across File Operations [RESOLVED]
+- **Status**: Completed (2026-10-17). Consolidated boilerplate cancellation checking, progress intervals, path length formatting, exception handling, and progress callbacks into unified `_execute_batch(items, action_name, action_fn)` pipeline with dedicated single-item action handlers.
 - **Location**: [`src/core/backend.py`](../src/core/backend.py) (`copy_files`, `move_files`, `delete_files`)
 - **Current Pattern**:
   Each of the three methods implements identical boilerplate for cancellation checking, progress intervals, path length formatting, and exception collection (~120 duplicated lines).
