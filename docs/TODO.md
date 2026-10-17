@@ -7,7 +7,7 @@
 - [x] implement rich frontend productivity enhancements:
   - [x] real-time Telemetry Bar (animated scanning, determinate progress, file count, transfer speed, current file display, and direct stop button)
   - [x] pre-flight Target Health & Storage Diagnostics (non-blocking background probe of target reachability and remaining disk capacity)
-  - [x] smart exclusion preset chips (`[✓ OS Junk]`, `[✓ Dev Folders]`, `[✓ Temp Files]`)
+  - [x] simplified exclusion tag chips and dedicated manager modal (presets removed to reduce visual noise)
   - [x] past reports and history browser (`ReportsWindow` for browsing, opening in Excel, and cleaning past reports)
   - [x] side-by-side visual diff inspector card in confirmation popup with file type badges and date/size deltas
   - [x] log console live search with match stepping and quick clipboard copy

@@ -316,16 +316,14 @@ def test_paths_panel_health_check_and_chips(monkeypatch, tmp_path):
     gui.root.update()
     assert 'All targets online' in pp.lbl_health_status.cget('text')
 
-    # 3. Preset chips: Toggle OS Junk, Dev, Temp
-    pp._preset_vars['os_junk'].set(True)
-    pp._on_preset_toggled(pp.PRESET_OS_JUNK, pp._preset_vars['os_junk'])
-    excl = pp.entry_exclusions.get()
-    assert 'Thumbs.db' in excl
+    # 3. Exclusions view toggle and chip operations
+    pp._toggle_exclusions_view()
+    assert pp._exclusions_view_mode == 'text'
+    pp._toggle_exclusions_view()
+    assert pp._exclusions_view_mode == 'chips'
 
-    pp._preset_vars['os_junk'].set(False)
-    pp._on_preset_toggled(pp.PRESET_OS_JUNK, pp._preset_vars['os_junk'])
-    excl_after = pp.entry_exclusions.get()
-    assert 'Thumbs.db' not in excl_after
+    pp._remove_single_exclusion('$RECYCLE.BIN')
+    assert '$RECYCLE.BIN' not in pp.entry_exclusions.get()
 
     # 4. Corner Case: Exclusions containing special regex chars
     pp.entry_exclusions.set(['[cache]', '*.tmp', '~$*', 'dir(old)', 'path\\**'])

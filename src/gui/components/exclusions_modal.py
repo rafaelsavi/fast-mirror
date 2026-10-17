@@ -11,22 +11,6 @@ from utils.utils import sanitize_path
 class ExclusionsModal:
     """Interactive management modal for reviewing, adding, removing, and testing ignore patterns."""
 
-    PRESETS = {
-        'OS Junk': ['Thumbs.db', 'desktop.ini', '$RECYCLE.BIN', '.DS_Store'],
-        'Developer': [
-            '.git',
-            'node_modules',
-            '__pycache__',
-            '.venv',
-            '.idea',
-            '.vscode',
-            '.pytest_cache',
-            '.mypy_cache',
-        ],
-        'Temp & Backups': ['*.tmp', '*.~*', '~$*', '*.bak', '*.swp'],
-        'Cache Folders': ['*Previews.lrdata*', '*.joblib_cache*', '*.cache*'],
-    }
-
     def __init__(
         self,
         parent: tk.Tk | tk.Toplevel | None,
@@ -165,26 +149,10 @@ class ExclusionsModal:
         btn_reset = ttk.Button(table_toolbar, text='Reset Default', command=self._handle_reset_default, width=13)
         btn_reset.pack(side='left', padx=4)
 
-        # --- Right Side: Presets & Live Tester Sandbox ---
+        # --- Right Side: Live Tester Sandbox ---
         right_box = ttk.Frame(content_frame)
         right_box.grid(row=0, column=1, sticky='nsew')
         right_box.columnconfigure(0, weight=1)
-
-        # Presets Card
-        presets_card = ttk.LabelFrame(right_box, text=' Quick Preset Packs ', padding=8)
-        presets_card.pack(fill='x', pady=(0, 8))
-
-        self._preset_vars: dict[str, tk.BooleanVar] = {}
-        for category, patterns in self.PRESETS.items():
-            var = tk.BooleanVar(value=all(p in self._patterns for p in patterns))
-            self._preset_vars[category] = var
-            cb = ttk.Checkbutton(
-                presets_card,
-                text=f'{category} ({len(patterns)} rules)',
-                variable=var,
-                command=lambda cat=category, pts=patterns, v=var: self._on_preset_pack_toggled(pts, v),
-            )
-            cb.pack(anchor='w', pady=2)
 
         # Live Pattern Testing Sandbox Card
         tester_card = ttk.LabelFrame(right_box, text=' 🔍 Pattern Testing Sandbox ', padding=8)
@@ -251,14 +219,7 @@ class ExclusionsModal:
             ptype = self._classify_pattern(pattern)
             self.tree.insert('', 'end', iid=str(idx - 1), values=(idx, pattern, ptype))
         self.lbl_stats.config(text=f'{len(self._patterns)} active patterns')
-        self._update_preset_checkboxes()
         self._evaluate_test_path()
-
-    def _update_preset_checkboxes(self):
-        for category, patterns in self.PRESETS.items():
-            if category in self._preset_vars:
-                all_present = all(p in self._patterns for p in patterns)
-                self._preset_vars[category].set(all_present)
 
     def _handle_add_pattern(self):
         raw = self.new_pattern_var.get().strip()
@@ -301,15 +262,6 @@ class ExclusionsModal:
         self._patterns = ['$RECYCLE.BIN', r'\~$']
         self._populate_table()
         self.lbl_msg.config(text='Reset to defaults ($RECYCLE.BIN, \\~$).')
-
-    def _on_preset_pack_toggled(self, patterns: list[str], var: tk.BooleanVar):
-        if var.get():
-            new_pts = [p for p in patterns if p not in self._patterns]
-            self._patterns.extend(new_pts)
-        else:
-            self._patterns = [p for p in self._patterns if p not in patterns]
-        self._patterns.sort()
-        self._populate_table()
 
     def _evaluate_test_path(self, *args):
         path = self.test_path_var.get().strip()

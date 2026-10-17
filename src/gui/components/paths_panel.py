@@ -12,10 +12,6 @@ from gui.widgets import DirectoryPair, EntryExclusions, EntryPaths
 class PathsPanel(ttk.LabelFrame):
     """Panel managing configured directory backup pairs, target health diagnostics, and file exclusions."""
 
-    PRESET_OS_JUNK = ['Thumbs.db', 'desktop.ini', '$RECYCLE.BIN', '.DS_Store']
-    PRESET_DEV = ['.git', 'node_modules', '__pycache__', '.venv']
-    PRESET_TEMP = ['*.tmp', '*.~*', '~$*']
-
     def __init__(
         self,
         master: tk.Misc,
@@ -29,12 +25,6 @@ class PathsPanel(ttk.LabelFrame):
 
         self._pair_health_cache: dict[str, TargetHealth] = {}
         self._view_mode: str = 'cards'
-
-        self._preset_vars: dict[str, tk.BooleanVar] = {
-            'os_junk': tk.BooleanVar(value=False),
-            'dev': tk.BooleanVar(value=False),
-            'temp': tk.BooleanVar(value=False),
-        }
 
         self._create_widgets(entry_paths, entry_exclusions)
 
@@ -213,37 +203,6 @@ class PathsPanel(ttk.LabelFrame):
         # Row 5: Interactive Exclusion Tag Chips
         self.chips_box = ttk.Frame(self)
         self.chips_box.grid(row=5, column=0, sticky='w', padx=8, pady=(0, 4))
-
-        # Row 6: Exclusion Presets Checkbuttons
-        chips_frame = ttk.Frame(self)
-        chips_frame.grid(row=6, column=0, sticky='w', padx=8, pady=(0, 6))
-
-        lbl_presets = ttk.Label(chips_frame, text='Presets:', font=('Segoe UI', 9, 'bold'), foreground='#555555')
-        lbl_presets.pack(side='left', padx=(0, 6))
-
-        self.cb_preset_junk = ttk.Checkbutton(
-            chips_frame,
-            text='OS Junk (Thumbs.db, .DS_Store)',
-            variable=self._preset_vars['os_junk'],
-            command=lambda: self._on_preset_toggled(self.PRESET_OS_JUNK, self._preset_vars['os_junk']),
-        )
-        self.cb_preset_junk.pack(side='left', padx=(0, 8))
-
-        self.cb_preset_dev = ttk.Checkbutton(
-            chips_frame,
-            text='Dev (.git, node_modules, .venv)',
-            variable=self._preset_vars['dev'],
-            command=lambda: self._on_preset_toggled(self.PRESET_DEV, self._preset_vars['dev']),
-        )
-        self.cb_preset_dev.pack(side='left', padx=(0, 8))
-
-        self.cb_preset_temp = ttk.Checkbutton(
-            chips_frame,
-            text='Temp (*.tmp, *.~*)',
-            variable=self._preset_vars['temp'],
-            command=lambda: self._on_preset_toggled(self.PRESET_TEMP, self._preset_vars['temp']),
-        )
-        self.cb_preset_temp.pack(side='left')
 
         # Hook trace for automatic chips update
         self.entry_exclusions.var.trace_add('write', lambda *args: self._update_exclusion_chips())
@@ -627,18 +586,6 @@ class PathsPanel(ttk.LabelFrame):
                 'Please click on or select a valid directory path in the Paths box to open in Explorer.',
             )
 
-    def _on_preset_toggled(self, patterns: list[str], var: tk.BooleanVar):
-        current_exclusions = self.entry_exclusions.get()
-        if var.get():
-            # Add patterns that are not already present
-            new_patterns = [p for p in patterns if p not in current_exclusions]
-            if new_patterns:
-                self.entry_exclusions.set(current_exclusions + new_patterns)
-        else:
-            # Remove patterns
-            remaining = [p for p in current_exclusions if p not in patterns]
-            self.entry_exclusions.set(remaining)
-
     def _handle_add_exclusion(self):
         from tkinter import simpledialog
 
@@ -725,9 +672,6 @@ class PathsPanel(ttk.LabelFrame):
             self.btn_toggle_view.configure(state=state)
         self.btn_add_exclusion.configure(state=state)
         self.btn_manage_exclusions.configure(state=state)
-        self.cb_preset_junk.configure(state=state)
-        self.cb_preset_dev.configure(state=state)
-        self.cb_preset_temp.configure(state=state)
         with contextlib.suppress(Exception):
             self.entry_paths.configure(state=state)
         with contextlib.suppress(Exception):
