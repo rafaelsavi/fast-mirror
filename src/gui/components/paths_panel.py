@@ -40,67 +40,72 @@ class PathsPanel(ttk.LabelFrame):
         entry_paths: EntryPaths | None,
         entry_exclusions: EntryExclusions | None,
     ):
-        self.columnconfigure(2, weight=1)
+        self.columnconfigure(0, weight=1)
 
-        # Row 0: Directory Pairs & Action Buttons
-        lbl_paths = ttk.Label(self, text='Paths:', font=('Segoe UI', 9, 'bold'))
-        lbl_paths.grid(row=0, column=0, sticky='nw', padx=(8, 4), pady=(6, 2))
+        # Row 0: Action Toolbar (Header label + Horizontal buttons)
+        toolbar = ttk.Frame(self)
+        toolbar.grid(row=0, column=0, sticky='ew', padx=8, pady=(4, 4))
 
-        btn_box = ttk.Frame(self)
-        btn_box.grid(row=0, column=1, sticky='nw', padx=4, pady=(4, 2))
+        lbl_paths = ttk.Label(toolbar, text='Directory Pairs:', font=('Segoe UI', 9, 'bold'))
+        lbl_paths.pack(side='left', padx=(0, 8))
 
         self.btn_add_path = ttk.Button(
-            btn_box,
-            text='+ Add Pair',
+            toolbar,
+            text='➕ Add Pair',
             command=self._handle_add_path,
-            width=14,
+            width=12,
         )
-        self.btn_add_path.pack(anchor='w', pady=(0, 2))
+        self.btn_add_path.pack(side='left', padx=2)
 
         self.btn_check_targets = ttk.Button(
-            btn_box,
+            toolbar,
             text='🩺 Health Check',
             command=self.run_target_health_check,
             width=14,
         )
-        self.btn_check_targets.pack(anchor='w', pady=(0, 2))
+        self.btn_check_targets.pack(side='left', padx=2)
 
         self.btn_open_selected = ttk.Button(
-            btn_box,
+            toolbar,
             text='📂 Explorer',
             command=self.open_selected_folder,
-            width=14,
+            width=12,
         )
-        self.btn_open_selected.pack(anchor='w')
+        self.btn_open_selected.pack(side='left', padx=2)
 
+        # Row 1: Full-Width Paths Editor
         if entry_paths is not None:
             self.entry_paths = entry_paths
         else:
-            self.entry_paths = EntryPaths(self, width=85, height=3)
-        self.entry_paths.grid(row=0, column=2, sticky='ew', padx=(4, 8), pady=(4, 2))
+            self.entry_paths = EntryPaths(self, width=90, height=3)
+        self.entry_paths.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
 
-        # Row 1: Health Diagnostic Status Line
+        # Row 2: Health Diagnostic Status Line
         self.lbl_health_status = ttk.Label(
             self,
             text='Targets not verified. Click "Health Check" to probe reachability and storage.',
             font=('Segoe UI', 9),
             foreground='#666666',
         )
-        self.lbl_health_status.grid(row=1, column=2, sticky='w', padx=(4, 8), pady=(0, 4))
+        self.lbl_health_status.grid(row=2, column=0, sticky='w', padx=8, pady=(0, 6))
 
-        # Row 2: Exclusions
-        lbl_exclusions = ttk.Label(self, text='Exclusions:', font=('Segoe UI', 9, 'bold'))
-        lbl_exclusions.grid(row=2, column=0, columnspan=2, sticky='w', padx=(8, 4), pady=(4, 2))
+        # Row 3: Exclusions Header
+        excl_header = ttk.Frame(self)
+        excl_header.grid(row=3, column=0, sticky='ew', padx=8, pady=(2, 2))
 
+        lbl_exclusions = ttk.Label(excl_header, text='Exclusions (glob patterns):', font=('Segoe UI', 9, 'bold'))
+        lbl_exclusions.pack(side='left')
+
+        # Row 4: Full-Width Exclusions Entry
         if entry_exclusions is not None:
             self.entry_exclusions = entry_exclusions
         else:
-            self.entry_exclusions = EntryExclusions(self, width=85)
-        self.entry_exclusions.grid(row=2, column=2, sticky='ew', padx=(4, 8), pady=(4, 2))
+            self.entry_exclusions = EntryExclusions(self, width=90)
+        self.entry_exclusions.grid(row=4, column=0, sticky='ew', padx=8, pady=(2, 4))
 
-        # Row 3: Exclusion Presets Chips
+        # Row 5: Exclusion Presets Chips
         chips_frame = ttk.Frame(self)
-        chips_frame.grid(row=3, column=2, sticky='w', padx=(4, 8), pady=(0, 6))
+        chips_frame.grid(row=5, column=0, sticky='w', padx=8, pady=(0, 6))
 
         lbl_presets = ttk.Label(chips_frame, text='Presets:', font=('Segoe UI', 9, 'bold'), foreground='#555555')
         lbl_presets.pack(side='left', padx=(0, 6))
