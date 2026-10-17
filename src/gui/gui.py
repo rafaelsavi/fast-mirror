@@ -9,8 +9,8 @@ from tkinter import filedialog, messagebox
 
 from core.backend import CompareDirs, SyncDirs
 from core.mirror import MirrorDatabase
-from gui.custom_gui import TrayableTk
 from gui.enums import BackendThreadStatus, TkinterCfgRelief, TkinterCfgState
+from gui.tray import TrayableTk
 from gui.widgets import (
     Action,
     DefaultActions,

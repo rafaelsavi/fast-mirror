@@ -26,6 +26,8 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         super().__init__(*args, **kwargs)
 
         self._data: dict[Action, dict[str, dict[str, float | str]]] = {}
+        self._item_actions: dict[str, tuple[Action, str, str]] = {}
+        self._cached_checked_by_action: dict[str, list[str]] = {}
         self.on_stats_changed = on_stats_changed
 
         # Configure headers to preserve exact backward compatibility
@@ -46,15 +48,25 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self.tag_configure('copy_tag', background='#f6fff8')
         self.tag_configure('move_tag', background='#f0f7ff')
         self.tag_configure('delete_tag', background='#fff5f5')
+        self.tag_configure('highlight_match', background='#fff59d')
 
     def _box_click(self, event):
         super()._box_click(event)
         self.refresh_group_stats()
 
     def refresh_group_stats(self):
-        for action_str in self.get_children(''):
+        """Single-pass O(N) grouping of checked items across actions to eliminate redundant tree queries."""
+        checked_items = self.get_checked()
+        checked_by_action: dict[str, list[str]] = {a: [] for a in self.get_children('')}
+        for item_id in checked_items:
+            prefix = item_id.partition('::')[0]
+            if prefix in checked_by_action:
+                checked_by_action[prefix].append(item_id)
+
+        self._cached_checked_by_action = checked_by_action
+
+        for action_str, selected_lines in checked_by_action.items():
             n_children = len(self.get_children(action_str))
-            selected_lines = [x for x in self.get_checked() if f'{action_str}::' in x]
             selected_number = len(selected_lines)
             action_enum = Action.from_str(action_str)
             action_data = self._data.get(action_enum, {})
@@ -78,12 +90,24 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         if default_active is None:
             default_active = []
 
+        self._item_actions.clear()
+
         for action, file_list in file_lists.items():
             self._data[action] = {}
             for file_entry in file_list:
                 args = (None, file_entry) if isinstance(file_entry, CstmPath) else file_entry
                 values = self.get_row(*args)
-                self._data[action][f'{action.value}::{values["source"]}::{values["target"]}'] = values
+                src_val = str(values['source'])
+                tgt_val = str(values['target'])
+                base_key = f'{action.value}::{src_val}::{tgt_val}'
+                item_key = base_key
+                counter = 1
+                while item_key in self._item_actions:
+                    item_key = f'{base_key}#{counter}'
+                    counter += 1
+
+                self._data[action][item_key] = values
+                self._item_actions[item_key] = (action, src_val, tgt_val)
 
         for action, rows in self._data.items():
             state_tag = 'checked' if action in default_active else 'unchecked'
@@ -101,34 +125,56 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                     parent=group_item,
                     index='end',
                     iid=key,
-                    values=[row.get(k, '') for k in self.custom_headers[1:]],
+                    values=(
+                        row['source'],
+                        row['target'],
+                        row['size (source)'],
+                        row['size (target)'],
+                        row['modification date (source)'],
+                        row['modification date (target)'],
+                    ),
                     tags=(action_style_tag,),
                 )
 
     @staticmethod
     def get_row(source: CstmPath | None, target: CstmPath | None) -> dict[str, float | str]:
-        def try_f(func: Callable, path: CstmPath | None, default: str | int = ''):
-            if path is None:
-                return default
-            try:
-                return func(path)
-            except FileNotFoundError:
-                return default
-            except Exception as e:
-                logger.warning(f'Failed to apply {func} on "{str(path)}". Exception: {e}')
-                return default
+        def _extract_meta(p: CstmPath | None) -> tuple[str, str, int | float, str]:
+            if p is None:
+                return ('', '0', 0, '')
+            p_str = str(p)
+            with contextlib.suppress(Exception):
+                st = getattr(p, 'stats', None)
+                if st is not None:
+                    bytes_val = st.st_size
+                    size_str = format_size(bytes_val)
+                    mtime_str = p.to_date_str(st.st_mtime) if hasattr(p, 'to_date_str') else str(st.st_mtime)
+                    return (p_str, size_str, bytes_val, mtime_str)
 
-        row: dict[str, float | str] = {}
-        row['source'] = try_f(str, source)
-        row['target'] = try_f(str, target)
-        row['size (source)'] = try_f(lambda x: x.get_st_size(as_str=True), source, default=0)
-        row['size (target)'] = try_f(lambda x: x.get_st_size(as_str=True), target, default=0)
-        row['modification date (source)'] = try_f(lambda x: x.get_st_mtime(as_date_str=True), source)
-        row['modification date (target)'] = try_f(lambda x: x.get_st_mtime(as_date_str=True), target)
-        get_size_from = source if source is not None else target
-        row['size in bytes'] = try_f(lambda x: x.get_st_size(as_str=False), get_size_from, default=0)
+            size_str = '0'
+            bytes_val = 0
+            mtime_str = ''
+            if hasattr(p, 'get_st_size'):
+                with contextlib.suppress(Exception):
+                    size_str = str(p.get_st_size(as_str=True))
+                    bytes_val = p.get_st_size(as_str=False)
+            if hasattr(p, 'get_st_mtime'):
+                with contextlib.suppress(Exception):
+                    mtime_str = str(p.get_st_mtime(as_date_str=True))
+            return (p_str, size_str, bytes_val, mtime_str)
 
-        return row
+        src_str, src_size_str, src_bytes, src_mtime_str = _extract_meta(source)
+        tgt_str, tgt_size_str, tgt_bytes, tgt_mtime_str = _extract_meta(target)
+        size_bytes = src_bytes if source is not None else tgt_bytes
+
+        return {
+            'source': src_str,
+            'target': tgt_str,
+            'size (source)': src_size_str,
+            'size (target)': tgt_size_str,
+            'modification date (source)': src_mtime_str,
+            'modification date (target)': tgt_mtime_str,
+            'size in bytes': size_bytes,
+        }
 
     def select_all(self):
         """Check all group and child items that contain files."""
@@ -177,8 +223,9 @@ class ActionSelection:
         self.finished = False
         self.proceed = False
 
-        # Create window
+        # Create window (withdrawn during creation to avoid multiple repaint events)
         self.popup = tk.Toplevel(self.root_gui)
+        self.popup.withdraw()
         self.popup.title('Automatic Backup - Confirm Actions')
         self.popup.minsize(920, 580)
         self.popup.transient(self.root_gui)
@@ -196,6 +243,7 @@ class ActionSelection:
             self.popup.grab_set()
 
         self.create_widgets()
+        self.popup.deiconify()
 
     def _center_window(self, width: int, height: int):
         try:
@@ -361,7 +409,7 @@ class ActionSelection:
 
         self.filter_var = tk.StringVar()
         self.filter_var.trace_add('write', self._on_filter_changed)
-        self.entry_filter = tk.Entry(toolbar_frame, textvariable=self.filter_var, width=30, font=('Segoe UI', 8))
+        self.entry_filter = tk.Entry(toolbar_frame, textvariable=self.filter_var, width=28, font=('Segoe UI', 8))
         self.entry_filter.pack(side='left', padx=(0, 4))
 
         btn_clear_filter = tk.Button(
@@ -372,7 +420,10 @@ class ActionSelection:
             pady=1,
             font=('Segoe UI', 7),
         )
-        btn_clear_filter.pack(side='left')
+        btn_clear_filter.pack(side='left', padx=(0, 6))
+
+        self.lbl_filter_count = tk.Label(toolbar_frame, text='', font=('Segoe UI', 8), fg='#666666')
+        self.lbl_filter_count.pack(side='left')
 
     def create_table(self):
         frame_table = tk.Frame(self.popup)
@@ -460,8 +511,13 @@ class ActionSelection:
         if not selected:
             return
         item_id = selected[0]
-        if '::' in item_id:
-            parts = item_id.split('::')
+        item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
+        if item_info is not None:
+            _, source_path, target_path = item_info
+            self.lbl_inspector_source.config(text=source_path if source_path else '(none)')
+            self.lbl_inspector_target.config(text=target_path if target_path else '(none)')
+        elif '::' in item_id:
+            parts = item_id.split('::', 2)
             if len(parts) >= 3:
                 source_path = parts[1] if parts[1] else '(none)'
                 target_path = parts[2] if parts[2] else '(none)'
@@ -472,9 +528,16 @@ class ActionSelection:
             self.lbl_inspector_target.config(text='-')
 
     def _update_banner_stats(self):
-        copy_lines = [x for x in self.tree.get_checked() if 'copy::' in x]
-        move_lines = [x for x in self.tree.get_checked() if 'move::' in x]
-        del_lines = [x for x in self.tree.get_checked() if 'delete::' in x]
+        cached = getattr(self.tree, '_cached_checked_by_action', None)
+        if cached is not None:
+            copy_lines = cached.get('copy', [])
+            move_lines = cached.get('move', [])
+            del_lines = cached.get('delete', [])
+        else:
+            checked = self.tree.get_checked()
+            copy_lines = [x for x in checked if 'copy::' in x]
+            move_lines = [x for x in checked if 'move::' in x]
+            del_lines = [x for x in checked if 'delete::' in x]
 
         self.lbl_stat_copy.config(text=f'🟢 Copy: {len(copy_lines)} files')
         self.lbl_stat_move.config(text=f'🔵 Move: {len(move_lines)} files')
@@ -487,46 +550,86 @@ class ActionSelection:
 
     def _on_filter_changed(self, *args):
         query = self.filter_var.get().strip().lower()
+        first_match = None
+        match_count = 0
+
         for group in self.tree.get_children(''):
             children = self.tree.get_children(group)
-            any_visible = False
+            group_matched = False
             for child in children:
-                matches = not query or (query in child.lower())
+                matches = bool(query and query in child.lower())
+                curr_tags = list(self.tree.item(child, 'tags'))
                 if matches:
-                    any_visible = True
-            # Expand groups containing matches
-            if query and any_visible:
+                    match_count += 1
+                    group_matched = True
+                    if first_match is None:
+                        first_match = child
+                    if 'highlight_match' not in curr_tags:
+                        curr_tags.append('highlight_match')
+                        self.tree.item(child, tags=tuple(curr_tags))
+                else:
+                    if 'highlight_match' in curr_tags:
+                        curr_tags.remove('highlight_match')
+                        self.tree.item(child, tags=tuple(curr_tags))
+
+            if query and group_matched:
                 self.tree.item(group, open=True)
 
+        if query:
+            self.lbl_filter_count.config(text=f'({match_count} match{"es" if match_count != 1 else ""})')
+            if first_match is not None:
+                self.tree.see(first_match)
+                self.tree.selection_set(first_match)
+                self._on_item_selected(None)
+        else:
+            self.lbl_filter_count.config(text='')
+
     def button_save_click(self):
+        if self.finished:
+            return
         logger.info('Saving selection of actions')
+        self.finished = True
+        self.proceed = True
+
         self.files_requested_to_copy = list()
         self.files_requested_to_move = list()
         self.files_requested_to_delete = list()
 
+        item_actions = getattr(self.tree, '_item_actions', {})
         for id_ in self.tree.get_checked():
-            if '::' in id_:
-                group, source_path, target_path = id_.split('::')
-                if group == 'copy':
+            item_info = item_actions.get(id_)
+            if item_info is not None:
+                action, source_path, target_path = item_info
+                if action == Action.COPY:
                     self.files_requested_to_copy.append((source_path, target_path))
-                elif group == 'move':
+                elif action == Action.MOVE:
                     self.files_requested_to_move.append((source_path, target_path))
-                elif group == 'delete':
+                elif action == Action.DELETE:
                     self.files_requested_to_delete.append(target_path)
+            elif '::' in id_:
+                parts = id_.split('::', 2)
+                group = parts[0]
+                if group == 'copy':
+                    self.files_requested_to_copy.append((parts[1], parts[2]))
+                elif group == 'move':
+                    self.files_requested_to_move.append((parts[1], parts[2]))
+                elif group == 'delete':
+                    self.files_requested_to_delete.append(parts[2])
 
-        self.finished = True
-        self.proceed = True
         with contextlib.suppress(Exception):
             self.popup.destroy()
         if self.on_close_callback:
             self.on_close_callback()
 
     def button_cancel_click(self):
+        if self.finished:
+            return
         logger.info('Canceling selection of actions. No action will be taken')
+        self.finished = True
+        self.proceed = False
         self.files_requested_to_copy = list()
         self.files_requested_to_move = list()
         self.files_requested_to_delete = list()
-        self.finished = True
         with contextlib.suppress(Exception):
             self.popup.destroy()
         if self.on_close_callback:

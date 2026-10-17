@@ -129,25 +129,40 @@ automatic-backup/
 ├── pyproject.toml            # Project metadata, dependencies, and tool settings
 ├── logs/                     # Session log files and generated Excel reports
 ├── winico/                   # Winico 0.7.1 Tcl extension DLL and icon assets
+├── notebooks/                # Exploratory & diagnostic Jupyter notebooks
+│   ├── explore_db.ipynb
+│   └── tests.ipynb
 ├── src/
 │   ├── core/
-│   │   ├── backend.py        # CompareDirs, SyncDirs, ActionSelection dialog
+│   │   ├── backend.py        # CompareDirs, SyncDirs orchestration & re-export facade
+│   │   ├── file_ops.py       # Robust atomic file operations (copy, move, delete, unlock)
+│   │   ├── path_resolver.py  # Path conversions & specificity-scored root resolution
 │   │   ├── file.py           # CstmPath, File abstractions, hash calculation
 │   │   └── mirror.py         # MirrorDatabase SQLite manager
 │   ├── gui/
-│   │   ├── custom_gui.py     # TrayableTk (Winico tray) & CustomCheckboxTreeView
-│   │   ├── enums.py          # Tkinter & Thread state enums
 │   │   ├── gui.py            # Main application window, watchdogs, scheduler
+│   │   ├── confirmation_popup.py # ActionSelection modal & CustomCheckboxTreeView
+│   │   ├── tray.py           # TrayableTk (Winico tray icon integration)
+│   │   ├── custom_gui.py     # Backward-compatibility facade for tray and popup
+│   │   ├── enums.py          # Tkinter & Thread state enums
 │   │   ├── worker_thread.py  # KillableThread with sys.settrace hooks
 │   │   ├── widgets.py        # Custom Tkinter controls (Paths, Exclusions, Loggers)
 │   │   └── app_icon.ico      # Application and tray icon
 │   └── utils/
 │       ├── constants.py      # ROOT_DIR locator
-│       ├── logger.py         # Singleton logger with queue and file handlers
+│       ├── logger.py         # Context-aware singleton logger with test mode isolation
 │       └── utils.py          # Helpers (formatting, progress logging, paths)
 └── tests/
-    ├── test_mirror.py        # Pytest suite for MirrorDatabase
-    └── TestData/             # Mock directories for testing
+    ├── conftest.py           # Test isolation fixtures
+    ├── test_e2e.py           # End-to-end integration workflows
+    ├── test_paths.py         # Path resolution and UNC share tests
+    ├── test_file_ops.py      # Robust file operations, locks, and retries
+    ├── test_sync.py          # Directory synchronization & comparison
+    ├── test_mirror.py        # SQLite WAL mirror database tests
+    ├── test_confirmation_popup.py # Action confirmation popup & treeview
+    ├── test_gui.py           # GUI scheduler, settings, and TextLogger
+    ├── test_logger.py        # Logging handlers and log isolation
+    └── TestData/             # Local directory pairs for testing
 ```
 
 ---

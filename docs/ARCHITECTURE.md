@@ -296,7 +296,7 @@ Tkinter widgets cannot be safely updated from secondary threads. To ensure threa
 2. A dedicated Tkinter watchdog (`log_queue_watchdog`) polls the queue in the main thread and inserts formatted text records into `TextLogger`.
 
 ### Custom TreeView with Dynamic Grouping
-Implemented in [`src/gui/custom_gui.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/custom_gui.py).
+Implemented in [`src/gui/confirmation_popup.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/confirmation_popup.py).
 
 `CustomCheckboxTreeView` (derived from `ttkwidgets.CheckboxTreeview`):
 - Groups proposed changes by `copy`, `move`, and `delete`.
@@ -307,6 +307,8 @@ Implemented in [`src/gui/custom_gui.py`](file:///d:/Rafael/Projects/Python/autom
   ```
 
 ### System Tray via Winico Tcl Extension
+Implemented in [`src/gui/tray.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/tray.py).
+
 Windows-native notification tray docking is provided via `winico/Winico0.7.1.dll`:
 - Loaded dynamically via Tcl:
   ```python

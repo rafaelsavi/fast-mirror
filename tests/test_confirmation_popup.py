@@ -531,3 +531,189 @@ def test_action_selection_path_inspector_updates_on_select(tmp_path, monkeypatch
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_action_selection_high_volume_performance(tmp_path, monkeypatch):
+    """Test ActionSelection loads and saves hundreds/thousands of files with sub-second performance."""
+    import time
+
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 'src'
+    tgt = tmp_path / 'tgt'
+    src.mkdir()
+    tgt.mkdir()
+
+    # Generate 1500 simulated file pairs with unique paths
+    num_items = 1500
+    copies = [
+        (CstmPath(src / f'sample_{i}.txt', root_dir=src), CstmPath(tgt / f'sample_{i}.txt', root_dir=tgt))
+        for i in range(num_items)
+    ]
+
+    try:
+        t0 = time.perf_counter()
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=copies,
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+        t_load = time.perf_counter() - t0
+
+        # Load time should be under 2.5 seconds for 1500 items in Tkinter
+        assert t_load < 2.5
+        assert f'{num_items} of {num_items}' in popup.tree.item('copy', 'text')
+
+        # Test submit speed
+        t1 = time.perf_counter()
+        popup.button_save_click()
+        t_save = time.perf_counter() - t1
+
+        assert t_save < 0.5
+        assert popup.finished is True
+        assert popup.proceed is True
+        copy_out, _, _ = popup.get_outputs()
+        assert len(copy_out) == num_items
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_action_selection_filter_and_highlight(tmp_path, monkeypatch):
+    """Test filter updates match counter, highlights matching items, and clears cleanly."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+
+    f1 = src / 'target_document.pdf'
+    f2 = src / 'target_photo.jpg'
+    f3 = src / 'other_file.txt'
+    for f in (f1, f2, f3):
+        f.write_text('content')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[
+                (CstmPath(f1, root_dir=src), CstmPath(tgt / 'target_document.pdf', root_dir=tgt)),
+                (CstmPath(f2, root_dir=src), CstmPath(tgt / 'target_photo.jpg', root_dir=tgt)),
+                (CstmPath(f3, root_dir=src), CstmPath(tgt / 'other_file.txt', root_dir=tgt)),
+            ],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+
+        # Initially no filter
+        assert popup.lbl_filter_count.cget('text') == ''
+
+        # Filter for 'target' -> 2 matches
+        popup.filter_var.set('target')
+        assert '2 matches' in popup.lbl_filter_count.cget('text')
+
+        # Check tag on children
+        children = popup.tree.get_children('copy')
+        highlighted = [c for c in children if 'highlight_match' in popup.tree.item(c, 'tags')]
+        assert len(highlighted) == 2
+
+        # Clear filter
+        popup.filter_var.set('')
+        assert popup.lbl_filter_count.cget('text') == ''
+        highlighted_after = [c for c in children if 'highlight_match' in popup.tree.item(c, 'tags')]
+        assert len(highlighted_after) == 0
+
+        popup.button_cancel_click()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_action_selection_duplicate_file_entries_handled_safely(tmp_path, monkeypatch):
+    """Test passing duplicate paths in file_list generates distinct keys without TclError."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+
+    f = src / 'dup.txt'
+    f.write_text('data')
+    cp_s = CstmPath(f, root_dir=src)
+    cp_t = CstmPath(tgt / 'dup.txt', root_dir=tgt)
+
+    try:
+        # Pass identical file pair 3 times
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[(cp_s, cp_t), (cp_s, cp_t), (cp_s, cp_t)],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+        children = popup.tree.get_children('copy')
+        assert len(children) == 3
+
+        popup.button_save_click()
+        assert popup.finished is True
+        copy_out, _, _ = popup.get_outputs()
+        assert len(copy_out) == 3
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_action_selection_dismissal_idempotence(monkeypatch):
+    """Test calling button_save_click or button_cancel_click multiple times executes callback only once."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    call_count = 0
+
+    def on_close():
+        nonlocal call_count
+        call_count += 1
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[],
+            on_close_callback=on_close,
+        )
+
+        popup.button_save_click()
+        popup.button_save_click()
+        popup.button_cancel_click()
+
+        assert call_count == 1
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

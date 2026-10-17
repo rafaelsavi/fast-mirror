@@ -106,9 +106,16 @@ When installed with `-e .`, the `src` directory is linked into your virtual envi
 
 ```
 tests/
-├── test_mirror.py            # Unit tests for MirrorDatabase
-├── db_test.db                # Temporary SQLite test database fixture
-└── TestData/                 # Local directory pairs for manual testing
+├── conftest.py               # Test environment isolation fixtures
+├── test_e2e.py               # End-to-end integration workflows
+├── test_paths.py             # Path resolution and UNC share tests
+├── test_file_ops.py          # Robust file operations, locks, and retries
+├── test_sync.py              # Directory synchronization & comparison
+├── test_mirror.py            # SQLite WAL mirror database tests
+├── test_confirmation_popup.py# Action confirmation popup & treeview
+├── test_gui.py               # GUI scheduler, settings, and TextLogger
+├── test_logger.py            # Logging handlers and log isolation
+└── TestData/                 # Local directory pairs for testing
     ├── Source/
     └── Target/
 ```

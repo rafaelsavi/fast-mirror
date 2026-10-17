@@ -50,22 +50,36 @@ automatic-backup/
 ├── .agents/                  # Agent rules and skills
 │   ├── rules/                # Modular domain rules (network paths, GUI, SQLite, safety)
 │   └── skills/               # Runbooks (verification, diagnostics, testing)
+├── notebooks/                # Diagnostic and exploratory notebooks
+│   ├── explore_db.ipynb
+│   └── tests.ipynb
 ├── src/
 │   ├── core/
-│   │   ├── backend.py        # Core synchronization engine (SyncDirs) & path resolution
+│   │   ├── backend.py        # Core synchronization engine (SyncDirs, CompareDirs) & re-exports
+│   │   ├── file_ops.py       # Atomic file operations (robust_copy, robust_move, robust_delete, unlock)
+│   │   ├── path_resolver.py  # Specificity-scored root path resolution & UNC path conversions
 │   │   ├── mirror.py         # SQLite-based file mirror cache (MirrorDatabase)
-│   │   ├── backup.py         # Backup orchestration and high-level workflow
-│   │   └── file.py           # Custom path and file wrappers (CstmPath)
+│   │   └── file.py           # Custom path and file wrappers (CstmPath, File)
 │   ├── gui/
-│   │   ├── custom_gui.py     # Main application window & tray icon (AutomaticBackupGUI)
+│   │   ├── gui.py            # Main application window & scheduler watchdog (Gui)
+│   │   ├── confirmation_popup.py # Action selection modal & CheckboxTreeView
+│   │   ├── tray.py           # System tray integration (TrayableTk via Winico)
+│   │   ├── custom_gui.py     # Backward-compatibility facade for TrayableTk & Treeview
 │   │   ├── worker_thread.py  # Background worker thread execution & cancellation
-│   │   └── widgets.py        # Custom UI controls & modal confirmation popups
+│   │   └── widgets.py        # Custom UI controls & form fields
 │   └── utils/
 │       ├── utils.py          # DirectoryPair, byte conversion, path sanitizers
-│       └── logger.py         # Logging configuration and formatting
+│       └── logger.py         # Context-aware logging configuration and formatting
 ├── tests/
-│   ├── test_core.py          # Unit & integration tests for backend, paths, and config
-│   └── test_mirror.py        # SQLite mirror database and concurrency tests
+│   ├── conftest.py           # Test isolation fixtures
+│   ├── test_e2e.py           # End-to-end integration workflows
+│   ├── test_paths.py         # Path resolution and UNC share tests
+│   ├── test_file_ops.py      # Robust file operations, locks, and retries
+│   ├── test_sync.py          # Directory synchronization & comparison
+│   ├── test_mirror.py        # SQLite mirror database and concurrency tests
+│   ├── test_confirmation_popup.py # Action confirmation popup & treeview
+│   ├── test_gui.py           # GUI scheduler, settings, and TextLogger
+│   └── test_logger.py        # Logging handlers and log isolation
 ├── config.json               # Real user configuration and directory pairs
 ├── pyproject.toml            # Dependencies, Ruff rules, and Mypy settings
 └── docs/                     # Architecture, Development, and Configuration guides
