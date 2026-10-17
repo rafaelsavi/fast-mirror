@@ -757,8 +757,7 @@ def test_telemetry_bar_states_and_callbacks():
 
     from gui.components.telemetry_bar import TelemetryBar
 
-    stopped = []
-    bar = TelemetryBar(root, on_stop=lambda: stopped.append(True))
+    bar = TelemetryBar(root)
 
     assert bar.lbl_status.cget('text') == 'Ready'
 
@@ -781,11 +780,7 @@ def test_telemetry_bar_states_and_callbacks():
     assert '50.0 MB/s' in bar.lbl_status.cget('text')
     assert 'my_sample_backup_file.txt' in bar.lbl_details.cget('text')
 
-    # 3. Stop callback
-    bar.btn_stop.invoke()
-    assert stopped == [True]
-
-    # 4. Reset
+    # 3. Reset
     bar.reset('Ready')
     assert bar.lbl_status.cget('text') == 'Ready'
     assert bar.progress['value'] == 0
@@ -912,3 +907,36 @@ def test_confirmation_popup_file_type_badges():
 
     icon, name = get_file_type_badge('')
     assert icon == '📄'
+
+
+def test_text_logger_insert_batch_and_o1_line_check():
+    """Verify that TextLogger.insert_batch efficiently inserts multiple records with O(1) line checks."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.enums import TkinterCfgState
+    from gui.widgets import TextLogger
+
+    logger_widget = TextLogger(root, state=TkinterCfgState.DISABLED.value, height=10, width=50)
+    logger_widget.set_log_levels(['DEBUG', 'INFO', 'WARNING', 'ERROR'])
+    logger_widget.limit_lines = 50
+
+    # Insert batch of 60 records
+    records = [(f'Batch message {i}', 'INFO' if i % 2 == 0 else 'WARNING') for i in range(60)]
+    logger_widget.insert_batch(records)
+
+    assert len(logger_widget.lines) <= 60
+    assert logger_widget.level_counts['INFO'] == 30
+    assert logger_widget.level_counts['WARNING'] == 30
+
+    # Insert another batch exceeding limit to trigger rewrite via O(1) check
+    overflow_records = [(f'Overflow {i}', 'ERROR') for i in range(100)]
+    logger_widget.insert_batch(overflow_records)
+
+    assert len(logger_widget.lines) <= 50  # Pruned to limit_lines
+    assert logger_widget.level_counts['ERROR'] > 0
+
+    root.destroy()

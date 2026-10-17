@@ -481,8 +481,8 @@ def test_reports_window_visual_and_actions(monkeypatch, tmp_path):
     root.destroy()
 
 
-def test_telemetry_bar_modes_and_stop():
-    """Test TelemetryBar determinate, indeterminate progress, and stop button callback."""
+def test_telemetry_bar_modes():
+    """Test TelemetryBar determinate, indeterminate progress, and reset."""
     try:
         root = tk.Tk()
         root.withdraw()
@@ -491,8 +491,7 @@ def test_telemetry_bar_modes_and_stop():
 
     from gui.components.telemetry_bar import TelemetryBar
 
-    stop_called = []
-    bar = TelemetryBar(root, on_stop=lambda: stop_called.append(True))
+    bar = TelemetryBar(root)
     bar.pack(fill='x')
 
     # Indeterminate mode
@@ -512,10 +511,6 @@ def test_telemetry_bar_modes_and_stop():
     bar.reset()
     assert bar.lbl_status.cget('text') == 'Ready'
     assert bar.lbl_details.cget('text') == ''
-
-    # Stop button click
-    bar.btn_stop.invoke()
-    assert len(stop_called) == 1
 
     root.destroy()
 

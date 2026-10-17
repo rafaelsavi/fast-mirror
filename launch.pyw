@@ -1,7 +1,16 @@
+import contextlib
 import ctypes
 import os
 import subprocess
 import sys
+
+# Enable Per-Monitor v2 DPI awareness on Windows
+if hasattr(ctypes, 'windll'):
+    with contextlib.suppress(Exception):
+        if hasattr(ctypes.windll, 'user32') and hasattr(ctypes.windll.user32, 'SetProcessDpiAwarenessContext'):
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        elif hasattr(ctypes.windll, 'shcore') and hasattr(ctypes.windll.shcore, 'SetProcessDpiAwareness'):
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
 
 # Windows Single-Instance Guard: prevent duplicate concurrent GUI instances
 MUTEX_NAME = 'Local\\AutomaticBackupTool_SingleInstance'

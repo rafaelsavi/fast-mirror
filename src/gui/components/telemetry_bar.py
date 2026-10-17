@@ -1,12 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
 
-from utils.utils import format_size
-
-
-import tkinter as tk
-from tkinter import ttk
-
 
 class TelemetryBar(ttk.Frame):
     """Modern real-time telemetry bar showing animated progress, transfer speed, and current file."""

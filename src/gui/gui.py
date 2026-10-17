@@ -283,7 +283,6 @@ class Gui:
         # 4. Bottom Telemetry Bar spanning full width
         self.telemetry_bar = TelemetryBar(
             self.root,
-            on_stop=self.request_stop_operation,
             padding=(8, 2),
         )
         self.telemetry_bar.grid(row=2, column=0, columnspan=2, sticky='ew', padx=10, pady=(0, 6))
@@ -527,15 +526,15 @@ class Gui:
 
         if self._gui_initialized:
             now = datetime.datetime.now()
-            next_appointment = self.get_next_appointment()
 
             # If backend thread is in standby
             if self.backend_thread_status == BackendThreadStatus.STANDBY:
+                next_appointment = self.get_next_appointment()
                 if (
                     self.toggle_state_schedule
                     and next_appointment is not None
                     and next_appointment != self.last_realized_sync
-                    and round_time_to_minutes(datetime.datetime.now()) == round_time_to_minutes(next_appointment)
+                    and round_time_to_minutes(now) == round_time_to_minutes(next_appointment)
                 ):
                     logger.info('-------------------------------------')
                     logger.info('Initializing scheduled synchronization')
@@ -574,7 +573,7 @@ class Gui:
                             logger.error(f'Could not stop background process. Exception: {e}')
                     self.backend_thread_status = BackendThreadStatus.STOPPING
 
-        delay = 1000 if self.backend_thread_status == BackendThreadStatus.STANDBY else 50
+        delay = 1000 if self.backend_thread_status == BackendThreadStatus.STANDBY else 250
         self.root.after(delay, self.backend_watchdog)
 
     def call_backend_thread(self, also_sync: bool, timestamp: datetime.datetime):
@@ -731,15 +730,14 @@ class Gui:
         return next_appointment
 
     def log_queue_watchdog(self):
-        """Poll log queue every 100ms and display queued records in text logger."""
-        records_drained = 0
-        was_at_bottom = False
-
+        """Poll log queue every 100ms and batch-display queued records in text logger."""
         # Only inspect text widget position if records are actually pending in queue
         if not logger.log_queue.empty():
+            was_at_bottom = False
             with contextlib.suppress(Exception):
                 was_at_bottom = self.text_logger.yview()[1] >= 0.95
 
+            batch: list[tuple[str, str]] = []
             while True:
                 try:
                     record: LogRecord = logger.log_queue.get(block=False)
@@ -747,13 +745,15 @@ class Gui:
                     break
                 else:
                     msg = logger.queue_handler.format(record)
-                    self.text_logger.insert(msg, record.levelname)
-                    records_drained += 1
+                    batch.append((msg, record.levelname))
 
-            # Smart auto-scroll: only follow to bottom if user has not scrolled up to inspect previous lines
-            if records_drained > 0 and self.toggle_auto_scroll.get() and was_at_bottom:
-                with contextlib.suppress(Exception):
-                    self.text_logger.yview(tk.END)
+            if batch:
+                self.text_logger.insert_batch(batch)
+
+                # Smart auto-scroll: only follow to bottom if user has not scrolled up to inspect previous lines
+                if self.toggle_auto_scroll.get() and was_at_bottom:
+                    with contextlib.suppress(Exception):
+                        self.text_logger.yview(tk.END)
 
         self.root.after(100, self.log_queue_watchdog)
 

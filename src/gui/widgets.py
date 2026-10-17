@@ -130,11 +130,8 @@ class EntryTimes(ScrolledText):
             try:
                 parsed = time.strptime(t.strip(), '%H:%M')
                 normalized.append(f'{parsed.tm_hour:02d}:{parsed.tm_min:02d}')
-            except Exception as e:
-                if t.strip() != '':
-                    logger.warning(
-                        f'Time entry "{t}" was ignored because it does not match the format hh:mm. Exception: {e}'
-                    )
+            except Exception:
+                pass
         return list(sorted(set(normalized)))
 
     def set(self, times):
@@ -305,21 +302,34 @@ class TextLogger(ScrolledText):
 
     def insert(self, *args, **kwargs):
         message, tag = args
-        self.lines.append((message, tag))
-        self._level_counts[tag] = self._level_counts.get(tag, 0) + 1
-        if tag in self.log_levels:
+        self.insert_batch([(message, tag)])
+
+    def insert_batch(self, records: list[tuple[str, str]]):
+        """Batch-insert multiple log entries into the widget in a single GUI state toggle."""
+        if not records:
+            return
+
+        visible: list[tuple[str, str]] = []
+        for message, tag in records:
+            self.lines.append((message, tag))
+            self._level_counts[tag] = self._level_counts.get(tag, 0) + 1
+            if tag in self.log_levels:
+                visible.append((message, tag))
+
+        if visible:
             self.configure(state=TkinterCfgState.NORMAL.value)
-            super().insert(tk.END, message + '\n', tag)
+            for message, tag in visible:
+                super().insert(tk.END, message + '\n', tag)
             self.configure(state=TkinterCfgState.DISABLED.value)
             self._check_num_lines()
+
         if self.on_log_updated:
             with contextlib.suppress(Exception):
                 self.on_log_updated()
 
     def _check_num_lines(self):
-        # Remove excessive lines
-        lines = self.get('1.0', tk.END).splitlines()
-        if len(lines) > self.limit_lines * 1.1:
+        # O(1) in-memory check without expensive get('1.0', tk.END).splitlines() serialization
+        if len(self.lines) > self.limit_lines * 1.1:
             self._rewrite()
 
     def _rewrite(self):
