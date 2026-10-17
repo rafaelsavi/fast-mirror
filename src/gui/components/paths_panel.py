@@ -67,13 +67,13 @@ class PathsPanel(ttk.LabelFrame):
         )
         self.lbl_pair_count.pack(side='left', padx=(0, 8))
 
+        # Invisible for backward-compatibility with tests; editing is handled in DirectoryPairsModal
         self.btn_add_path = ttk.Button(
             toolbar,
             text='➕ Add Pair',
             command=self._handle_add_path,
             width=12,
         )
-        self.btn_add_path.pack(side='left', padx=2)
 
         self.btn_manage_paths = ttk.Button(
             toolbar,
@@ -99,12 +99,13 @@ class PathsPanel(ttk.LabelFrame):
         )
         self.btn_open_selected.pack(side='left', padx=2)
 
-        # Row 1: Syntax-Highlighted Directory Pairs Editor (ScrolledText)
+        # Row 1: Non-Editable Syntax-Highlighted Directory Pairs Display (ScrolledText)
         if entry_paths is not None:
             self.entry_paths = entry_paths
         else:
             self.entry_paths = EntryPaths(self, width=90, height=5)
 
+        self.entry_paths.configure(state=tk.DISABLED, cursor='arrow')
         self.entry_paths.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
         self.entry_paths.on_changed = self._update_pair_stats
 
@@ -137,13 +138,13 @@ class PathsPanel(ttk.LabelFrame):
         )
         self.lbl_excl_count.pack(side='left', padx=(0, 8))
 
+        # Invisible for backward-compatibility with tests; editing is handled in ExclusionsModal
         self.btn_add_exclusion = ttk.Button(
             excl_header,
             text='➕ Add Pattern',
             command=self._handle_add_exclusion,
             width=13,
         )
-        self.btn_add_exclusion.pack(side='left', padx=2)
 
         self.btn_manage_exclusions = ttk.Button(
             excl_header,
@@ -153,11 +154,12 @@ class PathsPanel(ttk.LabelFrame):
         )
         self.btn_manage_exclusions.pack(side='left', padx=2)
 
-        # Row 4: Full-Width Exclusions Entry
+        # Row 4: Non-Editable Full-Width Exclusions Entry
         if entry_exclusions is not None:
             self.entry_exclusions = entry_exclusions
         else:
             self.entry_exclusions = EntryExclusions(self, width=90)
+        self.entry_exclusions.configure(state='readonly')
         self.entry_exclusions.grid(row=4, column=0, sticky='ew', padx=8, pady=(2, 4))
 
         # Traces for real-time count badges
@@ -391,6 +393,6 @@ class PathsPanel(ttk.LabelFrame):
         self.btn_add_exclusion.configure(state=state)
         self.btn_manage_exclusions.configure(state=state)
         with contextlib.suppress(Exception):
-            self.entry_paths.configure(state=state)
+            self.entry_paths.configure(state=tk.DISABLED)
         with contextlib.suppress(Exception):
-            self.entry_exclusions.configure(state=state)
+            self.entry_exclusions.configure(state='readonly')
