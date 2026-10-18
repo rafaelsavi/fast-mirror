@@ -1,7 +1,7 @@
 ---
 name: verify-codebase
 description: >-
-  Run the full quality gate for the automatic-backup repository including the pytest test suite,
+  Run the full quality gate for the FastMirror repository including the pytest test suite,
   real configuration path resolution validation, ruff linting, ruff formatting, and mypy type checking.
   Use whenever modifying code or before declaring a task complete.
 ---
@@ -11,7 +11,7 @@ description: >-
 Follow this runbook to ensure that all changes adhere to project standards and introduce zero regressions.
 
 ## Prerequisites
-- Working directory: Repository root (`d:\\Projects\Python\automatic-backup`).
+- Working directory: Repository root (`fast-mirror`).
 - Virtual environment: Managed with `uv`.
 - Execution mode: On Windows, when running through terminal sandbox, if standard mode fails with permission errors, run with `BypassSandbox: true`.
 

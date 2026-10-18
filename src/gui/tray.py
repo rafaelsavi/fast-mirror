@@ -69,7 +69,7 @@ class TrayableTk(tk.Tk):
         """Display a system notification balloon/toast from the system tray icon."""
         if self._tray_icon is not None:
             with contextlib.suppress(Exception):
-                self._tray_icon.notify(message=message, title=title or 'Automatic Backup')
+                self._tray_icon.notify(message=message, title=title or 'FastMirror')
 
     def _is_operation_running(self, item=None) -> bool:
         if self._is_running_check is not None:
@@ -179,7 +179,7 @@ class TrayableTk(tk.Tk):
 
             image = Image.open(icon_path)
             menu = self._build_tray_menu()
-            self._tray_icon = pystray.Icon('automatic_backup', image, 'Automatic Backup Tool', menu)
+            self._tray_icon = pystray.Icon('fast_mirror', image, 'FastMirror', menu)
             self._tray_icon.run_detached()
         except Exception as e:
             logger.warning(f'Could not initialize system tray icon. Exception: {e}')

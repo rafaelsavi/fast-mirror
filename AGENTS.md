@@ -1,4 +1,4 @@
-# Automatic Backup — Agent Guidelines
+# FastMirror — Agent Guidelines
 
 Please refer to the detailed guidelines and modular rules in [`.agents/`](.agents):
 

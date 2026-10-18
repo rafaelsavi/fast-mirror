@@ -1,4 +1,4 @@
-"""GUI component panels for automatic backup application."""
+"""GUI component panels for FastMirror application."""
 
 from gui.components.actions_panel import ActionsPanel
 from gui.components.directory_pairs_modal import DirectoryPairsModal

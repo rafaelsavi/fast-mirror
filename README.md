@@ -1,4 +1,4 @@
-# Automatic Backup Tool
+# FastMirror
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Platform Windows](https://img.shields.io/badge/platform-Windows-0078D6.svg)](https://www.microsoft.com/windows/)
@@ -6,7 +6,7 @@
 [![Type Checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue.svg)](https://mypy-lang.org/)
 [![Database: SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg)](https://sqlite.org/)
 
-**Automatic Backup Tool** is a high-performance, automated one-way directory synchronization and backup system for Windows. Built with Python and Tkinter, it provides smart change detection, fast network-drive acceleration using a local SQLite mirror index, intelligent file move/rename detection, an interactive confirmation dialog for reviewing actions, and a background task scheduler that docks seamlessly into the Windows system tray.
+**FastMirror** is a high-performance, automated one-way directory synchronization and backup system for Windows. Built with Python and Tkinter, it provides smart change detection, fast network-drive acceleration using a local SQLite mirror index, intelligent file move/rename detection, an interactive confirmation dialog for reviewing actions, and a background task scheduler that docks seamlessly into the Windows system tray.
 
 ---
 
@@ -101,7 +101,7 @@ flowchart TD
 
 Traditional synchronization scripts treat a renamed or moved file as two separate operations: deleting the target file and copying the source file anew. Over slow connections or Wi-Fi, transferring gigabytes of already-existing data is wasteful.
 
-The `automatic-backup` linking algorithm:
+The `FastMirror` linking algorithm:
 1. First correlates files that share the exact same relative path from their respective roots.
 2. For remaining unlinked files, it matches files possessing unique filenames and identical metadata (size and modification time hash).
 3. Matched files with differing relative paths are flagged for a quick `shutil.move()` operation directly on the target, followed by a mirror database key update.
@@ -122,7 +122,7 @@ Scanning tens of thousands of files across a slow SMB/CIFS network share can tak
 The codebase is organized into modular packages:
 
 ```
-automatic-backup/
+fast-mirror/
 ├── config.example.json       # Example configuration template (copy to config.json)
 ├── launch.pyw                # Windowless Windows launcher with auto-venv detection
 ├── local_mirror.db           # SQLite database for cached target mirrors
@@ -176,8 +176,8 @@ automatic-backup/
 
 1. **Clone the repository:**
    ```powershell
-   git clone https://github.com/rafaelsavi/automatic-backup.git
-   cd automatic-backup
+   git clone https://github.com/rafaelsavi/fast-mirror.git
+   cd fast-mirror
    ```
 
 2. **Create the virtual environment and install dependencies:**
@@ -483,5 +483,5 @@ For deeper technical breakdowns, consult the dedicated guides in the [`docs/`](d
 ## License & Author
 
 **Author**: Rafael Savi  
-**Project**: `automatic-backup`  
+**Project**: `fast-mirror`  
 **License**: Proprietary / Personal Project (All rights reserved).

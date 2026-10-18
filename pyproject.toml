@@ -1,7 +1,7 @@
 [project]
-name = "automatic-backup"
+name = "fast-mirror"
 version = "0.1.0"
-description = "A project for automatic backup with Python."
+description = "FastMirror: High-performance one-way directory synchronization and backup tool for Windows."
 requires-python = ">=3.10"
 dependencies = [
     "pandas[excel]",

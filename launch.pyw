@@ -13,7 +13,7 @@ if hasattr(ctypes, 'windll'):
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
 
 # Windows Single-Instance Guard: prevent duplicate concurrent GUI instances
-MUTEX_NAME = 'Local\\AutomaticBackupTool_SingleInstance'
+MUTEX_NAME = 'Local\\FastMirror_SingleInstance'
 kernel32 = getattr(ctypes, 'windll', None) and getattr(ctypes.windll, 'kernel32', None)
 mutex = None
 if kernel32:
@@ -21,7 +21,7 @@ if kernel32:
     if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         user32 = getattr(ctypes.windll, 'user32', None)
         if user32:
-            hwnd = user32.FindWindowW(None, 'Automatic Backup Tool')
+            hwnd = user32.FindWindowW(None, 'FastMirror')
             if hwnd:
                 user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                 user32.SetForegroundWindow(hwnd)

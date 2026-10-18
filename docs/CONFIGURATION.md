@@ -1,6 +1,6 @@
-# Configuration & Exclusion Patterns Guide
+# FastMirror — Configuration & Exclusion Patterns Guide
 
-This guide details all configuration options for **Automatic Backup Tool**, including directory mapping rules, network path requirements, exclusion pattern syntax, and scheduling rules.
+This guide details all configuration options for **FastMirror**, including directory mapping rules, network path requirements, exclusion pattern syntax, and scheduling rules.
 
 ---
 

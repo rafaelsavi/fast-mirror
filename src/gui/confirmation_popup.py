@@ -552,7 +552,7 @@ class ActionSelection:
         # Create window
         self.popup = tk.Toplevel(self.root_gui)
         self.popup.withdraw()
-        self.popup.title('Automatic Backup - Confirm Actions')
+        self.popup.title('FastMirror - Confirm Actions')
         icon_path = os.path.join(os.path.dirname(__file__), 'app_icon.ico')
         if os.path.isfile(icon_path):
             with contextlib.suppress(Exception):

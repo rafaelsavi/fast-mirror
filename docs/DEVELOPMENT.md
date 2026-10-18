@@ -1,6 +1,6 @@
-# Development & Testing Guide
+# FastMirror — Development & Testing Guide
 
-This guide covers developer onboarding, environment setup, coding standards, automated testing, linting, and type checking for the **Automatic Backup Tool** project.
+This guide covers developer onboarding, environment setup, coding standards, automated testing, linting, and type checking for the **FastMirror** project.
 
 ---
 
@@ -43,8 +43,8 @@ This guide covers developer onboarding, environment setup, coding standards, aut
 
 1. **Clone the repository:**
    ```powershell
-   git clone https://github.com/rafaelsavi/automatic-backup.git
-   cd automatic-backup
+   git clone https://github.com/rafaelsavi/fast-mirror.git
+   cd fast-mirror
    ```
 
 2. **Initialize a virtual environment:**
@@ -84,7 +84,7 @@ This guide covers developer onboarding, environment setup, coding standards, aut
 The package is configured via [`pyproject.toml`](../pyproject.toml) using the `setuptools` build backend.
 
 ```
-automatic-backup/
+fast-mirror/
 ├── pyproject.toml            # Dependencies, tools, and build configuration
 ├── launch.pyw                # Headless launcher with auto-venv detection
 ├── config.example.json       # Template configuration file (copy to config.json)

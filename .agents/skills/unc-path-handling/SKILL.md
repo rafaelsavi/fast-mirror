@@ -2,7 +2,7 @@
 name: unc-path-handling
 description: >-
   Guidelines, test patterns, and troubleshooting procedures for Windows UNC and SMB network paths
-  (e.g. \\192.168.1.100\Share) in the automatic-backup repository. Use when modifying path manipulation,
+  (e.g. \\192.168.1.100\Share) in the FastMirror repository. Use when modifying path manipulation,
   testing remote network shares, or debugging UNC-related exceptions.
 ---
 

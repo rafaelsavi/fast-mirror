@@ -2,7 +2,7 @@
 name: diagnose-sync-errors
 description: >-
   Diagnose and debug file synchronization failures, DirectoryPair resolution errors, path mismatch exceptions,
-  and SQLite database lock issues in automatic-backup. Use when a user reports sync, copy, move, or mirror errors.
+  and SQLite database lock issues in FastMirror. Use when a user reports sync, copy, move, or mirror errors.
 ---
 
 # Diagnosing Synchronization & Backup Errors

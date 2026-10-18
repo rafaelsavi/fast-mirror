@@ -49,7 +49,7 @@ class Gui:
         if os.path.isfile(icon_path):
             with contextlib.suppress(Exception):
                 self.root.iconbitmap(icon_path)
-        self.root.title('Automatic Backup Tool')
+        self.root.title('FastMirror')
 
         self.current_theme = 'native'
         self.config_path = os.path.join(ROOT_DIR, 'config.json')
@@ -558,7 +558,7 @@ class Gui:
         if getattr(self, '_last_tray_state', None) == state_key:
             return
         self._last_tray_state = state_key
-        tooltip = f'Automatic Backup Tool\nStatus: {status_str}\nNext: {next_app}'
+        tooltip = f'FastMirror\nStatus: {status_str}\nNext: {next_app}'
         self.root.update_tray_tooltip(tooltip)
         self.root._update_tray_menu()
 
@@ -781,7 +781,7 @@ class Gui:
                         0,
                         lambda: self.root.notify(
                             message='Backup synchronization completed successfully.',
-                            title='Automatic Backup',
+                            title='FastMirror',
                         ),
                     )
             else:
@@ -794,7 +794,7 @@ class Gui:
                         0,
                         lambda: self.root.notify(
                             message=summary_msg,
-                            title='Automatic Backup',
+                            title='FastMirror',
                         ),
                     )
         finally:

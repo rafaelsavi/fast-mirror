@@ -138,7 +138,7 @@ def test_action_selection_popup_title_and_scrollbars():
         pytest.skip('Tkinter display not available')
 
     popup = ActionSelection(root, [], [], [], [])
-    assert popup.popup.title() == 'Automatic Backup - Confirm Actions'
+    assert popup.popup.title() == 'FastMirror - Confirm Actions'
 
     xscroll = popup.tree.cget('xscrollcommand')
     yscroll = popup.tree.cget('yscrollcommand')

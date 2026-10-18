@@ -1,6 +1,6 @@
-# Automatic Backup — Agent Guidelines & Repository Architecture
+# FastMirror — Agent Guidelines & Repository Architecture
 
-Welcome to the **Automatic Backup** codebase. This repository provides automated, multi-threaded directory mirroring, synchronization, and backup between local Windows drives and remote SMB / UNC network shares (e.g. NAS storage).
+Welcome to the **FastMirror** codebase. This repository provides automated, multi-threaded directory mirroring, synchronization, and backup between local Windows drives and remote SMB / UNC network shares (e.g. NAS storage).
 
 ---
 
@@ -46,7 +46,7 @@ Welcome to the **Automatic Backup** codebase. This repository provides automated
 
 ## 3. Directory Layout
 ```
-automatic-backup/
+fast-mirror/
 ├── .agents/                  # Agent rules and skills
 │   ├── rules/                # Modular domain rules (network paths, GUI, SQLite, safety)
 │   └── skills/               # Runbooks (verification, diagnostics, testing)

@@ -1,6 +1,6 @@
-# System Architecture & Synchronization Engine
+# FastMirror — System Architecture & Synchronization Engine
 
-This document provides an in-depth technical analysis of the design, internal data models, threading architecture, and algorithms implemented in **Automatic Backup Tool**.
+This document provides an in-depth technical analysis of the design, internal data models, threading architecture, and algorithms implemented in **FastMirror**.
 
 ---
 
