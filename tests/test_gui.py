@@ -189,11 +189,10 @@ def test_paths_panel_interactions(tmp_path):
 
     from gui.components.paths_panel import PathsPanel
 
-    add_path_clicked = []
-    panel = PathsPanel(root, on_add_path=lambda: add_path_clicked.append(True))
+    panel = PathsPanel(root)
 
-    panel.btn_add_path.invoke()
-    assert len(add_path_clicked) == 1
+    assert panel.btn_manage_paths is not None
+    assert panel.btn_manage_exclusions is not None
 
     panel.entry_exclusions.set(['*.tmp', '.git'])
     assert '*.tmp' in panel.entry_exclusions.get()
@@ -729,9 +728,9 @@ def test_panels_set_enabled():
     )
 
     p_panel.set_enabled(False)
-    assert str(p_panel.btn_add_path.cget('state')) == 'disabled'
+    assert str(p_panel.btn_manage_paths.cget('state')) == 'disabled'
     p_panel.set_enabled(True)
-    assert str(p_panel.btn_add_path.cget('state')) == 'normal'
+    assert str(p_panel.btn_manage_paths.cget('state')) == 'normal'
 
     s_panel.set_enabled(False)
     for cb in s_panel.checkbox_week_days.values():
@@ -1236,7 +1235,6 @@ def test_paths_panel_text_mode_lifecycle(tmp_path):
     from gui.components.paths_panel import PathsPanel
 
     panel = PathsPanel(root)
-    assert panel._view_mode == 'text'
 
     # Empty state count
     assert '0 configured' in panel.lbl_pair_count.cget('text')

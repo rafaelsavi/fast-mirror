@@ -6,7 +6,7 @@ import queue
 import threading
 import tkinter as tk
 from logging import LogRecord
-from tkinter import filedialog, messagebox, ttk
+from tkinter import messagebox, ttk
 
 import sv_ttk
 
@@ -276,7 +276,6 @@ class Gui:
         # Paths Panel
         self.paths_panel = PathsPanel(
             right_container,
-            on_add_path=self.button_action_add_path,
             padding=6,
         )
         self.paths_panel.grid(row=0, column=0, sticky='ew', pady=(0, 6))
@@ -503,14 +502,6 @@ class Gui:
         except Exception as e:
             logger.error(f'update_overview_stats failed: {e}')
             self.overview_card.text_var_pairs_count.set('0 configured')
-
-    def button_action_add_path(self):
-        source = filedialog.askdirectory(title='Select source folder')
-        if source:
-            target = filedialog.askdirectory(title='Select destination folder')
-            if target:
-                self.entry_paths.add(DirectoryPair(source=source, target=target))
-                self.update_overview_stats()
 
     def button_action_open_report(self):
         if not os.path.isdir(logger.log_dir):

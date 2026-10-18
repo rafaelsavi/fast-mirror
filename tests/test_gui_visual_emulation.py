@@ -317,8 +317,6 @@ def test_paths_panel_health_check_and_chips(monkeypatch, tmp_path):
     assert 'All targets online' in pp.lbl_health_status.cget('text')
 
     # 3. Text exclusions mode and operations
-    assert pp._exclusions_view_mode == 'text'
-
     pp._remove_single_exclusion('$RECYCLE.BIN')
     assert '$RECYCLE.BIN' not in pp.entry_exclusions.get()
 

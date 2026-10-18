@@ -7,7 +7,6 @@ backed by dedicated management windows (DirectoryPairsModal & ExclusionsModal).
 import contextlib
 import os
 import tkinter as tk
-from collections.abc import Callable
 from tkinter import messagebox, ttk
 from typing import Literal
 
@@ -22,21 +21,13 @@ class PathsPanel(ttk.LabelFrame):
     def __init__(
         self,
         master: tk.Misc,
-        on_add_path: Callable[[], None] | None = None,
         entry_paths: EntryPaths | None = None,
         entry_exclusions: EntryExclusions | None = None,
         **kwargs,
     ):
         super().__init__(master, text=' Directory Pairs & Exclusions ', **kwargs)
-        self.on_add_path = on_add_path
 
         self._pair_health_cache: dict[str, TargetHealth] = {}
-        self._view_mode: str = 'text'
-        self._exclusions_view_mode: str = 'text'
-
-        # Dummy compatibility frames for backward compatibility
-        self.cards_frame = tk.Frame(self)
-        self.chips_box = tk.Frame(self)
 
         self._create_widgets(entry_paths, entry_exclusions)
 
@@ -66,14 +57,6 @@ class PathsPanel(ttk.LabelFrame):
             bd=1,
         )
         self.lbl_pair_count.pack(side='left', padx=(0, 8))
-
-        # Invisible for backward-compatibility with tests; editing is handled in DirectoryPairsModal
-        self.btn_add_path = ttk.Button(
-            toolbar,
-            text='➕ Add Pair',
-            command=self._handle_add_path,
-            width=12,
-        )
 
         self.btn_manage_paths = ttk.Button(
             toolbar,
@@ -138,14 +121,6 @@ class PathsPanel(ttk.LabelFrame):
         )
         self.lbl_excl_count.pack(side='left', padx=(0, 8))
 
-        # Invisible for backward-compatibility with tests; editing is handled in ExclusionsModal
-        self.btn_add_exclusion = ttk.Button(
-            excl_header,
-            text='➕ Add Pattern',
-            command=self._handle_add_exclusion,
-            width=13,
-        )
-
         self.btn_manage_exclusions = ttk.Button(
             excl_header,
             text='⚙️ Manage List...',
@@ -181,10 +156,6 @@ class PathsPanel(ttk.LabelFrame):
             return
         patterns = self.entry_exclusions.get()
         self.lbl_excl_count.config(text=f'{len(patterns)} patterns')
-
-    def _handle_add_path(self):
-        if self.on_add_path:
-            self.on_add_path()
 
     def open_pairs_manager(self):
         """Open the interactive directory pairs manager modal."""
@@ -318,22 +289,6 @@ class PathsPanel(ttk.LabelFrame):
                 'Please click on or select a valid directory path in the Paths box to open in Explorer.',
             )
 
-    def _handle_add_exclusion(self):
-        from tkinter import simpledialog
-
-        pattern = simpledialog.askstring(
-            'Add Ignore Pattern',
-            'Enter glob pattern to ignore (e.g. *.iso, cache/**, node_modules):',
-            parent=self.winfo_toplevel(),
-        )
-        if pattern:
-            from utils.utils import sanitize_path
-
-            sanitized = sanitize_path(pattern.strip())
-            current = self.entry_exclusions.get()
-            if sanitized not in current:
-                self.entry_exclusions.set(current + [sanitized])
-
     def open_exclusions_manager(self):
         """Open the interactive ignore patterns manager modal."""
         from gui.components.exclusions_modal import ExclusionsModal
@@ -375,22 +330,12 @@ class PathsPanel(ttk.LabelFrame):
                         top.update_overview_stats()
                 self._update_pair_stats()
 
-    def _toggle_view(self):
-        """Compatibility no-op."""
-        pass
-
-    def _toggle_exclusions_view(self):
-        """Compatibility no-op."""
-        pass
-
     def set_enabled(self, enabled: bool):
         """Enable or disable interactive widgets in the paths panel."""
         state: Literal['normal', 'disabled'] = 'normal' if enabled else 'disabled'
-        self.btn_add_path.configure(state=state)
         self.btn_manage_paths.configure(state=state)
         self.btn_check_targets.configure(state=state)
         self.btn_open_selected.configure(state=state)
-        self.btn_add_exclusion.configure(state=state)
         self.btn_manage_exclusions.configure(state=state)
         with contextlib.suppress(Exception):
             self.entry_paths.configure(state=tk.DISABLED)
