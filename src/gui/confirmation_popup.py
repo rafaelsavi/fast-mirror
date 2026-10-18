@@ -700,7 +700,7 @@ class ActionSelection:
             row_actions,
             text='Select All',
             command=lambda: self.tree.select_all(),
-            width=10,
+            width=11,
         )
         btn_select_all.pack(side='left', padx=(0, 4))
 
@@ -717,7 +717,7 @@ class ActionSelection:
             row_actions,
             text='Expand All',
             command=lambda: self.tree.expand_all(),
-            width=10,
+            width=11,
         )
         btn_expand.pack(side='left', padx=(0, 4))
 
@@ -801,7 +801,7 @@ class ActionSelection:
         frame_table.grid_rowconfigure(0, weight=1)
         frame_table.grid_columnconfigure(0, weight=1)
 
-        self.tree = CustomCheckboxTreeView(frame_table, height=20, on_stats_changed=self._update_banner_stats)
+        self.tree = CustomCheckboxTreeView(frame_table, height=9, on_stats_changed=self._update_banner_stats)
         self.tree.grid(row=0, column=0, sticky='nsew')
 
         # Add vertical scrollbar
@@ -865,7 +865,7 @@ class ActionSelection:
             btn_action_box,
             text='📋 Copy Path',
             command=self._copy_selected_path_to_clipboard,
-            width=11,
+            width=13,
         )
         self.btn_copy_path.pack(side='left')
 

@@ -75,7 +75,7 @@ class LogPanel(ttk.LabelFrame):
             toolbar,
             text='Clear',
             command=self.clear_log,
-            width=7,
+            width=10,
         )
         self.btn_clear.pack(side='right', padx=2)
 
@@ -83,7 +83,7 @@ class LogPanel(ttk.LabelFrame):
             toolbar,
             text='📋 Copy',
             command=self.copy_log,
-            width=8,
+            width=11,
         )
         self.btn_copy.pack(side='right', padx=2)
 
@@ -91,7 +91,7 @@ class LogPanel(ttk.LabelFrame):
             toolbar,
             text='💾 Export...',
             command=self.export_log,
-            width=10,
+            width=12,
         )
         self.btn_export.pack(side='right', padx=2)
 
@@ -99,7 +99,7 @@ class LogPanel(ttk.LabelFrame):
             toolbar,
             text='📁 Log Folder',
             command=self.open_log_folder,
-            width=12,
+            width=13,
         )
         self.btn_open_folder.pack(side='right', padx=2)
 

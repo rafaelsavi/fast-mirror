@@ -70,9 +70,9 @@ class ReportsWindow:
         self.tree.heading('size', text='File Size')
         self.tree.heading('filename', text='Filename')
 
-        self.tree.column('date', width=220, anchor='w')
-        self.tree.column('size', width=100, anchor='e')
-        self.tree.column('filename', width=340, anchor='w')
+        self.tree.column('date', width=200, anchor='w', stretch=False)
+        self.tree.column('size', width=90, anchor='e', stretch=False)
+        self.tree.column('filename', width=330, anchor='w', stretch=True)
 
         scroll_y = ttk.Scrollbar(table_frame, orient='vertical', command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll_y.set)
@@ -89,7 +89,7 @@ class ReportsWindow:
         self.lbl_count = ttk.Label(bottom, text='0 reports found', font=('Segoe UI', 9))
         self.lbl_count.pack(side='left', padx=(4, 0))
 
-        self.btn_close = ttk.Button(bottom, text='Close', command=self.window.destroy, width=10)
+        self.btn_close = ttk.Button(bottom, text='Close', command=self.window.destroy, width=11)
         self.btn_close.pack(side='right', padx=(4, 0))
 
         self.btn_open = ttk.Button(

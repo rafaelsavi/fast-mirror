@@ -129,26 +129,26 @@ class ActionsPanel(ttk.LabelFrame):
             cfg_frame,
             text='Reset',
             command=self.on_reset_config,
-            width=8,
+            width=11,
         )
-        self.button_new_config.pack(side='left', padx=2)
+        self.button_new_config.pack(side='left', padx=3)
 
         self.button_save_config = ModernButton(
             cfg_frame,
             text='Save',
             command=self.on_save_config,
-            width=8,
+            width=11,
         )
-        self.button_save_config.pack(side='left', padx=2)
+        self.button_save_config.pack(side='left', padx=3)
 
         self.button_toggle_theme = ModernButton(
             cfg_frame,
             text='Theme: Native (Fast)',
             command=self.on_toggle_theme,
-            width=18,
+            width=20,
         )
         if self.on_toggle_theme is not None:
-            self.button_toggle_theme.pack(side='left', padx=2)
+            self.button_toggle_theme.pack(side='left', padx=3)
 
         # Section 2: Comparison
         cmp_frame = ttk.Frame(self)
@@ -177,7 +177,7 @@ class ActionsPanel(ttk.LabelFrame):
             cmp_frame,
             text='History...',
             command=self._handle_report_history,
-            width=10,
+            width=11,
         )
         self.button_report_history.pack(side='left', padx=3)
 
@@ -280,32 +280,32 @@ class ActionsPanel(ttk.LabelFrame):
         actions_frame = ttk.Frame(self)
         actions_frame.pack(fill='x', padx=8, pady=(4, 6))
 
-        lbl_acts = ttk.Label(actions_frame, text='Default Actions:', font=('Segoe UI', 9, 'bold'))
-        lbl_acts.pack(side='left', padx=(0, 8))
+        lbl_acts = ttk.Label(actions_frame, text='Default Actions:', font=('Segoe UI', 9, 'bold'), width=14)
+        lbl_acts.pack(side='left')
 
         self.frame_default_actions = ttk.Frame(actions_frame)
-        self.frame_default_actions.pack(side='left')
+        self.frame_default_actions.pack(side='left', padx=3)
 
         cb_copy = ttk.Checkbutton(
             self.frame_default_actions,
             text='Copy',
             variable=self.checkbox_default_actions.get_var(Action.COPY),
         )
-        cb_copy.pack(side='left', padx=6)
+        cb_copy.pack(side='left', padx=(0, 8))
 
         cb_move = ttk.Checkbutton(
             self.frame_default_actions,
             text='Move',
             variable=self.checkbox_default_actions.get_var(Action.MOVE),
         )
-        cb_move.pack(side='left', padx=6)
+        cb_move.pack(side='left', padx=(0, 8))
 
         cb_del = ttk.Checkbutton(
             self.frame_default_actions,
             text='Delete',
             variable=self.checkbox_default_actions.get_var(Action.DELETE),
         )
-        cb_del.pack(side='left', padx=6)
+        cb_del.pack(side='left')
 
     def _handle_report_history(self):
         if self.on_report_history:

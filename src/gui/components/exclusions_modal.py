@@ -107,7 +107,7 @@ class ExclusionsModal:
         entry_new.grid(row=0, column=1, sticky='ew', padx=4)
         entry_new.bind('<Return>', lambda e: self._handle_add_pattern())
 
-        btn_add = ttk.Button(add_frame, text='➕ Add', command=self._handle_add_pattern, width=8)
+        btn_add = ttk.Button(add_frame, text='➕ Add', command=self._handle_add_pattern, width=10)
         btn_add.grid(row=0, column=2, sticky='e', padx=(4, 0))
 
         # Patterns Table
@@ -140,10 +140,10 @@ class ExclusionsModal:
         table_toolbar = ttk.Frame(left_box)
         table_toolbar.grid(row=2, column=0, sticky='ew', pady=(6, 0))
 
-        btn_remove = ttk.Button(table_toolbar, text='🗑️ Remove', command=self._handle_remove_selected, width=12)
+        btn_remove = ttk.Button(table_toolbar, text='🗑️ Remove', command=self._handle_remove_selected, width=13)
         btn_remove.pack(side='left', padx=(0, 4))
 
-        btn_clear = ttk.Button(table_toolbar, text='Clear All', command=self._handle_clear_all, width=10)
+        btn_clear = ttk.Button(table_toolbar, text='Clear All', command=self._handle_clear_all, width=11)
         btn_clear.pack(side='left', padx=4)
 
         btn_reset = ttk.Button(table_toolbar, text='Reset Default', command=self._handle_reset_default, width=13)
@@ -196,7 +196,7 @@ class ExclusionsModal:
         )
         self.lbl_msg.pack(side='left')
 
-        btn_cancel = ttk.Button(footer, text='Cancel', command=self.window.destroy, width=10)
+        btn_cancel = ttk.Button(footer, text='Cancel', command=self.window.destroy, width=11)
         btn_cancel.pack(side='right', padx=(6, 0))
 
         btn_apply = ttk.Button(footer, text='💾 Apply Changes', command=self._apply_and_close, width=16)

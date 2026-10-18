@@ -62,7 +62,7 @@ class PathsPanel(ttk.LabelFrame):
             toolbar,
             text='⚙️ Manage...',
             command=self.open_pairs_manager,
-            width=12,
+            width=13,
         )
         self.btn_manage_paths.pack(side='left', padx=2)
 
@@ -70,7 +70,7 @@ class PathsPanel(ttk.LabelFrame):
             toolbar,
             text='🩺 Health Check',
             command=self.run_target_health_check,
-            width=14,
+            width=16,
         )
         self.btn_check_targets.pack(side='left', padx=2)
 
@@ -125,7 +125,7 @@ class PathsPanel(ttk.LabelFrame):
             excl_header,
             text='⚙️ Manage List...',
             command=self.open_exclusions_manager,
-            width=15,
+            width=17,
         )
         self.btn_manage_exclusions.pack(side='left', padx=2)
 

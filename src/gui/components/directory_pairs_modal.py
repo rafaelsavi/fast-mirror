@@ -99,7 +99,7 @@ class DirectoryPairsModal:
             toolbar,
             text='✏️ Edit Selected...',
             command=self._handle_edit_pair,
-            width=16,
+            width=18,
         )
         self.btn_edit.pack(side='left', padx=4)
 
@@ -107,7 +107,7 @@ class DirectoryPairsModal:
             toolbar,
             text='🗑️ Remove',
             command=self._handle_remove_pair,
-            width=12,
+            width=13,
         )
         self.btn_remove.pack(side='left', padx=4)
 
@@ -148,8 +148,8 @@ class DirectoryPairsModal:
         self.tree.heading('status', text='Status')
 
         self.tree.column('idx', width=40, anchor='center', stretch=False)
-        self.tree.column('source', width=340, anchor='w', stretch=True)
-        self.tree.column('target', width=340, anchor='w', stretch=True)
+        self.tree.column('source', width=310, anchor='w', stretch=True)
+        self.tree.column('target', width=310, anchor='w', stretch=True)
         self.tree.column('status', width=120, anchor='center', stretch=False)
 
         vsb = ttk.Scrollbar(table_frame, orient='vertical', command=self.tree.yview)
@@ -170,7 +170,7 @@ class DirectoryPairsModal:
         )
         self.lbl_msg.pack(side='left')
 
-        btn_cancel = ttk.Button(footer, text='Cancel', command=self.window.destroy, width=10)
+        btn_cancel = ttk.Button(footer, text='Cancel', command=self.window.destroy, width=11)
         btn_cancel.pack(side='right', padx=(6, 0))
 
         btn_apply = ttk.Button(
@@ -264,6 +264,7 @@ class DirectoryPairsModal:
         dialog.resizable(False, False)
 
         width, height = 620, 230
+        dialog.minsize(width, height)
         dialog.geometry(f'{width}x{height}')
         with contextlib.suppress(Exception):
             screen_w = dialog.winfo_screenwidth()
@@ -292,7 +293,7 @@ class DirectoryPairsModal:
             if folder:
                 src_var.set(sanitize_path(folder))
 
-        ttk.Button(dialog, text='Browse...', command=_browse_src, width=10).grid(
+        ttk.Button(dialog, text='Browse...', command=_browse_src, width=11).grid(
             row=1, column=2, sticky='w', padx=(4, 14), pady=6
         )
 
@@ -306,7 +307,7 @@ class DirectoryPairsModal:
             if folder:
                 tgt_var.set(sanitize_path(folder))
 
-        ttk.Button(dialog, text='Browse...', command=_browse_tgt, width=10).grid(
+        ttk.Button(dialog, text='Browse...', command=_browse_tgt, width=11).grid(
             row=2, column=2, sticky='w', padx=(4, 14), pady=6
         )
 
@@ -338,8 +339,8 @@ class DirectoryPairsModal:
             action_desc = 'Updated' if is_edit else 'Added'
             self.lbl_msg.config(text=f'{action_desc} directory pair. Click "Apply Changes" to save.')
 
-        ttk.Button(btn_frame, text='Cancel', command=dialog.destroy, width=10).pack(side='right', padx=(6, 0))
-        ttk.Button(btn_frame, text='OK', command=_save, width=10).pack(side='right')
+        ttk.Button(btn_frame, text='Cancel', command=dialog.destroy, width=11).pack(side='right', padx=(6, 0))
+        ttk.Button(btn_frame, text='OK', command=_save, width=11).pack(side='right')
 
         entry_src.focus_set()
 
