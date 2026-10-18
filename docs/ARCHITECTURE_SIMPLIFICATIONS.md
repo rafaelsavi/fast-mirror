@@ -41,7 +41,8 @@ This document records the architectural complexity audit conducted on 2026-10-17
 
 ---
 
-## 4. Dynamic Table Generation & Pickled Blobs in SQLite Mirror
+## 4. Dynamic Table Generation & Pickled Blobs in SQLite Mirror [RESOLVED]
+- **Status**: Completed (2026-10-18). Replaced `sqlitedict` and dynamic regex table proliferation with a clean two-table relational SQLite schema (`mirror_cache` and `mirror_metadata`). Integrated deterministic `exclusions_hash` cache invalidation to protect against accidental deletions, automated zero-risk legacy migration, and batch `executemany` parameterization.
 - **Location**: [`src/core/mirror.py`](../src/core/mirror.py)
 - **Current Pattern**:
   `MirrorDatabase` uses regex string sanitization to create dynamic table names for every unique root directory and exclusion configuration, storing entries via `sqlitedict` (pickled objects).

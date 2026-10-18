@@ -45,7 +45,7 @@
 ## Key Features
 
 - **Fast One-Way Mirror Synchronization**: Backs up local folders to secondary drives, external hard drives, or remote network shares (UNC paths like `\\192.168.1.100\Backup`).
-- **Local SQLite Mirror Indexing (`sqlitedict`)**: Caches target file paths and blake2b metadata hashes in a local `local_mirror.db`. This eliminates the need to scan thousands of files across slow network links on every run.
+- **Local SQLite Mirror Indexing**: Caches target file paths and blake2b metadata hashes in a normalized relational `local_mirror.db` with exclusion fingerprinting. This eliminates the need to scan thousands of files across slow network links on every run.
 - **Smart Move & Rename Detection**: Recognizes when files were renamed or moved to different folders on the source side. Rather than deleting and re-uploading large files over the network, it executes local/remote file moves directly on the target.
 - **Interactive Action Review**: An interactive treeview dialog previews proposed `COPY`, `MOVE`, and `DELETE` actions with individual file sizes, timestamps, and aggregate group volumes with Windows audio cues.
 - **Built-in Weekly Scheduler**: Configure specific days of the week and daily execution times for fully unattended backups.

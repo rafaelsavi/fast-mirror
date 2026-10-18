@@ -116,3 +116,66 @@ def test_wal_and_vacuum_close_connections(tmp_path):
     # If connection was leaked, os.remove on Windows would raise PermissionError [WinError 32]
     os.remove(db_path)
     assert not os.path.exists(db_path)
+
+
+def test_exclusions_invalidation(tmp_path, test_data_dir):
+    db_path = str(tmp_path / 'invalidation_test.db')
+    root_dir = test_data_dir
+    path = os.path.join(test_data_dir, 'file1.txt')
+
+    # Build mirror with exclusions
+    mirror1 = MirrorDatabase(path=db_path, exclusions=['*.tmp', '.git/*'])
+    mirror1.add_path(root_dir, path)
+    assert mirror1.exists_table(root_dir) is True
+
+    # Same exclusions (different order) -> still valid
+    mirror_same = MirrorDatabase(path=db_path, exclusions=['.git/*', '*.tmp'])
+    assert mirror_same.exists_table(root_dir) is True
+
+    # Modified exclusions -> invalidated!
+    mirror2 = MirrorDatabase(path=db_path, exclusions=['*.log'])
+    assert mirror2.exists_table(root_dir) is False
+
+    # When new scan with new exclusions is added, old files are purged
+    path2 = os.path.join(test_data_dir, 'file2.txt')
+    mirror2.add_path(root_dir, path2)
+    assert mirror2.exists_table(root_dir) is True
+    assert mirror2.exists(root_dir, path2) is True
+    assert mirror2.exists(root_dir, path) is False
+    assert mirror2.size(root_dir) == 1
+
+
+def test_unc_path_support(tmp_path):
+    db_path = str(tmp_path / 'unc_test.db')
+    mirror = MirrorDatabase(path=db_path)
+    root_dir = r'\\192.168.1.100\Share'
+    file_path = r'\\192.168.1.100\Share\sub\doc.pdf'
+
+    # Inject path using CstmPath with pre-computed hash
+    cstm = CstmPath(file_path, root_dir=root_dir, stats_hash='feedface12345678')
+    mirror.add_path(root_dir, cstm)
+
+    assert mirror.exists(root_dir, file_path) is True
+    assert mirror.size(root_dir) == 1
+    paths = mirror.get_paths(root_dir)
+    assert len(paths) == 1
+    p = next(iter(paths))
+    assert str(p) == file_path
+    assert p.stats_hash == 'feedface12345678'
+
+
+def test_size_and_metadata_sync(tmp_path, test_data_dir):
+    db_path = str(tmp_path / 'size_test.db')
+    mirror = MirrorDatabase(path=db_path)
+    root_dir = test_data_dir
+    p1 = os.path.join(test_data_dir, 'file1.txt')
+    p2 = os.path.join(test_data_dir, 'file2.txt')
+
+    assert mirror.size(root_dir) == 0
+    mirror.add_path(root_dir, [p1, p2])
+    assert mirror.size(root_dir) == 2
+
+    mirror.remove_path(root_dir, p1)
+    assert mirror.size(root_dir) == 1
+    mirror.reset(root_dir)
+    assert mirror.size(root_dir) == 0
