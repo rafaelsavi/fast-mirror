@@ -22,19 +22,10 @@ class WorkerThread(threading.Thread):
         """Signal cooperative cancellation to the running thread."""
         self.cancel_event.set()
 
-    def kill(self):
-        """Signal cooperative cancellation (alias for cancel for backward compatibility)."""
-        self.cancel()
-
     @property
     def is_cancelled(self) -> bool:
         """Check if cancellation was requested."""
         return self.cancel_event.is_set()
-
-    @property
-    def killed(self) -> bool:
-        """Compatibility property for legacy cancellation checks."""
-        return self.is_cancelled
 
     def run(self):
         """Execute the thread target with exception capture and logging."""
@@ -53,7 +44,3 @@ class WorkerThread(threading.Thread):
         super().join(timeout=timeout)
         if self.exc:
             raise self.exc
-
-
-# Backwards compatibility alias
-KillableThread = WorkerThread

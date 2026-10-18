@@ -12,8 +12,6 @@ from utils.constants import LOCAL_MIRROR_PATH
 from utils.logger import logger
 from utils.utils import log_progress, sanitize_path
 
-local_mirror_path = LOCAL_MIRROR_PATH
-
 
 def _compute_exclusions_hash(exclusions: list[str]) -> str:
     """Compute a deterministic 8-byte hash of the sanitized, sorted exclusions list."""
@@ -29,7 +27,7 @@ class MirrorDatabase:
     with exclusion fingerprint invalidation.
     """
 
-    def __init__(self, path: str = local_mirror_path, exclusions: None | list[str] = None):
+    def __init__(self, path: str = LOCAL_MIRROR_PATH, exclusions: None | list[str] = None):
         self.path = path
         self.exclusions = list(sorted([sanitize_path(ex) for ex in exclusions])) if exclusions else []
         self.exclusions_hash = _compute_exclusions_hash(self.exclusions)
@@ -69,15 +67,6 @@ class MirrorDatabase:
         except Exception as e:
             logger.warning(f'Could not create database. Exception: {e}')
             return False
-
-    def _enable_wal(self):
-        """Enable WAL journal mode on the SQLite database."""
-        try:
-            with self._get_connection() as conn:
-                conn.execute('PRAGMA journal_mode=WAL;')
-                conn.commit()
-        except Exception as e:
-            logger.warning(f'Could not set SQLite WAL mode on {self.path}. Exception: {e}')
 
     def vacuum(self) -> bool:
         """Reclaim unused disk space and defragment SQLite database file."""
@@ -195,22 +184,6 @@ class MirrorDatabase:
             logger.warning(f'Could not reset database for <{root_dir}>. Exception: {e}')
             return False
 
-    def get_table_as_dict(self, root_dir: str | PathLike[str]) -> dict[str, StatsHash]:
-        """Retrieve all entries for root_dir as a dictionary {full_path: stats_hash}."""
-        root_str = sanitize_path(root_dir)
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.execute(
-                    'SELECT rel_path, stats_hash FROM mirror_cache WHERE root_dir = ?;',
-                    (root_str,),
-                )
-                return {
-                    self._to_full_path(root_str, rel_path): StatsHash(stats_hash) for rel_path, stats_hash in cursor
-                }
-        except Exception as e:
-            logger.warning(f'Could not open DB to get table. Exception: {e}')
-            return {}
-
     def get_paths(self, root_dir: str | PathLike[str]) -> set[CstmPath]:
         """Retrieve all paths for root_dir as a set of CstmPath objects."""
         root_str = sanitize_path(root_dir)
@@ -231,38 +204,6 @@ class MirrorDatabase:
         except Exception as e:
             logger.warning(f'Could not open DB to get keys. Exception: {e}')
             return set()
-
-    def get_stat_hash(
-        self, root_dir: str | PathLike[str], path: CstmPathType | list[CstmPathType]
-    ) -> StatsHash | None | list[StatsHash | None]:
-        """
-        Retrieve the value(s) associated with the given path(s) from the database.
-
-        :param root_dir: The root directory for which the table is being accessed.
-        :param path: A single path or an iterable of paths.
-        :return: A single value, None, or a list of values/None for multiple paths.
-        """
-        root_str = sanitize_path(root_dir)
-
-        def get_single(conn: sqlite3.Connection, p: CstmPathType) -> StatsHash | None:
-            rel = self._to_rel_path(root_str, p)
-            row = conn.execute(
-                'SELECT stats_hash FROM mirror_cache WHERE root_dir = ? AND rel_path = ?;',
-                (root_str, rel),
-            ).fetchone()
-            if row is not None:
-                return StatsHash(row[0])
-            logger.warning(f'Key does not exist in database: {p}')
-            return None
-
-        try:
-            with self._get_connection() as conn:
-                if isinstance(path, list):
-                    return [get_single(conn, p_single) for p_single in path]
-                return get_single(conn, path)
-        except Exception as e:
-            logger.warning(f'Could not open DB to get keys {path}. Exception: {e}')
-            return None
 
     def add_path(self, root_dir: str | PathLike[str], path: Iterable[CstmPathType] | CstmPathType):
         """Add or update paths in the mirror cache using optimized batch transactions."""

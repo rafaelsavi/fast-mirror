@@ -63,14 +63,6 @@ def test_get_paths(mirror_db, test_data_dir):
     assert set(retrieved_paths) == {CstmPath(p, root_dir=root_dir) for p in paths}
 
 
-def test_get_stat_hash(mirror_db, test_data_dir):
-    root_dir = test_data_dir
-    path = os.path.join(test_data_dir, 'file1.txt')
-    mirror_db.add_path(root_dir, path)
-    stat_hash = mirror_db.get_stat_hash(root_dir, path)
-    assert stat_hash is not None
-
-
 def test_reset(mirror_db, test_data_dir):
     root_dir = test_data_dir
     path = os.path.join(test_data_dir, 'file1.txt')
@@ -78,14 +70,6 @@ def test_reset(mirror_db, test_data_dir):
     assert mirror_db.exists(root_dir, path)
     mirror_db.reset(root_dir)
     assert not mirror_db.exists(root_dir, path)
-
-
-def test_get_table_as_dict(mirror_db, test_data_dir):
-    root_dir = test_data_dir
-    path = os.path.join(test_data_dir, 'file1.txt')
-    mirror_db.add_path(root_dir, path)
-    tables = mirror_db.get_table_as_dict(root_dir)
-    assert len(tables) > 0
 
 
 def test_replace_path(mirror_db, test_data_dir):

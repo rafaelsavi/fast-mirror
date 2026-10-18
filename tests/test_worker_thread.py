@@ -9,7 +9,7 @@ import pytest
 from core.backend import CompareDirs, SyncDirs
 from core.file import CstmPath, CustomException
 from core.mirror import MirrorDatabase
-from gui.worker_thread import KillableThread, WorkerThread
+from gui.worker_thread import WorkerThread
 from utils.utils import DirectoryPair
 
 
@@ -22,7 +22,6 @@ def test_worker_thread_normal_execution():
 
     thread = WorkerThread(target=target_fn)
     assert not thread.is_cancelled
-    assert not thread.killed
     thread.start()
     thread.join(timeout=2.0)
     assert executed
@@ -55,28 +54,10 @@ def test_worker_thread_cooperative_cancel():
     cancel_evt = threading.Event()
     thread = WorkerThread(cancel_event=cancel_evt)
     assert not thread.is_cancelled
-    assert not thread.killed
 
     thread.cancel()
     assert thread.is_cancelled
-    assert thread.killed
     assert cancel_evt.is_set()
-
-
-def test_worker_thread_kill_alias():
-    thread = WorkerThread()
-    assert not thread.is_cancelled
-    thread.kill()
-    assert thread.is_cancelled
-    assert thread.killed
-
-
-def test_killable_thread_compatibility_alias():
-    assert KillableThread is WorkerThread
-    thread = KillableThread()
-    assert not thread.is_cancelled
-    thread.kill()
-    assert thread.is_cancelled
 
 
 def test_compare_dirs_cooperative_cancellation(tmp_path):
