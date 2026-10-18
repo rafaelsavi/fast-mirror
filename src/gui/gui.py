@@ -33,7 +33,6 @@ from gui.widgets import (
     TextLogger,
     WeekDays,
 )
-from gui.window_drag import install_smooth_drag_interceptor
 from gui.worker_thread import WorkerThread
 from utils.constants import ROOT_DIR
 from utils.logger import is_test_or_agent_mode, logger
@@ -88,12 +87,11 @@ class Gui:
         # Apply default theme (hardware-accelerated native theme)
         self.apply_theme(self.current_theme)
 
-        # Set minimum window bounds preserving WS_THICKFRAME for fluid DWM dragging
+        # Set minimum window bounds
         self.root.update_idletasks()
         init_w = self.root.winfo_reqwidth()
         init_h = self.root.winfo_reqheight()
         self.root.minsize(init_w, init_h)
-        install_smooth_drag_interceptor(self.root)
         self.root._on_files_dropped = lambda paths: self.paths_panel.add_dropped_paths(paths)
 
         # Update overview card mode labels dynamically on setting changes without remote network I/O

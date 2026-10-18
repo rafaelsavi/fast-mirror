@@ -8,12 +8,6 @@ from tkinter import messagebox
 import pystray
 from PIL import Image
 
-from gui.window_drag import (
-    install_smooth_drag_interceptor as install_smooth_drag,
-)
-from gui.window_drag import (
-    uninstall_smooth_drag_interceptor as uninstall_smooth_drag,
-)
 from utils.logger import is_test_or_agent_mode, logger
 
 
@@ -21,7 +15,7 @@ class TrayableTk(tk.Tk):
     """Tkinter root window with modern cross-platform system tray integration via pystray."""
 
     def __init__(self):
-        # Enable System DPI awareness on Windows to prevent DWM bitmap scaling blur without drag stutter
+        # Enable System DPI awareness on Windows to prevent DWM bitmap scaling blur
         if hasattr(ctypes, 'windll'):
             with contextlib.suppress(Exception):
                 # DPI_AWARENESS_CONTEXT_SYSTEM_AWARE = -2
@@ -32,7 +26,6 @@ class TrayableTk(tk.Tk):
 
         super().__init__()
         self.update_idletasks()
-        install_smooth_drag(self)
         self._tray_icon: pystray.Icon | None = None
         self._is_closing = False
         self._on_sync_now: Callable[[], None] | None = None
@@ -149,7 +142,6 @@ class TrayableTk(tk.Tk):
 
     def destroy(self):
         self._is_closing = True
-        uninstall_smooth_drag(self)
         if self._tray_icon is not None:
             with contextlib.suppress(Exception):
                 self._tray_icon.stop()
@@ -158,7 +150,6 @@ class TrayableTk(tk.Tk):
 
     def finalize_quit(self):
         self._is_closing = True
-        uninstall_smooth_drag(self)
         if self._tray_icon is not None:
             with contextlib.suppress(Exception):
                 self._tray_icon.stop()

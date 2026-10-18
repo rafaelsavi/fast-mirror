@@ -137,7 +137,7 @@ class ExclusionsModal:
 
         self.tree = ttk.Treeview(
             table_frame,
-            columns=('idx', 'pattern', 'type'),
+            columns=('idx', 'pattern'),
             show='headings',
             selectmode='extended',
         )
@@ -145,11 +145,9 @@ class ExclusionsModal:
 
         self.tree.heading('idx', text='#')
         self.tree.heading('pattern', text='Pattern')
-        self.tree.heading('type', text='Classification')
 
         self.tree.column('idx', width=35, anchor='center', stretch=False)
-        self.tree.column('pattern', width=260, anchor='w')
-        self.tree.column('type', width=110, anchor='center', stretch=False)
+        self.tree.column('pattern', width=370, anchor='w')
 
         vsb = ttk.Scrollbar(table_frame, orient='vertical', command=self.tree.yview)
         vsb.grid(row=0, column=1, sticky='ns')
@@ -290,17 +288,6 @@ class ExclusionsModal:
         btn_apply = ttk.Button(footer, text='💾 Apply Changes', command=self._apply_and_close, width=16)
         btn_apply.pack(side='right')
 
-    def _classify_pattern(self, pattern: str) -> str:
-        if pattern.startswith('$') or pattern in ('Thumbs.db', 'desktop.ini', '.DS_Store'):
-            return 'OS System'
-        if pattern.startswith('.git') or 'node_modules' in pattern or '__pycache__' in pattern:
-            return 'Dev Artifact'
-        if pattern.startswith('*.'):
-            return 'File Ext'
-        if '/' in pattern or '\\' in pattern:
-            return 'Path Pattern'
-        return 'Glob'
-
     def _populate_table(self):
         self.tree.delete(*self.tree.get_children())
         query = getattr(self, 'filter_var', None)
@@ -311,8 +298,7 @@ class ExclusionsModal:
             if filter_text and filter_text not in pattern.lower():
                 continue
             displayed_count += 1
-            ptype = self._classify_pattern(pattern)
-            self.tree.insert('', 'end', iid=str(idx - 1), values=(displayed_count, pattern, ptype))
+            self.tree.insert('', 'end', iid=str(idx - 1), values=(displayed_count, pattern))
 
         if filter_text:
             self.lbl_stats.config(text=f'{displayed_count}/{len(self._patterns)} matched')
