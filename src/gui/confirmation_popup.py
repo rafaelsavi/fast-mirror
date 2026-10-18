@@ -9,6 +9,7 @@ from tkinter import ttk
 import ttkwidgets
 
 from core.file import CstmPath
+from gui.icons import apply_icon
 from gui.widgets import Action
 from utils.logger import logger
 from utils.utils import format_size
@@ -732,16 +733,18 @@ class ActionSelection:
         # Quick Safety Action Buttons
         self.btn_uncheck_deletions = ttk.Button(
             row_actions,
-            text='🛡️ Uncheck Deletions',
+            text='Uncheck Deletions',
             command=lambda: self.tree.uncheck_action(Action.DELETE),
         )
+        apply_icon(self.btn_uncheck_deletions, 'shield')
         self.btn_uncheck_deletions.pack(side='left', padx=(6, 4))
 
         self.btn_copies_only = ttk.Button(
             row_actions,
-            text='🟢 Copies Only',
+            text='Copies Only',
             command=lambda: self.tree.set_copies_only(),
         )
+        apply_icon(self.btn_copies_only, 'check_circle')
         self.btn_copies_only.pack(side='left', padx=(0, 4))
 
         # Row 2: Search Entry & File Type Filter Chips
@@ -772,21 +775,23 @@ class ActionSelection:
         self.active_category: str = 'all'
         self.category_buttons: dict[str, ttk.Button] = {}
         chip_defs = [
-            ('all', 'All'),
-            ('image', '🖼️ Images'),
-            ('document', '📄 Docs'),
-            ('media', '🎬 Media'),
-            ('code', '💻 Code'),
-            ('archive', '📦 Archives'),
+            ('all', 'All', None),
+            ('image', 'Images', 'image'),
+            ('document', 'Docs', 'document'),
+            ('media', 'Media', 'media'),
+            ('code', 'Code', 'code'),
+            ('archive', 'Archives', 'archive'),
         ]
 
-        for cat_id, cat_label in chip_defs:
+        for cat_id, cat_label, icon_name in chip_defs:
             btn = ttk.Button(
                 row_filter,
                 text=cat_label,
                 command=lambda c=cat_id: self._on_category_chip_clicked(c),
                 style='Accent.TButton' if cat_id == 'all' else 'TButton',
             )
+            if icon_name:
+                apply_icon(btn, icon_name)
             btn.pack(side='left', padx=2)
             self.category_buttons[cat_id] = btn
 
@@ -853,18 +858,20 @@ class ActionSelection:
 
         self.btn_see_in_folder = ttk.Button(
             btn_action_box,
-            text='📁 See in Folder',
+            text='See in Folder',
             command=self._open_selected_in_folder,
             width=14,
         )
+        apply_icon(self.btn_see_in_folder, 'folder')
         self.btn_see_in_folder.pack(side='left', padx=(0, 4))
 
         self.btn_copy_path = ttk.Button(
             btn_action_box,
-            text='📋 Copy Path',
+            text='Copy Path',
             command=self._copy_selected_path_to_clipboard,
-            width=13,
+            width=12,
         )
+        apply_icon(self.btn_copy_path, 'copy')
         self.btn_copy_path.pack(side='left')
 
         # Details: Source row and Target row

@@ -5,6 +5,7 @@ from collections.abc import Callable
 from tkinter import filedialog, messagebox, ttk
 
 from gui.enums import TkinterCfgState
+from gui.icons import apply_icon
 from gui.widgets import LogLevels, TextLogger
 from utils.logger import logger
 
@@ -75,39 +76,42 @@ class LogPanel(ttk.LabelFrame):
             toolbar,
             text='Clear',
             command=self.clear_log,
-            width=10,
+            width=8,
         )
         self.btn_clear.pack(side='right', padx=2)
 
         self.btn_copy = ttk.Button(
             toolbar,
-            text='📋 Copy',
+            text='Copy',
             command=self.copy_log,
-            width=11,
+            width=10,
         )
+        apply_icon(self.btn_copy, 'copy')
         self.btn_copy.pack(side='right', padx=2)
 
         self.btn_export = ttk.Button(
             toolbar,
-            text='💾 Export...',
+            text='Export...',
             command=self.export_log,
-            width=12,
+            width=11,
         )
+        apply_icon(self.btn_export, 'save')
         self.btn_export.pack(side='right', padx=2)
 
         self.btn_open_folder = ttk.Button(
             toolbar,
-            text='📁 Log Folder',
+            text='Log Folder',
             command=self.open_log_folder,
-            width=13,
+            width=12,
         )
+        apply_icon(self.btn_open_folder, 'folder')
         self.btn_open_folder.pack(side='right', padx=2)
 
         # Toolbar Row 1: Search & Filter inside Log Console
         search_bar = ttk.Frame(self)
         search_bar.grid(row=1, column=0, sticky='ew', padx=8, pady=(0, 6))
 
-        lbl_find = ttk.Label(search_bar, text='🔍 Find in log:', font=('Segoe UI', 9))
+        lbl_find = ttk.Label(search_bar, text='Find in log:', font=('Segoe UI', 9))
         lbl_find.pack(side='left', padx=(0, 4))
 
         self.entry_search = ttk.Entry(search_bar, textvariable=self.search_var, width=32)
@@ -272,8 +276,8 @@ class LogPanel(ttk.LabelFrame):
         if content.strip():
             self.clipboard_clear()
             self.clipboard_append(content)
-            self.btn_copy.config(text='✓ Copied!')
-            self.after(1500, lambda: self.btn_copy.config(text='📋 Copy'))
+            apply_icon(self.btn_copy, 'check_circle', text='Copied!')
+            self.after(1500, lambda: apply_icon(self.btn_copy, 'copy', text='Copy'))
 
     def export_log(self):
         """Export current log content to a user-selected text file."""

@@ -4,6 +4,7 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import filedialog, messagebox, ttk
 
+from gui.icons import apply_icon
 from gui.widgets import DirectoryPair, EntryPaths
 from utils.utils import sanitize_path
 
@@ -89,42 +90,47 @@ class DirectoryPairsModal:
 
         self.btn_add = ttk.Button(
             toolbar,
-            text='➕ Add Pair...',
+            text='Add Pair...',
             command=self._handle_add_pair,
-            width=14,
+            width=13,
         )
+        apply_icon(self.btn_add, 'plus')
         self.btn_add.pack(side='left', padx=(0, 4))
 
         self.btn_edit = ttk.Button(
             toolbar,
-            text='✏️ Edit Selected...',
+            text='Edit Selected...',
             command=self._handle_edit_pair,
-            width=18,
+            width=15,
         )
+        apply_icon(self.btn_edit, 'pencil')
         self.btn_edit.pack(side='left', padx=4)
 
         self.btn_remove = ttk.Button(
             toolbar,
-            text='🗑️ Remove',
+            text='Remove',
             command=self._handle_remove_pair,
-            width=13,
+            width=11,
         )
+        apply_icon(self.btn_remove, 'trash')
         self.btn_remove.pack(side='left', padx=4)
 
         self.btn_explorer = ttk.Button(
             toolbar,
-            text='📂 Explorer',
+            text='Explorer',
             command=self._handle_open_explorer,
             width=12,
         )
+        apply_icon(self.btn_explorer, 'folder')
         self.btn_explorer.pack(side='left', padx=4)
 
         self.btn_probe = ttk.Button(
             toolbar,
-            text='🩺 Check Status',
+            text='Check Status',
             command=self._handle_check_status,
             width=14,
         )
+        apply_icon(self.btn_probe, 'pulse')
         self.btn_probe.pack(side='left', padx=4)
 
         # 3. Treeview Table
@@ -175,10 +181,11 @@ class DirectoryPairsModal:
 
         btn_apply = ttk.Button(
             footer,
-            text='💾 Apply Changes',
+            text='Apply Changes',
             command=self._apply_and_close,
-            width=16,
+            width=15,
         )
+        apply_icon(btn_apply, 'save')
         btn_apply.pack(side='right')
 
     def _populate_table(self):

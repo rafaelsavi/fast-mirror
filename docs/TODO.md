@@ -15,4 +15,4 @@
 - [ ] evaluate and implement backend/core architecture simplifications (see [ARCHITECTURE_SIMPLIFICATIONS.md](ARCHITECTURE_SIMPLIFICATIONS.md))
 - [x] remove cosmetic "Classification" column from exclusions modal (was a bloated display artifact)
 - Fix drag delay by finding first commit where it began
-- Use same icon in all popup windows
+- Use same app icon in all popup windows

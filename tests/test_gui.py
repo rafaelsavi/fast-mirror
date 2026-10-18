@@ -1267,3 +1267,55 @@ def test_paths_panel_text_mode_lifecycle(tmp_path):
     assert '1 configured' in panel.lbl_pair_count.cget('text')
 
     root.destroy()
+
+
+def test_gui_icons():
+    """Verify that all application icons load correctly as PhotoImages and apply safely to buttons."""
+    from tkinter import ttk
+
+    from gui.icons import apply_icon, get_icon
+
+    root = tk.Tk()
+    root.withdraw()
+
+    expected_icons = [
+        'gear',
+        'pulse',
+        'folder',
+        'copy',
+        'save',
+        'plus',
+        'pencil',
+        'trash',
+        'broom',
+        'shield',
+        'check_circle',
+        'image',
+        'document',
+        'media',
+        'code',
+        'archive',
+    ]
+
+    for name in expected_icons:
+        img = get_icon(name, master=root)
+        assert img is not None, f'Icon {name} failed to load'
+        assert img.width() == 16, f'Icon {name} width is {img.width()}, expected 16'
+        assert img.height() == 16, f'Icon {name} height is {img.height()}, expected 16'
+
+    # Nonexistent icon returns None
+    assert get_icon('definitely_nonexistent_icon_xyz') is None
+
+    # Apply icon to a button
+    btn = ttk.Button(root, text='Test Button')
+    apply_icon(btn, 'gear', text='Updated Text')
+    assert getattr(btn, '_icon_ref', None) is not None
+    assert btn.cget('text') == 'Updated Text'
+    assert str(btn.cget('compound')) == 'left'
+
+    # Apply nonexistent icon gracefully
+    btn2 = ttk.Button(root, text='Fallback')
+    apply_icon(btn2, 'nonexistent')
+    assert btn2.cget('text') == 'Fallback'
+
+    root.destroy()

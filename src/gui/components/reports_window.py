@@ -4,6 +4,7 @@ import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from gui.icons import apply_icon
 from utils.logger import logger
 from utils.utils import format_size
 
@@ -92,6 +93,24 @@ class ReportsWindow:
         self.btn_close = ttk.Button(bottom, text='Close', command=self.window.destroy, width=11)
         self.btn_close.pack(side='right', padx=(4, 0))
 
+        self.btn_clean = ttk.Button(
+            bottom,
+            text='Clean Old (>30d)',
+            command=self.clean_old_reports,
+            width=16,
+        )
+        apply_icon(self.btn_clean, 'broom')
+        self.btn_clean.pack(side='right', padx=(4, 4))
+
+        self.btn_folder = ttk.Button(
+            bottom,
+            text='Open Folder',
+            command=self.open_folder,
+            width=13,
+        )
+        apply_icon(self.btn_folder, 'folder')
+        self.btn_folder.pack(side='right', padx=(4, 4))
+
         self.btn_open = ttk.Button(
             bottom,
             text='Open in Excel',
@@ -99,23 +118,8 @@ class ReportsWindow:
             style='Accent.TButton',
             width=14,
         )
+        apply_icon(self.btn_open, 'document')
         self.btn_open.pack(side='right', padx=(4, 4))
-
-        self.btn_folder = ttk.Button(
-            bottom,
-            text='📂 Open Folder',
-            command=self.open_folder,
-            width=14,
-        )
-        self.btn_folder.pack(side='right', padx=(4, 4))
-
-        self.btn_clean = ttk.Button(
-            bottom,
-            text='🧹 Clean Old (>30d)',
-            command=self.clean_old_reports,
-            width=18,
-        )
-        self.btn_clean.pack(side='right', padx=(4, 4))
 
     def _load_reports(self):
         self.tree.delete(*self.tree.get_children())

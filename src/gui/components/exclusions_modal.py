@@ -4,6 +4,7 @@ from tkinter import messagebox, simpledialog, ttk
 
 import pathspec
 
+from gui.icons import apply_icon
 from gui.widgets import EntryExclusions
 from utils.utils import sanitize_path
 
@@ -107,7 +108,8 @@ class ExclusionsModal:
         entry_new.grid(row=0, column=1, sticky='ew', padx=4)
         entry_new.bind('<Return>', lambda e: self._handle_add_pattern())
 
-        btn_add = ttk.Button(add_frame, text='➕ Add', command=self._handle_add_pattern, width=10)
+        btn_add = ttk.Button(add_frame, text='Add', command=self._handle_add_pattern, width=9)
+        apply_icon(btn_add, 'plus')
         btn_add.grid(row=0, column=2, sticky='e', padx=(4, 0))
 
         # Row 1: Search / Filter bar
@@ -159,10 +161,12 @@ class ExclusionsModal:
         table_toolbar = ttk.Frame(left_box)
         table_toolbar.grid(row=3, column=0, sticky='ew', pady=(6, 0))
 
-        btn_edit = ttk.Button(table_toolbar, text='✏️ Edit...', command=self._handle_edit_selected, width=12)
+        btn_edit = ttk.Button(table_toolbar, text='Edit...', command=self._handle_edit_selected, width=10)
+        apply_icon(btn_edit, 'pencil')
         btn_edit.pack(side='left', padx=(0, 4))
 
-        btn_remove = ttk.Button(table_toolbar, text='🗑️ Remove', command=self._handle_remove_selected, width=13)
+        btn_remove = ttk.Button(table_toolbar, text='Remove', command=self._handle_remove_selected, width=11)
+        apply_icon(btn_remove, 'trash')
         btn_remove.pack(side='left', padx=4)
 
         btn_clear = ttk.Button(table_toolbar, text='Clear All', command=self._handle_clear_all, width=11)
@@ -285,7 +289,8 @@ class ExclusionsModal:
         btn_cancel = ttk.Button(footer, text='Cancel', command=self.window.destroy, width=11)
         btn_cancel.pack(side='right', padx=(6, 0))
 
-        btn_apply = ttk.Button(footer, text='💾 Apply Changes', command=self._apply_and_close, width=16)
+        btn_apply = ttk.Button(footer, text='Apply Changes', command=self._apply_and_close, width=15)
+        apply_icon(btn_apply, 'save')
         btn_apply.pack(side='right')
 
     def _populate_table(self):

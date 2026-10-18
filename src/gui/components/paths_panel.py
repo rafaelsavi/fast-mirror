@@ -11,6 +11,7 @@ from tkinter import messagebox, ttk
 from typing import Literal
 
 from gui.health_check import TargetHealth, probe_targets_async
+from gui.icons import apply_icon
 from gui.widgets import EntryExclusions, EntryPaths
 from utils.utils import DirectoryPair
 
@@ -60,26 +61,29 @@ class PathsPanel(ttk.LabelFrame):
 
         self.btn_manage_paths = ttk.Button(
             toolbar,
-            text='⚙️ Manage...',
+            text='Manage Pairs...',
             command=self.open_pairs_manager,
-            width=13,
+            width=16,
         )
+        apply_icon(self.btn_manage_paths, 'gear')
         self.btn_manage_paths.pack(side='left', padx=2)
 
         self.btn_check_targets = ttk.Button(
             toolbar,
-            text='🩺 Health Check',
+            text='Health Check',
             command=self.run_target_health_check,
-            width=16,
+            width=15,
         )
+        apply_icon(self.btn_check_targets, 'pulse')
         self.btn_check_targets.pack(side='left', padx=2)
 
         self.btn_open_selected = ttk.Button(
             toolbar,
-            text='📂 Explorer',
+            text='Explorer',
             command=self.open_selected_folder,
             width=12,
         )
+        apply_icon(self.btn_open_selected, 'folder')
         self.btn_open_selected.pack(side='left', padx=2)
 
         # Row 1: Non-Editable Syntax-Highlighted Directory Pairs Display (ScrolledText)
@@ -123,10 +127,11 @@ class PathsPanel(ttk.LabelFrame):
 
         self.btn_manage_exclusions = ttk.Button(
             excl_header,
-            text='⚙️ Manage List...',
+            text='Manage List...',
             command=self.open_exclusions_manager,
-            width=17,
+            width=15,
         )
+        apply_icon(self.btn_manage_exclusions, 'gear')
         self.btn_manage_exclusions.pack(side='left', padx=2)
 
         # Row 4: Non-Editable Full-Width Exclusions Entry
