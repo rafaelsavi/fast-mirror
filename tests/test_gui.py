@@ -1319,3 +1319,87 @@ def test_gui_icons():
     assert btn2.cget('text') == 'Fallback'
 
     root.destroy()
+
+
+def test_apply_window_icon():
+    """Verify that get_app_icon_path returns the app icon and apply_window_icon safely configures windows."""
+    from unittest.mock import patch
+
+    from gui.icons import apply_window_icon, get_app_icon_path
+
+    icon_path = get_app_icon_path()
+    assert icon_path is not None
+    assert os.path.isfile(icon_path)
+    assert icon_path.endswith('.ico')
+
+    root = tk.Tk()
+    root.withdraw()
+
+    # Test applying to Tk root
+    apply_window_icon(root)
+
+    # Test applying to Toplevel popup
+    top = tk.Toplevel(root)
+    top.withdraw()
+    apply_window_icon(top)
+
+    # Test with mocked non-existent icon path
+    with patch('gui.icons.get_app_icon_path', return_value=None):
+        apply_window_icon(top)
+
+    top.destroy()
+    root.destroy()
+
+
+def test_popup_windows_use_app_icon():
+    """Verify that all application popup windows and modals apply the application icon upon creation."""
+    from unittest.mock import patch
+
+    import gui.components.directory_pairs_modal as dpm
+    import gui.components.exclusions_modal as em
+    import gui.components.reports_window as rw
+    import gui.confirmation_popup as cp
+    from gui.widgets import EntryExclusions, EntryPaths
+
+    root = tk.Tk()
+    root.withdraw()
+
+    # 1. ActionSelection (Confirmation Popup)
+    with patch.object(cp, 'apply_window_icon', wraps=cp.apply_window_icon) as mock_apply:
+        action_popup = cp.ActionSelection(root, [], [], [], [])
+        action_popup.popup.withdraw()
+        mock_apply.assert_called_once_with(action_popup.popup)
+        action_popup.popup.destroy()
+
+    # 2. ReportsWindow
+    with patch.object(rw, 'apply_window_icon', wraps=rw.apply_window_icon) as mock_apply:
+        rep_win = rw.ReportsWindow(root)
+        rep_win.window.withdraw()
+        mock_apply.assert_called_once_with(rep_win.window)
+        rep_win.window.destroy()
+
+    # 3. ExclusionsModal
+    with patch.object(em, 'apply_window_icon', wraps=em.apply_window_icon) as mock_apply:
+        excl = EntryExclusions(root, relief=tk.FLAT)
+        excl_modal = em.ExclusionsModal(root, excl)
+        excl_modal.window.withdraw()
+        mock_apply.assert_called_once_with(excl_modal.window)
+        excl_modal.window.destroy()
+
+    # 4. DirectoryPairsModal & Pair Editor Dialog
+    with patch.object(dpm, 'apply_window_icon', wraps=dpm.apply_window_icon) as mock_apply:
+        paths = EntryPaths(root, relief=tk.FLAT)
+        pairs_modal = dpm.DirectoryPairsModal(root, paths)
+        pairs_modal.window.withdraw()
+        mock_apply.assert_called_once_with(pairs_modal.window)
+
+        # Open pair editor sub-dialog
+        mock_apply.reset_mock()
+        pairs_modal._open_pair_editor(default_src='D:/test_src', default_tgt='D:/test_tgt', edit_idx=None)
+        assert mock_apply.called
+        editor_dialog = mock_apply.call_args[0][0]
+        assert isinstance(editor_dialog, tk.Toplevel)
+        editor_dialog.destroy()
+        pairs_modal.window.destroy()
+
+    root.destroy()

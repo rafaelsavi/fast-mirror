@@ -9,7 +9,7 @@ from tkinter import ttk
 import ttkwidgets
 
 from core.file import CstmPath
-from gui.icons import apply_icon
+from gui.icons import apply_icon, apply_window_icon
 from gui.widgets import Action
 from utils.logger import logger
 from utils.utils import format_size
@@ -554,10 +554,7 @@ class ActionSelection:
         self.popup = tk.Toplevel(self.root_gui)
         self.popup.withdraw()
         self.popup.title('FastMirror - Confirm Actions')
-        icon_path = os.path.join(os.path.dirname(__file__), 'app_icon.ico')
-        if os.path.isfile(icon_path):
-            with contextlib.suppress(Exception):
-                self.popup.iconbitmap(icon_path)
+        apply_window_icon(self.popup)
         self.popup.minsize(940, 600)
         self.popup.protocol('WM_DELETE_WINDOW', self.button_cancel_click)
 

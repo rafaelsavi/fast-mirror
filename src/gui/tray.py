@@ -1,6 +1,5 @@
 import contextlib
 import ctypes
-import os
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import messagebox
@@ -8,6 +7,7 @@ from tkinter import messagebox
 import pystray
 from PIL import Image
 
+from gui.icons import apply_window_icon, get_app_icon_path
 from utils.logger import is_test_or_agent_mode, logger
 
 
@@ -25,6 +25,7 @@ class TrayableTk(tk.Tk):
                     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 
         super().__init__()
+        apply_window_icon(self)
         self.update_idletasks()
         self._tray_icon: pystray.Icon | None = None
         self._is_closing = False
@@ -173,8 +174,8 @@ class TrayableTk(tk.Tk):
         if is_test_or_agent_mode():
             return
         try:
-            icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app_icon.ico'))
-            if not os.path.isfile(icon_path):
+            icon_path = get_app_icon_path()
+            if not icon_path:
                 return
 
             image = Image.open(icon_path)

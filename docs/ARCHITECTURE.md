@@ -23,14 +23,16 @@ This document provides an in-depth technical analysis of the design, internal da
    - [Deletion Execution](#deletion-execution)
    - [Protected Empty Directory Pruning](#protected-empty-directory-pruning)
 5. [The Local Mirror Database (`MirrorDatabase`)](#the-local-mirror-database-mirrordatabase)
-   - [Isolation & Table Name Derivation](#isolation--table-name-derivation)
-   - [Incremental Maintenance](#incremental-maintenance)
+   - [Relational Schema & WAL Mode](#relational-schema--wal-mode)
+   - [Relative Path Storage & Exclusion Fingerprints](#relative-path-storage--exclusion-fingerprints)
+   - [Incremental Maintenance & Vacuuming](#incremental-maintenance--vacuuming)
 6. [GUI & Concurrency Architecture](#gui--concurrency-architecture)
    - [WorkerThread & Cooperative Cancellation](#workerthread--cooperative-cancellation)
    - [Watchdog State Machine](#watchdog-state-machine)
    - [Thread-Safe Logging](#thread-safe-logging)
    - [Custom TreeView with Dynamic Grouping](#custom-treeview-with-dynamic-grouping)
-   - [System Tray via Winico Tcl Extension](#system-tray-via-winico-tcl-extension)
+   - [Modular GUI Panels & Management Windows](#modular-gui-panels--management-windows)
+   - [System Tray via Pystray](#system-tray-via-pystray)
 
 ---
 
@@ -178,7 +180,7 @@ For all files existing in both directories that are not moved:
 - **`files_to_delete`**: Includes `only_target` files.
 
 ### 5. Reporting Phase
-When enabled, builds a pandas DataFrame containing all evaluated files (filtering out unchanged files to save memory) and writes a timestamped spreadsheet to `logs/compare_report_YYYY-MM-DD_HH-MM-SS.xlsx`.
+When enabled, builds a pandas DataFrame containing all evaluated files (filtering out unchanged files to save memory) and writes a timestamped spreadsheet to `data/logs/compare_report_YYYY-MM-DD_HH-MM-SS.xlsx`.
 
 ---
 
@@ -226,12 +228,12 @@ To ensure robustness, all filesystem mutations use retry mechanisms with exponen
 After files are deleted or moved, orphan empty folders can clutter the target:
 1. Gathers directories containing deleted or moved files.
 2. Sorts directories in descending order of string length (`reverse=True`) so child subdirectories are deleted before parent folders.
-3. **Root Protection**: Asserts that normalized directory paths are not root source or target paths:
+3. **Root Protection & Pure Lexical Paths**: Asserts that normalized directory paths are not root source or target paths without performing blocking network queries:
    ```python
-   protected_roots = {os.path.realpath(dir_pair.target).lower() for dir_pair in self.dirs}
-   protected_roots.update({os.path.realpath(dir_pair.source).lower() for dir_pair in self.dirs})
+   protected_roots = {_to_path(dir_pair.target) for dir_pair in self.dirs}
+   protected_roots.update({_to_path(dir_pair.source) for dir_pair in self.dirs})
    ```
-4. If empty (`not os.listdir(dir_path)`), calls `os.rmdir(dir_path)`.
+4. If empty (`not os.listdir(dir_path)`), calls `os.rmdir(dir_path)`. Tree ascension checks `parent == current` to terminate cleanly on UNC root shares (`\\server\share`).
 
 ---
 

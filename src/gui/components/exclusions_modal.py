@@ -4,7 +4,7 @@ from tkinter import messagebox, simpledialog, ttk
 
 import pathspec
 
-from gui.icons import apply_icon
+from gui.icons import apply_icon, apply_window_icon
 from gui.widgets import EntryExclusions
 from utils.utils import sanitize_path
 
@@ -24,6 +24,7 @@ class ExclusionsModal:
 
         self.window = tk.Toplevel(parent)
         self.window.title('Ignore & Exclusion Patterns Manager')
+        apply_window_icon(self.window)
         self.window.minsize(840, 520)
         if parent is not None:
             self.window.transient(parent)

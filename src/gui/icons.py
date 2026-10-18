@@ -13,8 +13,31 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Any
 
+_APP_ICON_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app_icon.ico'))
 _ICONS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'icons')
 _ICON_CACHE: dict[str, tk.PhotoImage] = {}
+
+
+def get_app_icon_path() -> str | None:
+    """Return the absolute path to the app icon (.ico), or None if not found."""
+    return _APP_ICON_PATH if os.path.isfile(_APP_ICON_PATH) else None
+
+
+def apply_window_icon(window: tk.Tk | tk.Toplevel) -> None:
+    """
+    Apply the unified application icon (.ico) to any window, dialog, or popup modal.
+
+    Sets both the default icon for child Toplevel windows and the explicit icon for
+    the given window handle, ensuring titlebar, taskbar, and Alt+Tab display consistency.
+    """
+    icon_path = get_app_icon_path()
+    if not icon_path:
+        return
+
+    with contextlib.suppress(Exception):
+        window.iconbitmap(default=icon_path)
+    with contextlib.suppress(Exception):
+        window.iconbitmap(icon_path)
 
 
 def get_icon(name: str, master: tk.Misc | None = None) -> tk.PhotoImage | None:

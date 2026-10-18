@@ -21,6 +21,7 @@ from gui.components.schedule_panel import SchedulePanel
 from gui.components.status_bar import StatusBar
 from gui.components.telemetry_bar import TelemetryBar
 from gui.enums import BackendThreadStatus, TkinterCfgRelief
+from gui.icons import apply_window_icon
 from gui.scheduler import calculate_next_run
 from gui.tray import TrayableTk
 from gui.widgets import (
@@ -45,10 +46,7 @@ class Gui:
     def __init__(self):
         # Initialize GUI window
         self.root = TrayableTk()
-        icon_path = os.path.join(os.path.dirname(__file__), 'app_icon.ico')
-        if os.path.isfile(icon_path):
-            with contextlib.suppress(Exception):
-                self.root.iconbitmap(icon_path)
+        apply_window_icon(self.root)
         self.root.title('FastMirror')
 
         self.current_theme = 'native'

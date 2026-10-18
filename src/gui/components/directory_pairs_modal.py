@@ -4,7 +4,7 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import filedialog, messagebox, ttk
 
-from gui.icons import apply_icon
+from gui.icons import apply_icon, apply_window_icon
 from gui.widgets import DirectoryPair, EntryPaths
 from utils.utils import sanitize_path
 
@@ -24,6 +24,7 @@ class DirectoryPairsModal:
 
         self.window = tk.Toplevel(parent)
         self.window.title('Directory Backup Pairs Manager')
+        apply_window_icon(self.window)
         self.window.minsize(840, 480)
         if parent is not None:
             self.window.transient(parent)
@@ -267,6 +268,7 @@ class DirectoryPairsModal:
         dialog = tk.Toplevel(self.window)
         is_edit = edit_idx is not None
         dialog.title('Edit Directory Pair' if is_edit else 'Add New Directory Pair')
+        apply_window_icon(dialog)
         dialog.transient(self.window)
         dialog.resizable(False, False)
 

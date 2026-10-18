@@ -4,7 +4,7 @@ import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from gui.icons import apply_icon
+from gui.icons import apply_icon, apply_window_icon
 from utils.logger import logger
 from utils.utils import format_size
 
@@ -16,6 +16,7 @@ class ReportsWindow:
         self.parent = parent
         self.window = tk.Toplevel(parent)
         self.window.title('Backup Reports History')
+        apply_window_icon(self.window)
         self.window.minsize(680, 420)
         self.window.transient(parent)
 
