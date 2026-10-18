@@ -125,6 +125,27 @@ class EntryPaths(ScrolledText):
         pair_tuple = (pair.source, pair.target) if isinstance(pair, DirectoryPair) else pair
         self.set(self.get() + [pair_tuple])
 
+    def insert(self, index, chars, *args):
+        was_disabled = str(self.cget('state')) == TkinterCfgState.DISABLED.value
+        if was_disabled:
+            self.configure(state=TkinterCfgState.NORMAL.value)
+        super().insert(index, chars, *args)
+        self.highlight_syntax()
+        if was_disabled:
+            self.configure(state=TkinterCfgState.DISABLED.value)
+
+    def delete(self, index1, index2=None):
+        was_disabled = str(self.cget('state')) == TkinterCfgState.DISABLED.value
+        if was_disabled:
+            self.configure(state=TkinterCfgState.NORMAL.value)
+        if index2 is None:
+            super().delete(index1)
+        else:
+            super().delete(index1, index2)
+        self.highlight_syntax()
+        if was_disabled:
+            self.configure(state=TkinterCfgState.DISABLED.value)
+
     def set(self, paths: list[tuple[str, str]] | list[DirectoryPair] | list[list[str]]):
         normalized_paths: list[tuple[str, str]] = []
         for p in paths:
@@ -135,14 +156,8 @@ class EntryPaths(ScrolledText):
         normalized_paths = list(set(normalized_paths))
         normalized_paths.sort(key=lambda x: x[0])  # sort by source path
         raw = '\n'.join([f'{pair[0]} -> {pair[1]}' for pair in normalized_paths])
-        was_disabled = self.cget('state') == TkinterCfgState.DISABLED.value
-        if was_disabled:
-            self.configure(state=TkinterCfgState.NORMAL.value)
-        super().delete('1.0', tk.END)  # delete current text
-        super().insert('1.0', raw)  # add at line 1, col 0
-        self.highlight_syntax()
-        if was_disabled:
-            self.configure(state=TkinterCfgState.DISABLED.value)
+        self.delete('1.0', tk.END)  # delete current text
+        self.insert('1.0', raw)  # add at line 1, col 0
 
     @staticmethod
     def parse_line(raw: str) -> None | tuple[str, str]:
