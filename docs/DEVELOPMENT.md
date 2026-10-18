@@ -87,7 +87,11 @@ The package is configured via [`pyproject.toml`](../pyproject.toml) using the `s
 fast-mirror/
 ├── pyproject.toml            # Dependencies, tools, and build configuration
 ├── launch.pyw                # Headless launcher with auto-venv detection
-├── config.example.json       # Template configuration file (copy to config.json)
+├── config.example.json       # Template configuration file (copy to data/config.json)
+├── data/                     # Runtime application data (ignored in git)
+│   ├── config.json           # Active configuration
+│   ├── local_mirror.db       # SQLite WAL target cache database
+│   └── logs/                 # Persistent logs and Excel comparison reports
 ├── src/                      # Application source root (added to PYTHONPATH)
 │   ├── core/                 # Backend engines (linking, mirroring, comparing)
 │   ├── gui/                  # Tkinter interface, threads, and custom widgets
@@ -107,13 +111,15 @@ When installed with `-e .`, the `src` directory is linked into your virtual envi
 tests/
 ├── conftest.py               # Test environment isolation fixtures
 ├── test_e2e.py               # End-to-end integration workflows
-├── test_paths.py             # Path resolution and UNC share tests
+├── test_paths.py             # Path resolution, UNC share tests, and config validation
 ├── test_file_ops.py          # Robust file operations, locks, and retries
 ├── test_sync.py              # Directory synchronization & comparison
 ├── test_mirror.py            # SQLite WAL mirror database tests
 ├── test_confirmation_popup.py# Action confirmation popup & treeview
 ├── test_gui.py               # GUI scheduler, settings, and TextLogger
+├── test_gui_visual_emulation.py # UI widget event flow & visual invariant tests
 ├── test_logger.py            # Logging handlers and log isolation
+├── test_worker_thread.py     # Worker thread execution & cancellation tests
 └── TestData/                 # Local directory pairs for testing
     ├── Source/
     └── Target/
@@ -254,7 +260,7 @@ The application utilizes Windows-specific functions:
 When syncing to remote NAS / SMB shares (e.g. `\\nas\share`), keep these critical platform behaviors in mind:
 - **Never use `os.path.commonpath` with UNC root shares**: Python's `ntpath.splitdrive` treats `\\server\share` as having an empty path segment, causing `ntpath.commonpath` to view it as a relative path and raise `ValueError: Can't mix absolute and relative paths` when paired with nested files.
 - **Avoid blocking network I/O (`os.path.realpath`, `Path.resolve`) during path comparisons**: These calls query the network filesystem for reparse points and can block or hang if a network destination is unreachable or asleep. Always perform lexical matching using `pathlib.Path.is_relative_to()`.
-- **Test against real configurations**: Automated tests in `tests/test_core.py` validate all entries in `config.json` against `get_dirs_from_path`.
+- **Test against real configurations**: Automated tests in `tests/test_paths.py` validate all entries in `data/config.json` against `get_dirs_from_path`.
 
 
 ---

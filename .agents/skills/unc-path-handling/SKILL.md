@@ -61,7 +61,7 @@ When resolving which `DirectoryPair` a file belongs to:
 ```python
 matching_dirs = []
 for d in dirs:
-    for root_str in (d.dir1, d.dir2):
+    for root_str in (d.source, d.target):
         if not root_str:
             continue
         root = _to_path(root_str)
@@ -86,20 +86,18 @@ Do NOT attempt to connect to a real network share during unit tests. You can tes
 
 ```python
 import pytest
-from core.backend import SyncDirs
+from core.path_resolver import get_dirs_from_path
 from utils.utils import DirectoryPair
 
 def test_unc_path_containment():
-    sync = SyncDirs()
     dirs = [
         DirectoryPair(
-            dir1=r'\\192.168.1.100\Share\2025',
-            dir2=r'D:\Backup\2025',
-            name='Photos'
+            source=r'D:\Backup\2025',
+            target=r'\\192.168.1.100\Share\2025',
         )
     ]
     test_file = r'\\192.168.1.100\Share\2025\Trip\photo.jpg'
-    resolved = sync.get_dirs_from_path(test_file, dirs)
+    resolved = get_dirs_from_path(test_file, dirs)
     assert resolved == dirs[0]
 ```
 
@@ -108,8 +106,8 @@ def test_unc_path_containment():
 ## 4. Troubleshooting Checklist
 When a user reports:
 `Could not identify root folders of path <\\server\share\...>`:
-1. Check if the directory pair in `config.json` has trailing slashes (e.g. `\\server\share\` vs `\\server\share`).
+1. Check if the directory pair in `data/config.json` has trailing slashes (e.g. `\\server\share\` vs `\\server\share`).
 2. Verify that `_to_path` strips trailing slashes on both the target file and root directory.
 3. Check if forward slashes were introduced (`//server/share`).
 4. Ensure no code called `os.path.commonpath`.
-5. Run `uv run pytest tests/test_core.py -k "test_get_dirs_from_path"` to verify all edge cases.
+5. Run `uv run pytest tests/test_paths.py -k "test_get_dirs_from_path"` to verify all edge cases.

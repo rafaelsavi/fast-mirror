@@ -1,6 +1,6 @@
 # SQLite & File Lock Rules on Windows
 
-The application uses an SQLite database (`local_mirror.db` / `MirrorDatabase`) to track mirrored file paths, hashes, and timestamps.
+The application uses an SQLite database (`data/local_mirror.db` / `MirrorDatabase`) to track mirrored file paths, hashes, and timestamps.
 Windows enforces mandatory file locking, making file handle hygiene critical.
 
 Adhere to the following rules:
@@ -16,7 +16,7 @@ with sqlite3.connect(db_path) as conn:
 # conn is STILL OPEN here!
 ```
 - The context manager on a connection object only controls **transactions** (`commit` / `rollback`). It **NEVER calls `conn.close()`**.
-- On Windows, leaving a connection open keeps an active OS handle to `local_mirror.db`.
+- On Windows, leaving a connection open keeps an active OS handle to `data/local_mirror.db`.
 - Attempting to delete, vacuum, rename, or copy the database while a connection is open results in:
   ```text
   PermissionError: [WinError 32] The process cannot access the file because it is being used by another process

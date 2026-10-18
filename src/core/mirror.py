@@ -1,7 +1,6 @@
 import contextlib
 import hashlib
 import os
-import re
 import sqlite3
 import time
 from collections.abc import Iterable
@@ -21,60 +20,6 @@ def _compute_exclusions_hash(exclusions: list[str]) -> str:
     cleaned = sorted({sanitize_path(e).strip().lower() for e in exclusions if e.strip()})
     payload = '\n'.join(cleaned).encode('utf-8')
     return hashlib.blake2b(payload, digest_size=8).hexdigest()
-
-
-class _LegacyDbAdapter:
-    """Dict-like context manager adapter providing backwards compatibility for direct table manipulation."""
-
-    def __init__(self, mirror: 'MirrorDatabase', root_dir: str | PathLike[str]):
-        self.mirror = mirror
-        self.root_dir = root_dir
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-
-    def __setitem__(self, key, value):
-        root_str = sanitize_path(self.root_dir)
-        rel = self.mirror._to_rel_path(root_str, key)
-        with self.mirror._get_connection() as conn:
-            conn.execute(
-                'INSERT OR REPLACE INTO mirror_cache (root_dir, rel_path, stats_hash) VALUES (?, ?, ?);',
-                (root_str, rel, str(value)),
-            )
-            count = conn.execute('SELECT COUNT(*) FROM mirror_cache WHERE root_dir = ?;', (root_str,)).fetchone()[0]
-            conn.execute(
-                'INSERT OR REPLACE INTO mirror_metadata (root_dir, exclusions_hash, file_count, last_scanned) '
-                'VALUES (?, ?, ?, ?);',
-                (root_str, self.mirror.exclusions_hash, count, time.time()),
-            )
-            conn.commit()
-
-    def __delitem__(self, key):
-        root_str = sanitize_path(self.root_dir)
-        rel = self.mirror._to_rel_path(root_str, key)
-        with self.mirror._get_connection() as conn:
-            conn.execute(
-                'DELETE FROM mirror_cache WHERE root_dir = ? AND rel_path = ?;',
-                (root_str, rel),
-            )
-            count = conn.execute('SELECT COUNT(*) FROM mirror_cache WHERE root_dir = ?;', (root_str,)).fetchone()[0]
-            conn.execute(
-                'UPDATE mirror_metadata SET file_count = ?, last_scanned = ? WHERE root_dir = ?;',
-                (count, time.time(), root_str),
-            )
-            conn.commit()
-
-    def __contains__(self, key):
-        return self.mirror.exists(self.root_dir, key)
-
-    def __len__(self):
-        return self.mirror.size(self.root_dir)
-
-    def __bool__(self):
-        return self.mirror.size(self.root_dir) > 0
 
 
 class MirrorDatabase:
@@ -172,22 +117,6 @@ class MirrorDatabase:
         root_str = sanitize_path(root_dir).rstrip('\\')
         clean_rel = rel_path.lstrip('\\')
         return f'{root_str}\\{clean_rel}' if clean_rel else root_str
-
-    def _generate_table_name(self, root_dir: str | PathLike[str]) -> str:
-        """
-        Generate legacy table name based on root_dir and exclusions.
-        Preserved for backwards compatibility with tests and legacy migration matching.
-        """
-        sanitized_root = sanitize_path(root_dir).replace(os.sep, '_').replace(':', '_')
-        sanitized_exclusions = '_'.join(e.replace(os.sep, '_').replace(':', '_') for e in self.exclusions)
-        allowed_pattern = r'[^a-zA-Z0-9_]'
-        sanitized_root = re.sub(allowed_pattern, '_', sanitized_root)
-        sanitized_exclusions = re.sub(allowed_pattern, '_', sanitized_exclusions)
-        return f'{sanitized_root}__{sanitized_exclusions}'
-
-    def _get_db(self, root_dir: str | PathLike[str]) -> '_LegacyDbAdapter':
-        """Provide a dict-like adapter for test compatibility and direct key-value operations."""
-        return _LegacyDbAdapter(self, root_dir)
 
     def exists_table(self, root_dir: str | PathLike[str]) -> bool:
         """Check if a valid mirror cache exists for the given root_dir with matching exclusions."""

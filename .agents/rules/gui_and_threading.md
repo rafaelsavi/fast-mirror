@@ -1,6 +1,6 @@
 # GUI & Threading Safety Rules
 
-The application uses **Tkinter / CustomTkinter** for its interface and runs long-running filesystem backup tasks inside a background worker thread (`WorkerThread`).
+The application uses **Tkinter / sv-ttk (Sun Valley theme) / ttkwidgets** for its interface and runs long-running filesystem backup tasks inside a background worker thread (`WorkerThread`).
 
 Follow these strict concurrency and thread-safety rules:
 
@@ -46,8 +46,8 @@ If the worker thread is terminated, stopped by the user, or encounters an except
 ---
 
 ## 3. Worker Thread Cancellation & Graceful Shutdown
-- Long-running sync loops (e.g. scanning files, moving batches) must regularly poll cancellation flags.
-- Check `self.worker_thread.stopped()` or equivalent before processing the next file.
+- Long-running sync loops (e.g. scanning files, moving batches) must regularly poll cooperative cancellation flags.
+- Check `self.cancel_requested.is_set()` or `self.worker_thread.cancel_event.is_set()` before processing the next file.
 - When cancellation is triggered:
   1. Abort the current loop immediately.
   2. Do NOT leave partial files in the destination (clean up temporary `.tmp` copy targets).
@@ -58,4 +58,4 @@ If the worker thread is terminated, stopped by the user, or encounters an except
 
 ## 4. Audio Chimes & OS Notifications
 - Windows system notifications (such as `winsound.PlaySound('SystemQuestion', winsound.SND_ALIAS | winsound.SND_ASYNC)`) must be called asynchronously (`SND_ASYNC`) so they do not block execution.
-- System tray integration uses the bundled `winico` DLL. If loading fails on non-standard Windows configurations, catch the exception and log a warning; never let tray failure prevent GUI initialization.
+- System tray integration uses `pystray` (native Windows `Shell_NotifyIconW` with `app_icon.ico`). If initialization fails on headless or restricted environments, catch the exception and log a warning; never let tray failure prevent GUI initialization.

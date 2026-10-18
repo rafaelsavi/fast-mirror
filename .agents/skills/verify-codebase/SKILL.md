@@ -27,7 +27,7 @@ uv run pytest
 ### Targeted Test Verification
 If modifying path resolution or backend sync logic:
 ```powershell
-uv run pytest tests/test_core.py -v -k "test_get_dirs_from_path or test_config_json"
+uv run pytest tests/test_paths.py -v -k "test_get_dirs_from_path or test_config_json"
 ```
 
 If modifying database or lock management:
@@ -37,9 +37,9 @@ uv run pytest tests/test_mirror.py -v
 
 ### Critical Test Requirements
 - **`test_gui_visual_emulation.py`** must pass. All future changes in the frontend must validate all action paths, button clicks, corner cases (empty paths, invalid times, regex special characters, deletion safety uncheck, modal popups), and visual geometry invariants.
-- **`test_config_json_entry_paths_resolution`** must pass. This test loads every path in the real `config.json` and ensures `get_dirs_from_path` resolves all sources and targets cleanly.
+- **`test_config_json_entry_paths_resolution`** must pass. This test loads every path in the real `data/config.json` and ensures `get_dirs_from_path` resolves all sources and targets cleanly.
 - **`test_wal_and_vacuum_close_connections`** must pass. This verifies that SQLite connections are properly closed on Windows so files can be deleted without `WinError 32`.
-- **Zero Production Log Pollution**: Test executions are automatically isolated via `tests/conftest.py` and must not add files to `logs/`.
+- **Zero Production Log Pollution**: Test executions are automatically isolated via `tests/conftest.py` and must not add files to `data/logs/`.
 
 ---
 

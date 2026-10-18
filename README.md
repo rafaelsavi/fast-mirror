@@ -50,7 +50,7 @@
 - **Interactive Action Review**: An interactive treeview dialog previews proposed `COPY`, `MOVE`, and `DELETE` actions with individual file sizes, timestamps, and aggregate group volumes with Windows audio cues.
 - **Built-in Weekly Scheduler**: Configure specific days of the week and daily execution times for fully unattended backups.
 - **Windows System Tray Integration**: Minimizes to the Windows notification area via native `pystray` integration. Closing the window prompts to keep running in the background.
-- **Killable Background Thread**: Long-running comparison and synchronization jobs execute asynchronously in a cancellable thread, keeping the GUI responsive and allowing clean cancellations.
+- **Cancellable Background Worker Thread**: Long-running comparison and synchronization jobs execute asynchronously in a dedicated `WorkerThread` with cooperative `threading.Event` cancellation, keeping the GUI responsive and avoiding state corruption.
 - **Gitwildmatch Exclusions**: Excludes files and folders using `.gitignore`-style wildcard syntax (powered by `pathspec`), pruning ignored directories on the fly during filesystem traversal.
 - **Detailed Logging & Excel Audit Reports**: In-GUI color-coded log console with real-time level filtering, persistent log files on disk, and optional detailed Excel (`.xlsx`) comparison reports via `pandas`.
 - **Windows Attribute & Long Path Resilience**: Automatically clears read-only attributes on locked target files and detects paths exceeding Windows `MAX_PATH` limits.
@@ -141,26 +141,31 @@ fast-mirror/
 │   │   ├── gui.py            # Main application orchestrator, watchdogs, scheduler
 │   │   ├── confirmation_popup.py # ActionSelection modal & CustomCheckboxTreeView
 │   │   ├── health_check.py   # Non-blocking target reachability & disk space prober
-│   │   ├── tray.py           # TrayableTk system tray integration
+│   │   ├── scheduler.py      # Optimized 8-day candidate run calculator
+│   │   ├── tray.py           # TrayableTk system tray integration via pystray
+│   │   ├── icons.py          # Icon registry and tinting engine
 │   │   ├── enums.py          # Tkinter & Thread state enums
 │   │   ├── worker_thread.py  # WorkerThread background execution & cooperative cancellation
 │   │   ├── widgets.py        # Custom Tkinter controls (Paths, Exclusions, Loggers)
-│   │   ├── components/       # Modular GUI panels (Actions, Log, Paths, Schedule, Status, Telemetry)
+│   │   ├── assets/icons/     # Modern 16x16 PNG icons
+│   │   ├── components/       # Modular GUI panels (Actions, Log, Paths, Schedule, Status, Telemetry, Modals)
 │   │   └── app_icon.ico      # Application and tray icon
 │   └── utils/
-│       ├── constants.py      # ROOT_DIR locator
+│       ├── constants.py      # ROOT_DIR locator and data folder paths
 │       ├── logger.py         # Context-aware singleton logger with test mode isolation
 │       └── utils.py          # Helpers (formatting, progress logging, paths)
 └── tests/
     ├── conftest.py           # Test isolation fixtures
     ├── test_e2e.py           # End-to-end integration workflows
-    ├── test_paths.py         # Path resolution and UNC share tests
+    ├── test_paths.py         # Path resolution, UNC share tests, and config validation
     ├── test_file_ops.py      # Robust file operations, locks, and retries
     ├── test_sync.py          # Directory synchronization & comparison
     ├── test_mirror.py        # SQLite WAL mirror database tests
     ├── test_confirmation_popup.py # Action confirmation popup & treeview
     ├── test_gui.py           # GUI scheduler, settings, and TextLogger
+    ├── test_gui_visual_emulation.py # UI widget event flow & visual invariant tests
     ├── test_logger.py        # Logging handlers and log isolation
+    ├── test_worker_thread.py # Worker thread execution & cancellation tests
     └── TestData/             # Local directory pairs for testing
 ```
 
@@ -240,29 +245,32 @@ You can launch the application in several ways:
 
 ### Configuring Backup Pairs
 
-In the upper-right section of the main window (**Paths**):
+In the upper-right section of the main window (**Directory Pairs & Exclusions**):
 
-1. Click **Add new** to choose a **Source folder** followed by a **Destination folder** using standard Windows folder selection dialogs.
-2. The folder pair appears in the text area formatted as:
-   ```text
-   D:\Photos -> \\192.168.1.100\Backup\Photos
-   E:\Documents -> F:\Backup\Documents
-   ```
-3. You can also edit this box manually. Each line must follow the `SOURCE -> TARGET` syntax.
-4. Paths are validated automatically: the source folder must exist, and the target folder (or its parent directory) must exist.
+1. Configured pairs are shown in a compact, syntax-highlighted display with live count badges and health statuses.
+2. Click **Manage Pairs...** to open the **Directory Backup Pairs Manager** modal:
+   - Click **Add Pair...** to select a **Source folder** followed by a **Target folder** via standard Windows folder selection dialogs.
+   - Edit, delete, or test existing pairs with automatic validation (verifying that source exists and destination or its parent is reachable).
+   - Formatted automatically as `SOURCE -> TARGET` (e.g. `D:\Photos -> \\192.168.1.100\Backup\Photos`).
+3. Click **Health Check** to run an asynchronous target diagnostic probe verifying network reachability and available free disk space.
+4. Click **Explorer** to open the selected directory pair directly in Windows Explorer.
 
 ---
 
 ### Exclusion Patterns
 
-In the **Exclusions** field, supply comma-separated glob patterns adhering to `.gitignore` (`gitwildmatch`) rules:
+Under **Exclusions** in the same panel:
 
-```text
-$RECYCLE.BIN, **\.git\**, **\.venv\**, **\__pycache__\**, **\~$*, Filmes, Jogos
-```
-
-- Directories matching these patterns are skipped during filesystem traversal, significantly accelerating directory scans.
-- Leading/trailing whitespace is stripped automatically.
+1. Active patterns are summarized in a compact view with rule count badges.
+2. Click **Manage Exclusions...** to open the **Exclusion Patterns Manager** modal:
+   - Search and filter patterns dynamically with instantaneous match stepping.
+   - Add new glob patterns adhering to `.gitignore` (`gitwildmatch`) rules.
+   - Built-in wildmatch syntax cheatsheet and validation.
+3. Common examples:
+   ```text
+   $RECYCLE.BIN, **\.git\**, **\.venv\**, **\__pycache__\**, **\~$*, Temp, Cache
+   ```
+- Matching directories are pruned in place during filesystem traversal, dramatically accelerating scans.
 
 ---
 
@@ -274,7 +282,7 @@ $RECYCLE.BIN, **\.git\**, **\.venv\**, **\__pycache__\**, **\~$*, Filmes, Jogos
 | **Rebuild local mirror** | Resets the target's SQLite mirror table and performs a full scan from disk to re-index. Automatically unchecks fast scan. | **OFF** (use only when target changed externally) |
 | **Use fast comparison based on metadata** | Compares `st_size` and `st_mtime` via an 8-byte blake2b digest. If disabled, performs full byte-by-byte file comparison. | **ON** |
 | **Request confirmation before sync** | Prompts with an interactive review table before writing any changes. | **ON** |
-| **Save detailed report** | Generates an Excel spreadsheet (`logs/compare_report_*.xlsx`) documenting every analyzed file status. | **Optional** |
+| **Save detailed report** | Generates an Excel spreadsheet (`data/logs/compare_report_*.xlsx`) documenting every analyzed file status. | **Optional** |
 
 #### Default Actions
 Check or uncheck which actions are enabled by default in the confirmation dialog:
@@ -394,9 +402,9 @@ The bottom-right panel displays real-time logs routed through a thread-safe `que
 - **Color Coding**: Gray for debug, black for info, orange for warnings, red for errors, and underlined red for critical issues.
 
 ### Persistent Files
-- All events are automatically logged with timestamps to `logs/log_YYYY-MM-DD_HH-MM-SS.txt`.
-- When **Save detailed report** is checked, an Excel workbook `logs/compare_report_YYYY-MM-DD_HH-MM-SS.xlsx` is generated with columns for file path, file size, modification dates, status (`only source`, `only target`, `moved`, `modified`, `same`), and comparison errors.
-- Click **Open last report** in the GUI to immediately open the most recent Excel file in Microsoft Excel or your default spreadsheet handler.
+- All events are automatically logged with timestamps to `data/logs/log_YYYY-MM-DD_HH-MM-SS.txt`.
+- When **Save detailed report** is checked, an Excel workbook `data/logs/compare_report_YYYY-MM-DD_HH-MM-SS.xlsx` is generated with columns for file path, file size, modification dates, status (`only source`, `only target`, `moved`, `modified`, `same`), and comparison errors.
+- Click **Open last report** in the GUI to immediately open the most recent Excel file in Microsoft Excel or your default spreadsheet handler, or click **Past reports...** to browse, inspect, and manage historical audit logs.
 
 ---
 

@@ -18,7 +18,7 @@ This runbook guides you through identifying, isolating, and repairing errors rep
 ```text
 There was an error while moving file <path>. Exception: Could not identify root folders of path <path>. Dirs: [...]
 ```
-- **Root Cause**: The file being moved does not match any configured `DirectoryPair.dir1` or `DirectoryPair.dir2`.
+- **Root Cause**: The file being moved does not match any configured `DirectoryPair.source` or `DirectoryPair.target`.
 - **Key Suspects**:
   1. A UNC network path was passed to `os.path.commonpath`, which raised `ValueError: Can't mix absolute and relative paths`.
   2. Trailing slash discrepancy (`\\share\dir\` vs `\\share\dir`).
@@ -27,7 +27,7 @@ There was an error while moving file <path>. Exception: Could not identify root 
 - **Remedy**:
   - Verify `_to_path(path).is_relative_to(root)` is used instead of `commonpath`.
   - Check specificity scoring in `get_dirs_from_path`.
-  - Run `uv run pytest tests/test_core.py -k "test_get_dirs_from_path"`.
+  - Run `uv run pytest tests/test_paths.py -k "test_get_dirs_from_path"`.
 
 ---
 
@@ -51,7 +51,7 @@ PermissionError: [WinError 5] Access is denied: <path>
 ### C. File In Use By Another Process (`WinError 32`)
 **Log signature:**
 ```text
-PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: <local_mirror.db>
+PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: <data/local_mirror.db>
 ```
 - **Root Cause**: A previously opened SQLite connection or file stream was not closed.
 - **Key Suspect**: `with sqlite3.connect(...) as conn:` was used without `contextlib.closing(conn)`.
@@ -88,7 +88,7 @@ sqlite3.OperationalError: database is locked
 When an error occurs:
 1. **Extract the exact paths**: Find the source path, target path, and configured directory pairs from the log.
 2. **Reproduce in a test**:
-   - Add a minimal unit test to `tests/test_core.py` or `tests/test_mirror.py` using synthetic paths that reproduce the exact structure without needing actual network hardware.
+   - Add a minimal unit test to `tests/test_paths.py` or `tests/test_mirror.py` using synthetic paths that reproduce the exact structure without needing actual network hardware.
 3. **Trace through `_to_path` and `get_dirs_from_path`**:
    - Verify that `is_relative_to` correctly identifies the relationship.
 4. **Run the quality suite**:

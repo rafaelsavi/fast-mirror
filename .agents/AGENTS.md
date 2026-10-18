@@ -5,10 +5,10 @@ Welcome to the **FastMirror** codebase. This repository provides automated, mult
 ---
 
 ## 1. Tech Stack & Environment
-- **Platform**: Windows 10 / 11 (requires native Windows support for UNC network paths, `winsound`, `winico` tray icon, and `ctypes.windll.kernel32`).
+- **Platform**: Windows 10 / 11 (requires native Windows support for UNC network paths, `winsound`, `pystray` system tray integration, and `ctypes.windll.kernel32`).
 - **Python**: Python 3.10+ (tested with 3.13) managed via `uv`.
-- **GUI**: Tkinter / CustomTkinter / `ttkwidgets` with custom worker threads.
-- **Database**: SQLite3 (`local_mirror.db`) operating in WAL (`Write-Ahead Logging`) mode for lightning-fast hash caching and path tracking.
+- **GUI**: Tkinter / `sv-ttk` (Sun Valley theme) / `ttkwidgets` with custom worker threads.
+- **Database**: SQLite3 (`data/local_mirror.db`) operating in WAL (`Write-Ahead Logging`) mode for lightning-fast hash caching and path tracking.
 - **Tooling**:
   - Package manager: `uv`
   - Test runner: `pytest` (`uv run pytest`)
@@ -20,7 +20,7 @@ Welcome to the **FastMirror** codebase. This repository provides automated, mult
 ## 2. Inviolable Core Principles
 
 ### A. Windows UNC & Network Path Safety
-1. **NEVER use `os.path.commonpath` with UNC root paths** (`\\server\share`). Python's `ntpath.splitdrive` returns an empty path component, causing `ntpath.commonpath` to treat the root share as a relative path and raise `ValueError: Can't mix absolute and relative paths`.
+1. **NEVER use `os.path.commonpath` with UNC root paths** (`\\server\share`). Python's `ntpath.splitdrive` returns an empty path component, causing `ntpath.commonpath` to treat the root share as a relative path and raise `ValueError: Can't mix absolute and relative paths`. Use lexical `Path.is_relative_to()`.
 2. **Never execute blocking network I/O during path comparisons**. Do NOT call `os.path.realpath()` or `Path.resolve()` on remote paths; they perform blocking SMB queries (`GetFinalPathNameByHandle`) that freeze if the network is slow or sleeping. Use purely lexical matching (`pathlib.Path.is_relative_to()`).
 3. **Always use specificity scoring for root directories**: When resolving which `DirectoryPair` matches a file, score by `(len(root.parts), len(str(root)))` to avoid prefix collisions (`D:\Photos` vs `D:\Photos_Archive`) and prefer nested roots over drive roots.
 
@@ -39,8 +39,12 @@ Welcome to the **FastMirror** codebase. This repository provides automated, mult
 3. **Safe tree ascension**: When pruning empty directories (`delete_empty_dirs`), always terminate if `parent == current` to prevent infinite loops when ascending network root shares (`\\server\share\`).
 
 ### E. Test & Agent Logging Isolation
-1. **Never write test or agent logs into production `logs/`**: Automated test runs (`pytest`) and agent executions must never populate the production `logs/` folder.
+1. **Never write test or agent logs into production `data/logs/`**: Automated test runs (`pytest`) and agent executions must never populate the production `data/logs/` folder.
 2. **Context-Aware Dynamic Logger**: `src.utils.logger.Logger` automatically routes logs and reports to temporary directories when in test/agent mode (`ANTIGRAVITY_AGENT=1`, `AUTOMATIC_BACKUP_TESTING=1`, or running under `pytest`).
+
+### F. Scratch File & Temporary Artifact Hygiene
+1. **Always use the `scratch/` directory**: Never create temporary scripts, test snippets, debug dumps, or experimental benchmarks in the workspace root (e.g. `scratch_*.py`).
+2. **Confine all exploratory code**: All agent-created temporary files must strictly reside in `scratch/` to keep the root directory clean and prevent accidental repository clutter.
 
 ---
 
@@ -50,6 +54,11 @@ fast-mirror/
 ├── .agents/                  # Agent rules and skills
 │   ├── rules/                # Modular domain rules (network paths, GUI, SQLite, safety)
 │   └── skills/               # Runbooks (verification, diagnostics, testing)
+├── data/                     # Runtime application data (ignored in git)
+│   ├── config.json           # Active configuration
+│   ├── local_mirror.db       # SQLite WAL target cache database
+│   └── logs/                 # Persistent logs and Excel comparison reports
+├── scratch/                  # Agent exploratory scripts, scratch tools, and benchmarks (gitignored)
 ├── src/
 │   ├── core/
 │   │   ├── backend.py        # Core synchronization engine (SyncDirs, CompareDirs)
@@ -60,24 +69,31 @@ fast-mirror/
 │   ├── gui/
 │   │   ├── gui.py            # Main application window & scheduler watchdog (Gui)
 │   │   ├── confirmation_popup.py # Action selection modal & CheckboxTreeView
-│   │   ├── tray.py           # System tray integration (TrayableTk via Winico)
+│   │   ├── health_check.py   # Non-blocking target reachability & disk space prober
+│   │   ├── scheduler.py      # Optimized 8-day candidate run calculator
+│   │   ├── tray.py           # System tray integration (TrayableTk via pystray)
+│   │   ├── icons.py          # Icon registry and tinting engine
 │   │   ├── worker_thread.py  # Background worker thread execution & cancellation
 │   │   ├── widgets.py        # Custom UI controls & form fields
-│   │   └── components/       # Modular GUI panels (Actions, Log, Paths, Schedule, Status, Telemetry)
+│   │   ├── assets/icons/     # Modern 16x16 PNG icons
+│   │   └── components/       # Modular GUI panels (Actions, Log, Paths, Schedule, Status, Telemetry, Modals)
 │   └── utils/
+│       ├── constants.py      # ROOT_DIR locator and data folder paths
 │       ├── utils.py          # DirectoryPair, byte conversion, path sanitizers
 │       └── logger.py         # Context-aware logging configuration and formatting
 ├── tests/
 │   ├── conftest.py           # Test isolation fixtures
 │   ├── test_e2e.py           # End-to-end integration workflows
-│   ├── test_paths.py         # Path resolution and UNC share tests
+│   ├── test_paths.py         # Path resolution, UNC share tests, and config validation
 │   ├── test_file_ops.py      # Robust file operations, locks, and retries
 │   ├── test_sync.py          # Directory synchronization & comparison
 │   ├── test_mirror.py        # SQLite mirror database and concurrency tests
 │   ├── test_confirmation_popup.py # Action confirmation popup & treeview
 │   ├── test_gui.py           # GUI scheduler, settings, and TextLogger
-│   └── test_logger.py        # Logging handlers and log isolation
-├── config.example.json       # Template configuration file (copy to config.json)
+│   ├── test_gui_visual_emulation.py # UI widget event flow & visual invariant tests
+│   ├── test_logger.py        # Logging handlers and log isolation
+│   └── test_worker_thread.py # Worker thread execution & cancellation tests
+├── config.example.json       # Template configuration file (copy to data/config.json)
 ├── pyproject.toml            # Dependencies, Ruff rules, and Mypy settings
 └── docs/                     # Architecture, Development, and Configuration guides
 ```
@@ -89,4 +105,4 @@ Before submitting any changes or completing a task:
 1. `uv run pytest` — All tests must pass (100% pass rate).
 2. `uv run ruff check .` — Zero linting errors or warnings.
 3. `uv run ruff format --check .` — Formatting conforms to repository style.
-4. `test_config_json_entry_paths_resolution` must succeed against the real `config.json` (or skip if not present).
+4. `test_config_json_entry_paths_resolution` must succeed against the real `data/config.json` (or skip if not present).

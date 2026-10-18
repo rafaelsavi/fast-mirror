@@ -33,9 +33,9 @@ This guide details all configuration options for **FastMirror**, including direc
 Settings are stored in `data/config.json` (template in [`config.example.json`](../config.example.json)).
 
 - The file is saved automatically when clicking **Save** in the *GUI Configuration* panel.
-- On startup, the GUI reads `config.json` via [`load_config()`](../src/gui/gui.py#L457-L478).
-- If `config.json` is corrupted, the application backs it up to `config.json_old.json` and resets to default values.
-- You can safely edit `config.json` with a text editor while the application is not running.
+- On startup, the GUI reads `data/config.json` via [`load_config()`](../src/gui/gui.py).
+- If `config.json` is corrupted, the application backs it up to `data/config.json_old.json` and resets to default values.
+- You can safely edit `data/config.json` with a text editor while the application is not running.
 
 ---
 
@@ -76,7 +76,7 @@ In `config.json`, they are saved as a list of two-element string arrays:
 
 ### Path Validation Semantics
 
-When validating paths in [`EntryPaths.parse_line()`](../src/gui/widgets.py#L40-L55):
+When validating paths in [`EntryPaths.parse_line()`](../src/gui/widgets.py):
 1. **Source directory**: Must exist (`os.path.isdir(source)`). If the source disk is disconnected, the line is marked invalid and ignored.
 2. **Target directory**: Must either exist already, or its immediate parent directory must exist (`os.path.isdir(os.path.dirname(os.path.realpath(target)))`). This allows defining a new destination subdirectory that `SyncDirs` will automatically create.
 
@@ -127,7 +127,7 @@ Exclusions use [`pathspec`](https://github.com/cpburnz/python-pathspec) implemen
 
 ### Directory Pruning vs. File Exclusion
 
-During [`CstmPath.get_from_dir()`](../src/core/file.py#L110-L131), the scanner inspects each directory before walking its contents:
+During [`CstmPath.get_from_dir()`](../src/core/file.py), the scanner inspects each directory before walking its contents:
 
 ```python
 dirs[:] = [d for d in dirs if not spec.match_file((rel_root / d).as_posix())]
@@ -184,19 +184,19 @@ Configured as an array of 24-hour `HH:MM` time strings:
 
 ### Scheduling Watchdog Logic
 
-Every 1000 milliseconds, the GUI watchdog computes the next appointment by scanning up to 10,080 minutes (one full week ahead):
+The scheduler calculates the next upcoming execution using [`calculate_next_run()`](../src/gui/scheduler.py):
 
 ```python
-for i in range(60 * 24 * 7):
-    future = now + datetime.timedelta(minutes=i)
-    if (future.weekday() in days and
-        f'{future.hour:02d}:{future.minute:02d}' in times and
-        self.last_realized_sync != future):
-        next_appointment = future
-        break
+def calculate_next_run(
+    days: list[int],
+    times: list[str],
+    now: datetime.datetime | None = None,
+    last_run: datetime.datetime | None = None,
+) -> datetime.datetime | None:
+    ...
 ```
 
-When the current system time rounded to the nearest minute matches `next_appointment`, a background synchronization is automatically spawned.
+Instead of iterating through thousands of individual minutes, it parses configured times and evaluates target candidate dates across the next 8 days, directly computing the earliest valid future appointment. Every 1000 milliseconds, the GUI watchdog compares current time against this appointment and spawns background synchronization when reached.
 
 ---
 
@@ -226,7 +226,7 @@ When the current system time rounded to the nearest minute matches `next_appoint
 
 ### Reporting
 - **`checkbox_var_save_report`** (`bool`):
-  - When `true`: Exports `logs/compare_report_YYYY-MM-DD_HH-MM-SS.xlsx` detailing all scanned files, statuses, and sizes.
+  - When `true`: Exports `data/logs/compare_report_YYYY-MM-DD_HH-MM-SS.xlsx` detailing all scanned files, statuses, and sizes.
 
 ---
 

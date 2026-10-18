@@ -182,6 +182,7 @@ local_mirror.db*
 *.db
 *.db-wal
 *.db-shm
+scratch/
 scratch*
 
 # User configuration & database backups

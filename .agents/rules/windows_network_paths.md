@@ -70,4 +70,4 @@ When pruning empty directories (`delete_empty_dirs`):
 ---
 
 ## 6. Validate Against Real User Configurations
-Always execute `uv run pytest`. The test suite includes `test_config_json_entry_paths_resolution` in `tests/test_core.py`, which validates every real-world path in `config.json` against `get_dirs_from_path` without requiring network access.
+Always execute `uv run pytest`. The test suite includes `test_config_json_entry_paths_resolution` in `tests/test_paths.py`, which validates every real-world path in `data/config.json` against `get_dirs_from_path` without requiring network access.

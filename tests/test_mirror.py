@@ -39,11 +39,6 @@ def test_init_creates_db(temp_db_path):
     assert os.path.exists(temp_db_path)
 
 
-def test_generate_table_name(mirror_db, test_data_dir):
-    table_name = mirror_db._generate_table_name(test_data_dir)
-    assert 'TestData' in table_name
-
-
 def test_add_and_exists_path(mirror_db, test_data_dir):
     root_dir = test_data_dir
     path = os.path.join(test_data_dir, 'file1.txt')

@@ -10,7 +10,7 @@ from core.backend import CompareDirs, SyncDirs
 from core.file import CstmPath, File
 from core.mirror import MirrorDatabase
 from gui.widgets import Action
-from utils.utils import DirectoryPair, sanitize_path
+from utils.utils import DirectoryPair
 
 
 def test_cstmpath_get_from_dir_exclusions_on_windows(tmp_path):
@@ -343,8 +343,7 @@ def test_delete_files_jit_phantom_cleanup(tmp_path):
     db_path = str(tmp_path / 'mirror.db')
     mirror = MirrorDatabase(path=db_path)
 
-    with mirror._get_db(str(target_dir)) as db:
-        db[sanitize_path(phantom_file)] = 'stats_hash_123'
+    mirror.add_path(str(target_dir), CstmPath(str(phantom_file), stats_hash='stats_hash_123'))
     assert mirror.exists(str(target_dir), str(phantom_file))
 
     dirs = [DirectoryPair(source=str(tmp_path / 'Source'), target=str(target_dir))]
@@ -376,10 +375,7 @@ def test_move_files_jit_self_healing(tmp_path):
     db_path = str(tmp_path / 'mirror.db')
     mirror = MirrorDatabase(path=db_path)
 
-    mirror.add_path(str(target_dir), str(new_target))
-    with mirror._get_db(str(target_dir)) as db:
-        del db[sanitize_path(new_target)]
-        db[sanitize_path(old_target)] = 'old_hash'
+    mirror.add_path(str(target_dir), CstmPath(str(old_target), stats_hash='old_hash'))
 
     assert mirror.exists(str(target_dir), str(old_target))
     assert not mirror.exists(str(target_dir), str(new_target))
@@ -411,8 +407,7 @@ def test_move_files_purges_phantom_record(tmp_path):
 
     db_path = str(tmp_path / 'mirror.db')
     mirror = MirrorDatabase(path=db_path)
-    with mirror._get_db(str(target_dir)) as db:
-        db[sanitize_path(source_file)] = 'phantom_hash'
+    mirror.add_path(str(target_dir), CstmPath(str(source_file), stats_hash='phantom_hash'))
     assert mirror.exists(str(target_dir), str(source_file))
 
     dirs = [DirectoryPair(source=str(tmp_path / 'Source'), target=str(target_dir))]
