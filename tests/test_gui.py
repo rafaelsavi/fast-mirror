@@ -988,7 +988,7 @@ def test_directory_pairs_modal_and_syntax_highlighting(tmp_path):
     root.destroy()
 
 
-def test_exclusions_modal_and_chips_workflow():
+def test_exclusions_modal_and_chips_workflow(monkeypatch):
     """Verify ExclusionsModal pattern management, live tester sandbox, and chip updates."""
     try:
         root = tk.Tk()
@@ -1021,6 +1021,25 @@ def test_exclusions_modal_and_chips_workflow():
     modal.new_pattern_var.set('*.bak')
     modal._handle_add_pattern()
     assert '*.bak' in modal._patterns
+
+    # Test filtering patterns
+    modal.filter_var.set('bak')
+    assert len(modal.tree.get_children()) == 1
+    assert '1/4 matched' in modal.lbl_stats.cget('text')
+    modal.filter_var.set('')
+    assert len(modal.tree.get_children()) == 4
+
+    # Test editing an existing pattern
+    from tkinter import simpledialog
+
+    monkeypatch.setattr(simpledialog, 'askstring', lambda *args, **kwargs: '*.old_tmp')
+    for child in modal.tree.get_children():
+        if modal.tree.item(child, 'values')[1] == '*.tmp':
+            modal.tree.selection_set(child)
+            break
+    modal._handle_edit_selected()
+    assert '*.old_tmp' in modal._patterns
+    assert '*.tmp' not in modal._patterns
 
     # Apply changes
     modal._apply_and_close()
