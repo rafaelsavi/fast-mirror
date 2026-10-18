@@ -65,7 +65,7 @@ The application is structured into three clean layers:
 
 - **GUI Layer (`src/gui/`)**: Manages user interaction, preferences, background thread lifecycles, real-time log routing, and system tray minimization.
 - **Core Engine Layer (`src/core/`)**: Houses filesystem traversal, metadata extraction, file linking, move/rename detection, and disk synchronization.
-- **Storage Layer**: SQLite (`local_mirror.db`) for caching and persistent log/report files in `logs/`.
+- **Storage Layer**: SQLite (`data/local_mirror.db`) for caching and persistent log/report files in `data/logs/`.
 
 ---
 

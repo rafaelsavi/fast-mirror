@@ -34,7 +34,7 @@ from gui.widgets import (
     WeekDays,
 )
 from gui.worker_thread import WorkerThread
-from utils.constants import ROOT_DIR
+from utils.constants import CONFIG_PATH
 from utils.logger import is_test_or_agent_mode, logger
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
 
@@ -52,7 +52,7 @@ class Gui:
         self.root.title('FastMirror')
 
         self.current_theme = 'native'
-        self.config_path = os.path.join(ROOT_DIR, 'config.json')
+        self.config_path = CONFIG_PATH
 
         # State variables
 
@@ -404,6 +404,7 @@ class Gui:
             ]
             config_vars = {name: getattr(self, name).get() for name in config_var_names}
             config_vars['theme'] = getattr(self, 'current_theme', 'native')
+            os.makedirs(os.path.dirname(os.path.abspath(self.config_path)), exist_ok=True)
             with open(self.config_path, 'w') as f:
                 json.dump(config_vars, f, indent=4)
             logger.info('Configuration was successfully saved')

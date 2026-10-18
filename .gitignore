@@ -173,8 +173,15 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 /tests/TestData/Destination
+
+# FastMirror Runtime Data (Active config, databases, logs)
+data/
+/data
 /logs
-local_mirror.db
+local_mirror.db*
+*.db
+*.db-wal
+*.db-shm
 scratch*
 
 # User configuration & database backups

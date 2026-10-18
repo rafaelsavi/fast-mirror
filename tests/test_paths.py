@@ -9,6 +9,7 @@ import pytest
 
 from core.path_resolver import get_dirs_from_path
 from gui.widgets import EntryPaths
+from utils.constants import CONFIG_PATH
 from utils.utils import DirectoryPair, format_elapsed_time
 
 
@@ -121,7 +122,7 @@ def test_directory_pair_repr_and_equality():
 
 def test_config_json_entry_paths_resolution():
     """Verify that all real-world entry paths configured in config.json resolve without error."""
-    config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../config.json'))
+    config_path = CONFIG_PATH
     if not os.path.isfile(config_path):
         pytest.skip('config.json not found')
 

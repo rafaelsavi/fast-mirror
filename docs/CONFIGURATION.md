@@ -30,7 +30,7 @@ This guide details all configuration options for **FastMirror**, including direc
 
 ## Configuration File Overview
 
-Settings are stored in [`config.json`](../config.example.json) in the application root directory.
+Settings are stored in `data/config.json` (template in [`config.example.json`](../config.example.json)).
 
 - The file is saved automatically when clicking **Save** in the *GUI Configuration* panel.
 - On startup, the GUI reads `config.json` via [`load_config()`](../src/gui/gui.py#L457-L478).

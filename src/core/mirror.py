@@ -9,11 +9,11 @@ from os import PathLike
 from pathlib import Path
 
 from core.file import CstmPath, CstmPathType, StatsHash, get_stats_hash
-from utils.constants import ROOT_DIR
+from utils.constants import LOCAL_MIRROR_PATH
 from utils.logger import logger
 from utils.utils import log_progress, sanitize_path
 
-local_mirror_path = os.path.join(ROOT_DIR, 'local_mirror.db')
+local_mirror_path = LOCAL_MIRROR_PATH
 
 
 def _compute_exclusions_hash(exclusions: list[str]) -> str:

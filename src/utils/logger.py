@@ -7,7 +7,7 @@ from datetime import datetime
 from logging import LogRecord
 from typing import Optional
 
-from utils.constants import ROOT_DIR
+from utils.constants import LOGS_DIR
 
 
 def is_test_or_agent_mode() -> bool:
@@ -30,7 +30,7 @@ def resolve_log_dir() -> str:
     if is_test_or_agent_mode():
         return os.path.join(tempfile.gettempdir(), 'automatic_backup_test_logs')
 
-    return os.path.join(ROOT_DIR, 'logs')
+    return LOGS_DIR
 
 
 log_dir = resolve_log_dir()

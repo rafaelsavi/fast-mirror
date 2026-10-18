@@ -123,11 +123,13 @@ The codebase is organized into modular packages:
 
 ```
 fast-mirror/
-├── config.example.json       # Example configuration template (copy to config.json)
+├── config.example.json       # Example configuration template (copy to data/config.json)
 ├── launch.pyw                # Windowless Windows launcher with auto-venv detection
-├── local_mirror.db           # SQLite database for cached target mirrors
+├── data/                     # Local runtime data (ignored in git)
+│   ├── config.json           # Active GUI and scheduler configuration
+│   ├── local_mirror.db       # SQLite database for cached target mirrors
+│   └── logs/                 # Session log files and generated Excel reports
 ├── pyproject.toml            # Project metadata, dependencies, and tool settings
-├── logs/                     # Session log files and generated Excel reports
 ├── src/
 │   ├── core/
 │   │   ├── backend.py        # CompareDirs, SyncDirs orchestration engine
@@ -315,7 +317,7 @@ When synchronization begins with **"Request confirmation before sync"** enabled,
 
 ## Configuration Reference (`config.json`)
 
-All GUI settings are saved to `config.json` in the root directory. Below is a documented example:
+All GUI settings are saved to `data/config.json`. Below is a documented example:
 
 ```json
 {

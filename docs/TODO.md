@@ -11,7 +11,7 @@
   - [x] past reports and history browser (`ReportsWindow` for browsing, opening in Excel, and cleaning past reports)
   - [x] side-by-side visual diff inspector card in confirmation popup with file type badges and date/size deltas
   - [x] log console live search with match stepping and quick clipboard copy
-- inspect if there is a better strategy for place to store db and configuration files
+- [x] inspect if there is a better strategy for place to store db and configuration files (relocated to dedicated data/ folder inside repository)
 - [ ] evaluate and implement backend/core architecture simplifications (see [ARCHITECTURE_SIMPLIFICATIONS.md](ARCHITECTURE_SIMPLIFICATIONS.md))
 - [x] remove cosmetic "Classification" column from exclusions modal (was a bloated display artifact)
 - Fix drag delay by finding first commit where it began
