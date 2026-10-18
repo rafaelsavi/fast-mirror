@@ -1,17 +1,17 @@
 # Automatic Backup — Agent Guidelines
 
-Please refer to the detailed guidelines and modular rules in [`.agents/`](file:///d:/Rafael/Projects/Python/automatic-backup/.agents):
+Please refer to the detailed guidelines and modular rules in [`.agents/`](.agents):
 
-- **Main Agent Manifesto**: [`.agents/AGENTS.md`](file:///d:/Rafael/Projects/Python/automatic-backup/.agents/AGENTS.md)
+- **Main Agent Manifesto**: [`.agents/AGENTS.md`](.agents/AGENTS.md)
 - **Rules**:
-  - [Windows & Network Path Handling Rules](file:///d:/Rafael/Projects/Python/automatic-backup/.agents/rules/windows_network_paths.md)
-  - [GUI & Threading Safety Rules](file:///d:/Rafael/Projects/Python/automatic-backup/.agents/rules/gui_and_threading.md)
-  - [SQLite & File Lock Rules on Windows](file:///d:/Rafael/Projects/Python/automatic-backup/.agents/rules/sqlite_and_file_locks.md)
-  - [Data Integrity & Safety Rules](file:///d:/Rafael/Projects/Python/automatic-backup/.agents/rules/data_integrity_and_safety.md)
+  - [Windows & Network Path Handling Rules](.agents/rules/windows_network_paths.md)
+  - [GUI & Threading Safety Rules](.agents/rules/gui_and_threading.md)
+  - [SQLite & File Lock Rules on Windows](.agents/rules/sqlite_and_file_locks.md)
+  - [Data Integrity & Safety Rules](.agents/rules/data_integrity_and_safety.md)
 - **Skills**:
-  - [Codebase Verification](file:///d:/Rafael/Projects/Python/automatic-backup/.agents/skills/verify-codebase/SKILL.md)
-  - [UNC & Network Path Handling](file:///d:/Rafael/Projects/Python/automatic-backup/.agents/skills/unc-path-handling/SKILL.md)
-  - [Diagnose Sync Errors](file:///d:/Rafael/Projects/Python/automatic-backup/.agents/skills/diagnose-sync-errors/SKILL.md)
+  - [Codebase Verification](.agents/skills/verify-codebase/SKILL.md)
+  - [UNC & Network Path Handling](.agents/skills/unc-path-handling/SKILL.md)
+  - [Diagnose Sync Errors](.agents/skills/diagnose-sync-errors/SKILL.md)
 
 ---
 

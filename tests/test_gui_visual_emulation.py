@@ -491,7 +491,7 @@ def test_telemetry_bar_modes():
     assert 'Scanning remote directory' in bar.lbl_status.cget('text')
 
     # Determinate mode with speed and file truncation
-    long_path = 'D:\\TestBackup\\Target\\VeryLongDirectoryTree\\Subfolder\\NestedDeeply\\Photo_2026_HighRes.RAW'
+    long_path = 'D:\\BackupTarget\\VeryLongDirectoryTree\\Subfolder\\NestedDeeply\\Photo_2026_HighRes.RAW'
     bar.set_determinate('copy', 45, 100, current_file=long_path, speed='125.4 MB/s')
     assert bar._active_mode == 'determinate'
     assert bar.progress['value'] == 45.0

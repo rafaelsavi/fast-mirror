@@ -50,9 +50,6 @@ automatic-backup/
 ├── .agents/                  # Agent rules and skills
 │   ├── rules/                # Modular domain rules (network paths, GUI, SQLite, safety)
 │   └── skills/               # Runbooks (verification, diagnostics, testing)
-├── notebooks/                # Diagnostic and exploratory notebooks
-│   ├── explore_db.ipynb
-│   └── tests.ipynb
 ├── src/
 │   ├── core/
 │   │   ├── backend.py        # Core synchronization engine (SyncDirs, CompareDirs)
@@ -80,7 +77,7 @@ automatic-backup/
 │   ├── test_confirmation_popup.py # Action confirmation popup & treeview
 │   ├── test_gui.py           # GUI scheduler, settings, and TextLogger
 │   └── test_logger.py        # Logging handlers and log isolation
-├── config.json               # Real user configuration and directory pairs
+├── config.example.json       # Template configuration file (copy to config.json)
 ├── pyproject.toml            # Dependencies, Ruff rules, and Mypy settings
 └── docs/                     # Architecture, Development, and Configuration guides
 ```
@@ -92,4 +89,4 @@ Before submitting any changes or completing a task:
 1. `uv run pytest` — All tests must pass (100% pass rate).
 2. `uv run ruff check .` — Zero linting errors or warnings.
 3. `uv run ruff format --check .` — Formatting conforms to repository style.
-4. `test_config_json_entry_paths_resolution` must succeed against the real `config.json`.
+4. `test_config_json_entry_paths_resolution` must succeed against the real `config.json` (or skip if not present).

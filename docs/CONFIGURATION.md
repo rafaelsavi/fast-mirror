@@ -30,10 +30,10 @@ This guide details all configuration options for **Automatic Backup Tool**, incl
 
 ## Configuration File Overview
 
-Settings are stored in [`config.json`](file:///d:/Rafael/Projects/Python/automatic-backup/config.json) in the application root directory.
+Settings are stored in [`config.json`](../config.example.json) in the application root directory.
 
 - The file is saved automatically when clicking **Save** in the *GUI Configuration* panel.
-- On startup, the GUI reads `config.json` via [`load_config()`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/gui.py#L457-L478).
+- On startup, the GUI reads `config.json` via [`load_config()`](../src/gui/gui.py#L457-L478).
 - If `config.json` is corrupted, the application backs it up to `config.json_old.json` and resets to default values.
 - You can safely edit `config.json` with a text editor while the application is not running.
 
@@ -76,7 +76,7 @@ In `config.json`, they are saved as a list of two-element string arrays:
 
 ### Path Validation Semantics
 
-When validating paths in [`EntryPaths.parse_line()`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/widgets.py#L40-L55):
+When validating paths in [`EntryPaths.parse_line()`](../src/gui/widgets.py#L40-L55):
 1. **Source directory**: Must exist (`os.path.isdir(source)`). If the source disk is disconnected, the line is marked invalid and ignored.
 2. **Target directory**: Must either exist already, or its immediate parent directory must exist (`os.path.isdir(os.path.dirname(os.path.realpath(target)))`). This allows defining a new destination subdirectory that `SyncDirs` will automatically create.
 
@@ -88,7 +88,7 @@ Exclusion patterns prevent unwanted, temporary, or cache files from being analyz
 
 In the GUI, patterns are entered as comma-separated values in the **Exclusions** field:
 ```text
-$RECYCLE.BIN, **\.git\**, **\.venv\**, **\__pycache__\**, **\~$*, Filmes, Jogos
+$RECYCLE.BIN, **\.git\**, **\.venv\**, **\__pycache__\**, **\~$*, Temp, Cache
 ```
 
 In `config.json`, they are stored as a string array:
@@ -103,8 +103,8 @@ In `config.json`, they are stored as a string array:
     "**\\___*\\**",
     "**\\__pycache__\\**",
     "**\\~$*",
-    "Filmes",
-    "Jogos"
+    "Temp",
+    "Cache"
 ]
 ```
 
@@ -127,7 +127,7 @@ Exclusions use [`pathspec`](https://github.com/cpburnz/python-pathspec) implemen
 
 ### Directory Pruning vs. File Exclusion
 
-During [`CstmPath.get_from_dir()`](file:///d:/Rafael/Projects/Python/automatic-backup/src/core/file.py#L110-L131), the scanner inspects each directory before walking its contents:
+During [`CstmPath.get_from_dir()`](../src/core/file.py#L110-L131), the scanner inspects each directory before walking its contents:
 
 ```python
 dirs[:] = [d for d in dirs if not spec.match_file((rel_root / d).as_posix())]

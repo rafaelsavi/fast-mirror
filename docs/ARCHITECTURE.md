@@ -71,7 +71,7 @@ The application is structured into three clean layers:
 
 ## Core Data Models & File Abstractions
 
-Implemented in [`src/core/file.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/core/file.py).
+Implemented in [`src/core/file.py`](../src/core/file.py).
 
 ### CstmPath
 
@@ -128,7 +128,7 @@ The `File` class pairs a source `CstmPath` and/or a target `CstmPath`. A file ex
 
 ## The Comparison Engine (`CompareDirs`)
 
-Implemented in [`src/core/backend.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/core/backend.py).
+Implemented in [`src/core/backend.py`](../src/core/backend.py).
 
 `CompareDirs` executes a strict five-phase workflow:
 
@@ -184,7 +184,7 @@ When enabled, builds a pandas DataFrame containing all evaluated files (filterin
 
 ## The Synchronization Engine (`SyncDirs`)
 
-Implemented in [`src/core/backend.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/core/backend.py).
+Implemented in [`src/core/backend.py`](../src/core/backend.py).
 
 `SyncDirs` executes user-approved operations in an optimized four-phase sequence to maximize available storage and avoid path collisions:
 
@@ -195,7 +195,7 @@ Implemented in [`src/core/backend.py`](file:///d:/Rafael/Projects/Python/automat
 
 ### Network Share Resilience & Retries (`robust_copy`, `robust_move`, `robust_delete`)
 
-When backing up to local network shares (SMB/CIFS / UNC paths such as `\\192.168.1.100\...`), operations are vulnerable to transient network drops (`WinError 64: network name no longer available`, `WinError 53: network path not found`, `WinError 59: unexpected network error`, `WinError 121: semaphore timeout`) and momentary file locks (`WinError 32: sharing violation`, `PermissionError: Access is denied`).
+When backing up to local network shares (SMB/CIFS / UNC paths such as `\\nas\backup\...`), operations are vulnerable to transient network drops (`WinError 64: network name no longer available`, `WinError 53: network path not found`, `WinError 59: unexpected network error`, `WinError 121: semaphore timeout`) and momentary file locks (`WinError 32: sharing violation`, `PermissionError: Access is denied`).
 
 To ensure robustness, all filesystem mutations use retry mechanisms with exponential backoff:
 
@@ -237,7 +237,7 @@ After files are deleted or moved, orphan empty folders can clutter the target:
 
 ## The Local Mirror Database (`MirrorDatabase`)
 
-Implemented in [`src/core/mirror.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/core/mirror.py).
+Implemented in [`src/core/mirror.py`](../src/core/mirror.py).
 
 ### Isolation & Table Name Derivation
 The mirror manages a single SQLite database (`local_mirror.db`) backed by `sqlitedict`. To ensure different directories or different exclusion sets do not cross-contaminate:
@@ -264,7 +264,7 @@ The mirror manages a single SQLite database (`local_mirror.db`) backed by `sqlit
 ## GUI & Concurrency Architecture
 
 ### WorkerThread & Cooperative Cancellation
-Implemented in [`src/gui/worker_thread.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/worker_thread.py).
+Implemented in [`src/gui/worker_thread.py`](../src/gui/worker_thread.py).
 
 Background synchronization and comparison run asynchronously in a dedicated `WorkerThread` that uses purely cooperative cancellation via `threading.Event`:
 
@@ -282,7 +282,7 @@ class WorkerThread(threading.Thread):
 When cancellation is requested (either via the UI Stop button, tray icon, or scheduler disable), `cancel()` sets the cancellation event. The core loops in `CompareDirs` and `SyncDirs` check `cancel_requested.is_set()` at every file iteration, aborting safely between operations without corrupting filesystem state, leaking file locks, or imposing `sys.settrace` interpreter overhead.
 
 ### Watchdog State Machine
-Implemented in [`src/gui/gui.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/gui.py).
+Implemented in [`src/gui/gui.py`](../src/gui/gui.py).
 
 The GUI uses a recursive Tkinter timer (`root.after()`) for non-blocking monitoring:
 - **`backend_watchdog`**: Polls every 1000ms in `STANDBY` mode (or 50ms when transitioning). Checks if a scheduled appointment has arrived, or if a manual button was pressed.
@@ -292,14 +292,14 @@ The GUI uses a recursive Tkinter timer (`root.after()`) for non-blocking monitor
   - `STOPPING`: Cancellation requested, inputs disabled until thread exits.
 
 ### Thread-Safe Logging
-Implemented in [`src/utils/logger.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/utils/logger.py).
+Implemented in [`src/utils/logger.py`](../src/utils/logger.py).
 
 Tkinter widgets cannot be safely updated from secondary threads. To ensure thread safety:
 1. `Logger` registers a custom `QueueHandler` writing to a Python `queue.Queue`.
 2. A dedicated Tkinter watchdog (`log_queue_watchdog`) polls the queue in the main thread and inserts formatted text records into `TextLogger`.
 
 ### Custom TreeView with Dynamic Grouping
-Implemented in [`src/gui/confirmation_popup.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/confirmation_popup.py).
+Implemented in [`src/gui/confirmation_popup.py`](../src/gui/confirmation_popup.py).
 
 `CustomCheckboxTreeView` (derived from `ttkwidgets.CheckboxTreeview`):
 - Groups proposed changes by `copy`, `move`, and `delete`.
@@ -310,7 +310,7 @@ Implemented in [`src/gui/confirmation_popup.py`](file:///d:/Rafael/Projects/Pyth
   ```
 
 ### System Tray via Pystray
-Implemented in [`src/gui/tray.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/tray.py).
+Implemented in [`src/gui/tray.py`](../src/gui/tray.py).
 
 Windows-native notification tray docking is provided via `pystray`:
 - Pure Python using native Windows API (`Shell_NotifyIconW`) without requiring any compiled binary DLLs.

@@ -1,0 +1,51 @@
+{
+    "entry_paths": [
+        [
+            "C:\\Source",
+            "\\\\nas\\backup\\Source"
+        ],
+        [
+            "D:\\Data",
+            "\\\\nas\\backup\\Data"
+        ]
+    ],
+    "week_days": [
+        "TUE",
+        "FRI",
+        "SUN"
+    ],
+    "entry_times": [
+        "20:30"
+    ],
+    "entry_exclusions": [
+        "$RECYCLE.BIN",
+        "**\\*Previews.lrdata\\**",
+        "**\\.git\\**",
+        "**\\.idea\\**",
+        "**\\.joblib_cache\\**",
+        "**\\.mypy_cache\\**",
+        "**\\.pytest_cache\\**",
+        "**\\.venv\\**",
+        "**\\___*\\**",
+        "**\\__pycache__\\**",
+        "**\\~$*",
+        "Temp",
+        "Cache"
+    ],
+    "log_levels": [
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
+    ],
+    "checkbox_default_actions": [
+        "copy",
+        "move",
+        "delete"
+    ],
+    "checkbox_var_use_mirror": true,
+    "checkbox_var_build_mirror": false,
+    "checkbox_var_metadata_comparison": true,
+    "checkbox_var_confirm_sync": true,
+    "checkbox_var_save_report": false
+}

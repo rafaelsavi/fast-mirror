@@ -81,19 +81,18 @@ This guide covers developer onboarding, environment setup, coding standards, aut
 
 ## Project Structure & Packaging
 
-The package is configured via [`pyproject.toml`](file:///d:/Rafael/Projects/Python/automatic-backup/pyproject.toml) using the `setuptools` build backend.
+The package is configured via [`pyproject.toml`](../pyproject.toml) using the `setuptools` build backend.
 
 ```
 automatic-backup/
 ├── pyproject.toml            # Dependencies, tools, and build configuration
 ├── launch.pyw                # Headless launcher with auto-venv detection
-├── config.json               # Default configuration
+├── config.example.json       # Template configuration file (copy to config.json)
 ├── src/                      # Application source root (added to PYTHONPATH)
 │   ├── core/                 # Backend engines (linking, mirroring, comparing)
 │   ├── gui/                  # Tkinter interface, threads, and custom widgets
 │   └── utils/                # Helpers, constants, and logging
 ├── tests/                    # Pytest test suite
-└── notebooks/                # Exploratory notebooks
 ```
 
 When installed with `-e .`, the `src` directory is linked into your virtual environment's `site-packages`, allowing absolute imports like `from core.file import CstmPath` or `from gui.gui import Gui`.
@@ -176,7 +175,7 @@ def test_custom_mirror_operation(temp_mirror, tmp_path):
 
 ## Code Quality & Tooling
 
-Code quality rules are defined in [`pyproject.toml`](file:///d:/Rafael/Projects/Python/automatic-backup/pyproject.toml).
+Code quality rules are defined in [`pyproject.toml`](../pyproject.toml).
 
 ### Linting with Ruff
 
@@ -237,9 +236,9 @@ explicit_package_bases = true
 
 ### Pystray System Tray
 
-System tray integration is implemented using `pystray` in [`src/gui/tray.py`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/tray.py):
+System tray integration is implemented using `pystray` in [`src/gui/tray.py`](../src/gui/tray.py):
 1. Pure Python implementation using native Windows `Shell_NotifyIconW` via `ctypes`.
-2. Uses [`app_icon.ico`](file:///d:/Rafael/Projects/Python/automatic-backup/src/gui/app_icon.ico) directly via Pillow (`PIL.Image`).
+2. Uses [`app_icon.ico`](../src/gui/app_icon.ico) directly via Pillow (`PIL.Image`).
 3. Runs detached in a background thread without blocking Tkinter's event loop.
 4. If running in a headless or test environment, system tray initialization gracefully degrades without crashing.
 
@@ -252,7 +251,7 @@ The application utilizes Windows-specific functions:
 
 ### Windows UNC & SMB Network Paths Gotchas
 
-When syncing to remote NAS / SMB shares (e.g. `\\192.168.1.100\Share`), keep these critical platform behaviors in mind:
+When syncing to remote NAS / SMB shares (e.g. `\\nas\share`), keep these critical platform behaviors in mind:
 - **Never use `os.path.commonpath` with UNC root shares**: Python's `ntpath.splitdrive` treats `\\server\share` as having an empty path segment, causing `ntpath.commonpath` to view it as a relative path and raise `ValueError: Can't mix absolute and relative paths` when paired with nested files.
 - **Avoid blocking network I/O (`os.path.realpath`, `Path.resolve`) during path comparisons**: These calls query the network filesystem for reparse points and can block or hang if a network destination is unreachable or asleep. Always perform lexical matching using `pathlib.Path.is_relative_to()`.
 - **Test against real configurations**: Automated tests in `tests/test_core.py` validate all entries in `config.json` against `get_dirs_from_path`.

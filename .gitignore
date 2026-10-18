@@ -176,3 +176,12 @@ cython_debug/
 /logs
 local_mirror.db
 scratch*
+
+# User configuration & database backups
+config.json
+config_test.json
+*.db.bak
+
+# Local notebooks
+notebooks/
+*.ipynb

@@ -80,9 +80,9 @@ def test_get_dirs_from_path_missing_raises(tmp_path):
 def test_get_dirs_from_path_unc_paths():
     dirs = [
         DirectoryPair(r'E:\Photos', r'\\192.168.1.100\Photos'),
-        DirectoryPair(r'D:\Arquivos', r'\\192.168.1.100\Backup\D'),
+        DirectoryPair(r'D:\Files', r'\\192.168.1.100\Backup\D'),
     ]
-    path = r'\\192.168.1.100\Photos\2025\Vacation\20251007_101158 [Qatar, Tanzania].mp4'
+    path = r'\\192.168.1.100\Photos\2025\Vacation\sample.mp4'
     matched = get_dirs_from_path(path, dirs)
     assert matched.source == r'E:\Photos'
     assert matched.target == r'\\192.168.1.100\Photos'

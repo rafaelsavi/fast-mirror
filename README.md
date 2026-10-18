@@ -123,14 +123,11 @@ The codebase is organized into modular packages:
 
 ```
 automatic-backup/
-├── config.json               # Persistent user configuration
+├── config.example.json       # Example configuration template (copy to config.json)
 ├── launch.pyw                # Windowless Windows launcher with auto-venv detection
 ├── local_mirror.db           # SQLite database for cached target mirrors
 ├── pyproject.toml            # Project metadata, dependencies, and tool settings
 ├── logs/                     # Session log files and generated Excel reports
-├── notebooks/                # Exploratory & diagnostic Jupyter notebooks
-│   ├── explore_db.ipynb
-│   └── tests.ipynb
 ├── src/
 │   ├── core/
 │   │   ├── backend.py        # CompareDirs, SyncDirs orchestration engine
@@ -324,12 +321,12 @@ All GUI settings are saved to `config.json` in the root directory. Below is a do
 {
     "entry_paths": [
         [
-            "D:\\",
-            "\\\\192.168.1.100\\Backup\\D"
+            "C:\\Photos",
+            "\\\\nas\\backup\\Photos"
         ],
         [
-            "E:\\Photos\\Family",
-            "\\\\192.168.1.100\\Photos-Family"
+            "D:\\Documents",
+            "\\\\nas\\backup\\Documents"
         ]
     ],
     "week_days": [
@@ -475,11 +472,11 @@ uv run mypy src
 
 ## Additional Documentation
 
-For deeper technical breakdowns, consult the dedicated guides in the [`docs/`](file:///d:/Rafael/Projects/Python/automatic-backup/docs) folder:
+For deeper technical breakdowns, consult the dedicated guides in the [`docs/`](docs/) folder:
 
-- [System Architecture & Synchronization Engine](file:///d:/Rafael/Projects/Python/automatic-backup/docs/ARCHITECTURE.md)
-- [Configuration & Exclusion Patterns Guide](file:///d:/Rafael/Projects/Python/automatic-backup/docs/CONFIGURATION.md)
-- [Development, Testing & Contribution Guidelines](file:///d:/Rafael/Projects/Python/automatic-backup/docs/DEVELOPMENT.md)
+- [System Architecture & Synchronization Engine](docs/ARCHITECTURE.md)
+- [Configuration & Exclusion Patterns Guide](docs/CONFIGURATION.md)
+- [Development, Testing & Contribution Guidelines](docs/DEVELOPMENT.md)
 
 ---
 
