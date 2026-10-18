@@ -41,6 +41,11 @@ if (
     subprocess.Popen([venv_pythonw] + sys.argv)
     sys.exit(0)
 
+# Ensure src is on sys.path for direct execution
+src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
 from gui.gui import Gui  # noqa: E402
 
 gui = Gui()
