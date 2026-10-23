@@ -6,7 +6,9 @@
 [![Type Checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue.svg)](https://mypy-lang.org/)
 [![Database: SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg)](https://sqlite.org/)
 
-**FastMirror** is a high-performance, automated one-way directory synchronization and backup system for Windows. Built with Python and Tkinter, it provides smart change detection, fast network-drive acceleration using a local SQLite mirror index, intelligent file move/rename detection, an interactive confirmation dialog for reviewing actions, and a background task scheduler that docks seamlessly into the Windows system tray.
+**FastMirror** is a Windows backup tool for repeatedly synchronizing the same source and destination folders. It mirrors changes one way—from source to target—and is especially useful when the target is a slow external drive or network share.
+
+Unlike a sync that must walk both directory trees on every run, FastMirror can use a local SQLite index of the target. After the initial scan, this avoids repeatedly listing every target file over a slow network connection. It also detects many moves and renames so existing target files can be moved instead of transferred again. You can review proposed file operations before they run, or schedule recurring syncs.
 
 ---
 

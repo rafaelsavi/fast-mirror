@@ -472,7 +472,7 @@ def test_reports_window_visual_and_actions(monkeypatch, tmp_path):
     root.destroy()
 
 
-def test_telemetry_bar_modes():
+def test_telemetry_bar_modes(monkeypatch):
     """Test TelemetryBar determinate, indeterminate progress, and reset."""
     try:
         root = tk.Tk()
@@ -490,13 +490,24 @@ def test_telemetry_bar_modes():
     assert bar._active_mode == 'indeterminate'
     assert 'Scanning remote directory' in bar.lbl_status.cget('text')
 
-    # Determinate mode with speed and file truncation
+    # Keep the full path when it fits in the allocated label width.
+    short_path = 'D:\\BackupTarget\\photo.jpg'
+    full_text = f'Current: {short_path}'
+    monkeypatch.setattr(bar.lbl_details, 'winfo_width', lambda: bar._details_font.measure(full_text))
+    bar.set_determinate('copy', 45, 100, current_file=short_path)
+    assert bar.lbl_details.cget('text') == full_text
+
+    # Truncate only when the path exceeds the allocated width.
     long_path = 'D:\\BackupTarget\\VeryLongDirectoryTree\\Subfolder\\NestedDeeply\\Photo_2026_HighRes.RAW'
+    available_width = bar._details_font.measure('Current: ...Photo_2026_HighRes.RAW')
+    monkeypatch.setattr(bar.lbl_details, 'winfo_width', lambda: available_width)
     bar.set_determinate('copy', 45, 100, current_file=long_path, speed='125.4 MB/s')
     assert bar._active_mode == 'determinate'
     assert bar.progress['value'] == 45.0
     assert 'Copy: 45 of 100 (45.0%) • 125.4 MB/s' in bar.lbl_status.cget('text')
     assert 'Photo_2026_HighRes.RAW' in bar.lbl_details.cget('text')
+    assert bar.lbl_details.cget('text').startswith('Current: ...')
+    assert bar._details_font.measure(bar.lbl_details.cget('text')) <= available_width
 
     # Reset
     bar.reset()
