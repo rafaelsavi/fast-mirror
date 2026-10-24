@@ -106,7 +106,7 @@ def test_full_gui_visual_rendering_and_layout(monkeypatch, tmp_path):
     os.makedirs(str(tmp_path / 'Source'), exist_ok=True)
     os.makedirs(str(tmp_path / 'Target'), exist_ok=True)
     gui.entry_paths.add(pair1)
-    gui.update_overview_stats()
+    gui.paths_panel.refresh_cards()
 
     gui.text_logger.insert('System initialized successfully\n', 'INFO')
     gui.text_logger.insert('Target share connection latency: 4ms\n', 'WARNING')
@@ -124,15 +124,10 @@ def test_full_gui_visual_rendering_and_layout(monkeypatch, tmp_path):
     assert gui.status_bar is not None
     assert gui.actions_panel is not None
     assert gui.schedule_panel is not None
-    assert gui.overview_card is not None
+    assert not hasattr(gui, 'overview_card')
     assert gui.paths_panel is not None
     assert gui.log_panel is not None
     assert gui.telemetry_bar is not None
-
-    # Overview Card labels
-    assert '1 online / 1 configured' in gui.overview_card.text_var_pairs_count.get()
-    assert 'Active (WAL cache)' in gui.overview_card.text_var_mirror_status.get()
-    assert 'Interactive Approval' in gui.overview_card.text_var_confirm_status.get()
 
     # Capture Win32 bitmap if available
     hwnd = gui.root.winfo_id()
@@ -242,50 +237,20 @@ def test_schedule_panel_and_corner_cases(monkeypatch):
     gui.root.destroy()
 
 
-def test_overview_card_reactivity(monkeypatch, tmp_path):
-    """Test that OverviewCard reacts dynamically to configuration changes."""
+def test_overview_card_standalone():
+    """Test that OverviewCard class remains usable as a standalone component."""
     try:
-        gui = _setup_test_gui(monkeypatch)
+        root = tk.Tk()
+        root.withdraw()
     except tk.TclError:
         pytest.skip('Tkinter display not available')
 
-    card = gui.overview_card
+    from gui.components.overview_card import OverviewCard
 
-    # Test mirror mode changes
-    gui.checkbox_var_use_mirror.set(True)
-    gui.checkbox_var_build_mirror.set(False)
-    assert 'Active (WAL cache)' in card.text_var_mirror_status.get()
-
-    gui.checkbox_var_build_mirror.set(True)
-    assert 'Rebuild Mode' in card.text_var_mirror_status.get()
-
-    gui.checkbox_var_build_mirror.set(False)
-    gui.checkbox_var_use_mirror.set(False)
-    assert 'Direct Scan (Disabled)' in card.text_var_mirror_status.get()
-
-    # Test sync confirmation changes
-    gui.checkbox_var_confirm_sync.set(True)
-    assert 'Interactive Approval' in card.text_var_confirm_status.get()
-
-    gui.checkbox_var_confirm_sync.set(False)
-    assert 'Direct / Automatic' in card.text_var_confirm_status.get()
-
-    # Test directory pair count changes
-    src_dir = str(tmp_path / 'SourceLive')
-    tgt_dir = str(tmp_path / 'TargetLive')
-    os.makedirs(src_dir, exist_ok=True)
-    os.makedirs(tgt_dir, exist_ok=True)
-
-    gui.entry_paths.set(
-        [
-            DirectoryPair(source=src_dir, target=tgt_dir),
-            DirectoryPair(source='X:\\MissingDrive\\Folder', target='Y:\\MissingTarget'),
-        ]
-    )
-    gui.update_overview_stats()
-    assert '1 online / 2 configured' in card.text_var_pairs_count.get()
-
-    gui.root.destroy()
+    card = OverviewCard(root)
+    assert card is not None
+    assert '0 pairs configured' in card.text_var_pairs_count.get()
+    root.destroy()
 
 
 def test_paths_panel_health_check_and_chips(monkeypatch, tmp_path):

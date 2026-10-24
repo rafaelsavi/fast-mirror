@@ -12,7 +12,6 @@ from core.backend import CompareDirs, SyncDirs
 from core.mirror import MirrorDatabase
 from gui.components.actions_panel import ActionsPanel
 from gui.components.log_panel import LogPanel
-from gui.components.overview_card import OverviewCard
 from gui.components.paths_panel import PathsPanel
 from gui.components.reports_window import ReportsWindow
 from gui.components.schedule_panel import SchedulePanel
@@ -34,7 +33,7 @@ from gui.widgets import (
 )
 from gui.worker_thread import WorkerThread
 from utils.constants import CONFIG_PATH
-from utils.logger import is_test_or_agent_mode, logger
+from utils.logger import logger
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
 
 
@@ -87,11 +86,6 @@ class Gui:
         init_w = self.root.winfo_reqwidth()
         init_h = self.root.winfo_reqheight()
         self.root.minsize(init_w, init_h)
-
-        # Update overview card mode labels dynamically on setting changes without remote network I/O
-        self.checkbox_var_use_mirror.trace_add('write', lambda *_: self.update_mode_labels())
-        self.checkbox_var_build_mirror.trace_add('write', lambda *_: self.update_mode_labels())
-        self.checkbox_var_confirm_sync.trace_add('write', lambda *_: self.update_mode_labels())
 
         # Register tray actions and update initial tray state
         self.root.set_tray_callbacks(
@@ -251,13 +245,6 @@ class Gui:
         )
         self.schedule_panel.pack(fill='x')
 
-        # System Overview Card
-        self.overview_card = OverviewCard(
-            left_container,
-            padding=6,
-        )
-        self.overview_card.pack(fill='x', pady=(6, 0))
-
         # 3. Right Column: Paths Panel and Activity Log Panel
         right_container = ttk.Frame(self.root)
         right_container.grid(row=1, column=1, sticky='nsew', padx=(5, 10), pady=(0, 10))
@@ -354,7 +341,6 @@ class Gui:
             if getattr(self, 'current_theme', 'native') != 'native':
                 self.apply_theme('native')
             self.get_next_appointment()
-            self.update_overview_stats()
             logger.info('GUI configuration was reset')
 
     def button_action_save_config(self, ask_confirmation=True):
@@ -410,68 +396,6 @@ class Gui:
             self.button_action_reset_config(ask_confirmation=False)
 
         self.get_next_appointment()
-        self.update_overview_stats()
-
-    def update_mode_labels(self):
-        """Instantaneous update of mode labels on the overview card without disk or network I/O."""
-        if not hasattr(self, 'overview_card'):
-            return
-        if hasattr(self, 'checkbox_var_use_mirror'):
-            use_mirror = self.checkbox_var_use_mirror.get()
-            build_mirror = self.checkbox_var_build_mirror.get() if hasattr(self, 'checkbox_var_build_mirror') else False
-            if build_mirror:
-                self.overview_card.text_var_mirror_status.set('Rebuild Mode (WAL)')
-            elif use_mirror:
-                self.overview_card.text_var_mirror_status.set('Active (WAL cache)')
-            else:
-                self.overview_card.text_var_mirror_status.set('Direct Scan (Disabled)')
-
-        if hasattr(self, 'checkbox_var_confirm_sync'):
-            confirm = self.checkbox_var_confirm_sync.get()
-            self.overview_card.text_var_confirm_status.set('Interactive Approval' if confirm else 'Direct / Automatic')
-
-    def update_overview_stats(self):
-        """Update system overview card with live counts and modes."""
-        if not hasattr(self, 'overview_card'):
-            return
-        self.update_mode_labels()
-        try:
-            raw_pairs = self.entry_paths.get_raw_pairs()
-            total_count = len(raw_pairs)
-            valid_pairs = self.entry_paths.get_as_dir_pairs()
-
-            has_remote = any(p.target.startswith(r'\\') or p.source.startswith(r'\\') for p in valid_pairs)
-
-            if is_test_or_agent_mode() or not has_remote:
-                # Fast local probe (instantaneous, <0.05ms)
-                online_count = len([p for p in valid_pairs if os.path.isdir(p.source) and os.path.isdir(p.target)])
-                self.overview_card.text_var_pairs_count.set(f'{online_count} online / {total_count} configured')
-            else:
-                # Instantly display count on main thread without blocking on SMB network I/O
-                self.overview_card.text_var_pairs_count.set(f'{len(valid_pairs)} online / {total_count} configured')
-
-                if getattr(self, '_probe_thread_active', False):
-                    return
-                self._probe_thread_active = True
-
-                def _async_probe():
-                    try:
-                        online = len([p for p in valid_pairs if os.path.isdir(p.source) and os.path.isdir(p.target)])
-                        self.root.after(
-                            0,
-                            lambda: self.overview_card.text_var_pairs_count.set(
-                                f'{online} online / {total_count} configured'
-                            ),
-                        )
-                    except Exception:
-                        pass
-                    finally:
-                        self._probe_thread_active = False
-
-                threading.Thread(target=_async_probe, daemon=True).start()
-        except Exception as e:
-            logger.error(f'update_overview_stats failed: {e}')
-            self.overview_card.text_var_pairs_count.set('0 configured')
 
     def button_action_open_report(self):
         if not os.path.isdir(logger.log_dir):

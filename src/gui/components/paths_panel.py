@@ -166,9 +166,6 @@ class PathsPanel(ttk.LabelFrame):
         from gui.components.directory_pairs_modal import DirectoryPairsModal
 
         def _on_pairs_changed():
-            top = self.winfo_toplevel()
-            if hasattr(top, 'update_overview_stats'):
-                top.update_overview_stats()
             self._update_pair_stats()
             self.lbl_health_status.config(
                 text='Directory pairs updated. Click "Health Check" to probe reachability.',
@@ -226,10 +223,6 @@ class PathsPanel(ttk.LabelFrame):
                     color = '#c62828'
 
                 self.lbl_health_status.config(text=msg, foreground=color)
-                top = self.winfo_toplevel()
-                if hasattr(top, 'update_overview_stats'):
-                    with contextlib.suppress(Exception):
-                        top.update_overview_stats()
 
             self.after(0, _update_ui)
 
@@ -246,10 +239,7 @@ class PathsPanel(ttk.LabelFrame):
         pairs = [(s, t) for s, t, _ in self.entry_paths.get_raw_pairs() if s and t]
         remaining = [p for p in pairs if not (p[0] == source and p[1] == target)]
         self.entry_paths.set(remaining)
-        top = self.winfo_toplevel()
-        if hasattr(top, 'update_overview_stats'):
-            with contextlib.suppress(Exception):
-                top.update_overview_stats()
+        self._update_pair_stats()
 
     def open_selected_folder(self):
         """Open the currently selected path or line under cursor in Windows File Explorer."""
