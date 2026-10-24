@@ -293,6 +293,7 @@ def test_actions_panel_interactions():
         checkbox_var_metadata_comparison=var_meta,
         checkbox_var_confirm_sync=var_confirm,
         on_reset_config=lambda: actions_called.append('reset'),
+        on_load_config=lambda: actions_called.append('load'),
         on_save_config=lambda: actions_called.append('save'),
         on_quick_compare=lambda: actions_called.append('compare'),
         on_open_report=lambda: actions_called.append('report'),
@@ -301,13 +302,14 @@ def test_actions_panel_interactions():
     )
 
     panel.button_new_config.invoke()
+    panel.button_load_config.invoke()
     panel.button_save_config.invoke()
     panel.button_quick_compare.invoke()
     panel.button_open_report.invoke()
     panel.button_sync_now.invoke()
     panel.button_schedule_sync.invoke()
 
-    assert actions_called == ['reset', 'save', 'compare', 'report', 'sync', 'schedule']
+    assert actions_called == ['reset', 'load', 'save', 'compare', 'report', 'sync', 'schedule']
     assert default_actions.get_as_actions() == [Action.COPY]
 
     # Test mirror options mutual exclusion via reactive trace
@@ -1540,6 +1542,7 @@ def test_actions_panel_step5_modernization():
     assert hasattr(panel.button_sync_now, '_tooltip')
     assert hasattr(panel.button_quick_compare, '_tooltip')
     assert hasattr(panel.button_new_config, '_tooltip')
+    assert hasattr(panel.button_load_config, '_tooltip')
     assert hasattr(panel.button_save_config, '_tooltip')
     assert hasattr(panel.rb_meta, '_tooltip')
     assert hasattr(panel.rb_content, '_tooltip')
@@ -1761,3 +1764,96 @@ def test_completion_notification_reporting():
     assert 'no files were modified' in notifications[-1][0]
 
     root.destroy()
+
+
+def test_gui_configuration_load_and_save_workflow(tmp_path, monkeypatch):
+    """Verify configuration saving, reloading, exporting, importing, and offline path preservation."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+    root.destroy()
+
+    import json
+
+    from gui.gui import Gui
+
+    monkeypatch.setattr('gui.gui.CONFIG_PATH', str(tmp_path / 'app_config.json'))
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'get_next_appointment', lambda self: None)
+    monkeypatch.setattr('tkinter.messagebox.askyesno', lambda *args, **kwargs: True)
+    monkeypatch.setattr('tkinter.messagebox.showwarning', lambda *args, **kwargs: None)
+    monkeypatch.setattr('tkinter.messagebox.showerror', lambda *args, **kwargs: None)
+
+    gui = Gui()
+    test_cfg = tmp_path / 'app_config.json'
+
+    # 1. Configure settings including offline UNC path
+    offline_unc_pair = ('D:\\LocalSrc', '\\\\offline_nas\\share\\backup')
+    gui.entry_paths.insert('1.0', f'{offline_unc_pair[0]} -> {offline_unc_pair[1]}\n')
+    gui.entry_exclusions.set(['$RECYCLE.BIN', '*.tmp', '.git'])
+    gui.week_days.set(['MON', 'WED', 'FRI'])
+    gui.entry_times.set(['14:30', '22:00'])
+    gui.toggle_auto_scroll.set(False)
+
+    # 2. Save configuration
+    gui.button_action_save_config(ask_confirmation=False)
+    assert test_cfg.exists()
+    assert not (tmp_path / 'app_config.json.tmp').exists()
+
+    with open(test_cfg, encoding='utf-8') as f:
+        saved_data = json.load(f)
+
+    # Verify offline UNC path was not wiped
+    saved_pairs = [tuple(p) for p in saved_data['entry_paths']]
+    assert offline_unc_pair in saved_pairs
+    assert saved_data['week_days'] == ['MON', 'WED', 'FRI']
+    assert saved_data['entry_times'] == ['14:30', '22:00']
+    assert saved_data['toggle_auto_scroll'] is False
+
+    # 3. Modify values in memory, then Reload (button_action_load_config)
+    gui.week_days.set(['SUN'])
+    gui.toggle_auto_scroll.set(True)
+    assert gui.week_days.get() == ['SUN']
+
+    gui.button_action_load_config(ask_confirmation=False)
+    assert sorted(gui.week_days.get()) == ['FRI', 'MON', 'WED']
+    assert gui.toggle_auto_scroll.get() is False
+
+    # 4. Save As / Export to a custom path
+    custom_export = tmp_path / 'custom_exported.json'
+    monkeypatch.setattr('tkinter.filedialog.asksaveasfilename', lambda **kwargs: str(custom_export))
+    gui.button_action_save_config_as()
+    assert custom_export.exists()
+    with open(custom_export, encoding='utf-8') as f:
+        export_data = json.load(f)
+    assert export_data['week_days'] == ['MON', 'WED', 'FRI']
+
+    # 5. Load from custom file (Import)
+    imported_file = tmp_path / 'imported_profile.json'
+    profile_data = dict(saved_data)
+    profile_data['week_days'] = ['SAT', 'SUN']
+    profile_data['entry_times'] = ['08:00']
+    with open(imported_file, 'w', encoding='utf-8') as f:
+        json.dump(profile_data, f, indent=4)
+
+    monkeypatch.setattr('tkinter.filedialog.askopenfilename', lambda **kwargs: str(imported_file))
+    gui.button_action_load_config_from_file()
+    assert sorted(gui.week_days.get()) == ['SAT', 'SUN']
+    assert gui.entry_times.get() == ['08:00']
+
+    # 6. Corrupted JSON handling
+    corrupt_file = tmp_path / 'corrupt.json'
+    corrupt_file.write_text('{invalid json syntax:', encoding='utf-8')
+    assert gui.load_config(file_path=str(corrupt_file)) is False
+    # Original file is preserved
+    assert corrupt_file.exists()
+
+    # 7. Non-existent file handling
+    missing_file = tmp_path / 'missing.json'
+    assert gui.load_config(file_path=str(missing_file)) is False
+
+    gui.root.destroy()

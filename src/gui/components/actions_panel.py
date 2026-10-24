@@ -92,6 +92,9 @@ class ActionsPanel(ttk.LabelFrame):
         on_open_report: Callable[[], None],
         on_sync_now: Callable[[], None],
         on_schedule_sync: Callable[[], None],
+        on_load_config: Callable[[], None] | None = None,
+        on_load_config_from_file: Callable[[], None] | None = None,
+        on_save_config_as: Callable[[], None] | None = None,
         on_stop: Callable[[], None] | None = None,
         radio_var_compare_method: tk.StringVar | None = None,
         checkbox_var_reset_mirror: tk.BooleanVar | None = None,
@@ -110,7 +113,10 @@ class ActionsPanel(ttk.LabelFrame):
         self.checkbox_var_confirm_sync = checkbox_var_confirm_sync
 
         self.on_reset_config = on_reset_config
+        self.on_load_config = on_load_config or (lambda: None)
+        self.on_load_config_from_file = on_load_config_from_file
         self.on_save_config = on_save_config
+        self.on_save_config_as = on_save_config_as
         self.on_quick_compare = on_quick_compare
         self.on_open_report = on_open_report
         self.on_report_history = on_report_history
@@ -206,21 +212,49 @@ class ActionsPanel(ttk.LabelFrame):
             cfg_frame,
             text='Reset',
             command=self.on_reset_config,
-            width=11,
+            width=10,
         )
         apply_icon(self.button_new_config, 'broom')
-        self.button_new_config.pack(side='left', padx=3)
+        self.button_new_config.pack(side='left', padx=2)
         add_tooltip(self.button_new_config, 'Reset all configuration fields and options to default values.')
+
+        self.button_load_config = ModernButton(
+            cfg_frame,
+            text='Load',
+            command=self.on_load_config,
+            width=10,
+        )
+        apply_icon(self.button_load_config, 'folder')
+        self.button_load_config.pack(side='left', padx=2)
+        add_tooltip(
+            self.button_load_config,
+            'Reload configuration from disk (config.json). Right-click for more options.',
+        )
+
+        load_menu = tk.Menu(self.button_load_config, tearoff=0)
+        load_menu.add_command(label='📂 Reload Default (config.json)', command=self.on_load_config)
+        if self.on_load_config_from_file:
+            load_menu.add_command(label='📁 Load from File...', command=self.on_load_config_from_file)
+        self.button_load_config.bind('<Button-3>', lambda e: load_menu.tk_popup(e.x_root, e.y_root))
 
         self.button_save_config = ModernButton(
             cfg_frame,
             text='Save',
             command=self.on_save_config,
-            width=11,
+            width=10,
         )
         apply_icon(self.button_save_config, 'save')
-        self.button_save_config.pack(side='left', padx=3)
-        add_tooltip(self.button_save_config, 'Save current settings and directory pairs to disk (config.json).')
+        self.button_save_config.pack(side='left', padx=2)
+        add_tooltip(
+            self.button_save_config,
+            'Save current settings and directory pairs to disk (config.json). Right-click for more options.',
+        )
+
+        save_menu = tk.Menu(self.button_save_config, tearoff=0)
+        save_menu.add_command(label='💾 Save to Default (config.json)', command=self.on_save_config)
+        if self.on_save_config_as:
+            save_menu.add_command(label='💾 Save As / Export to File...', command=self.on_save_config_as)
+        self.button_save_config.bind('<Button-3>', lambda e: save_menu.tk_popup(e.x_root, e.y_root))
 
         # Section 2: Comparison
         cmp_frame = ttk.Frame(self)
@@ -499,6 +533,7 @@ class ActionsPanel(ttk.LabelFrame):
         state = 'normal' if enabled else 'disabled'
         buttons = [
             self.button_new_config,
+            self.button_load_config,
             self.button_save_config,
             self.button_quick_compare,
             self.button_open_report,

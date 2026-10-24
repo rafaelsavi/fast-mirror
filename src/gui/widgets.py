@@ -95,6 +95,30 @@ class EntryPaths(ScrolledText):
         unique_paths.sort(key=lambda x: x[0])  # sort by source path
         return unique_paths
 
+    def get_configured_pairs(self) -> list[tuple[str, str]]:
+        """
+        Return all syntactic directory pairs (source, target) configured in the text widget.
+
+        Unlike get(), this does not perform disk/network existence checks, preserving
+        configured offline UNC network shares and unmounted external drives across saves.
+        """
+        raw: str = super().get('1.0', tk.END)
+        pairs: list[tuple[str, str]] = []
+        for line in raw.splitlines():
+            line_str = line.strip()
+            if not line_str or ' -> ' not in line_str:
+                continue
+            source, target = [p.strip().strip('"\'') for p in line_str.split(' -> ', 1)]
+            if source and target:
+                pairs.append((source, target))
+        seen: set[tuple[str, str]] = set()
+        unique: list[tuple[str, str]] = []
+        for p in pairs:
+            if p not in seen:
+                seen.add(p)
+                unique.append(p)
+        return unique
+
     def get_as_dir_pairs(self) -> list[DirectoryPair]:
         return [DirectoryPair(source=pair[0], target=pair[1]) for pair in self.get()]
 

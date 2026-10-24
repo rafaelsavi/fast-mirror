@@ -1,5 +1,4 @@
 import threading
-import traceback
 
 from core.file import CustomException
 from utils.logger import logger
@@ -37,7 +36,7 @@ class WorkerThread(threading.Thread):
             logger.critical(f'Processing thread was stopped abruptly because of exception: {e}')
         except Exception as e:
             self.exc = e
-            logger.critical(f'Processing thread was stopped abruptly because of exception:\n{traceback.format_exc()}')
+            logger.critical(f'Processing thread was stopped abruptly because of exception: {e}')
 
     def join(self, timeout: float | None = None):
         """Wait until thread terminates; re-raises any captured exception."""

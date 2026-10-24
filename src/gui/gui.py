@@ -3,7 +3,9 @@ import datetime
 import json
 import os
 import queue
+import shutil
 import threading
+import time
 import tkinter as tk
 from logging import LogRecord
 from tkinter import messagebox, ttk
@@ -271,7 +273,10 @@ class Gui:
             checkbox_var_save_report=self.checkbox_var_save_report,
             checkbox_var_confirm_sync=self.checkbox_var_confirm_sync,
             on_reset_config=self.button_action_reset_config,
+            on_load_config=self.button_action_load_config,
+            on_load_config_from_file=self.button_action_load_config_from_file,
             on_save_config=self.button_action_save_config,
+            on_save_config_as=self.button_action_save_config_as,
             on_quick_compare=self.button_action_quick_compare,
             on_open_report=self.button_action_open_report,
             on_report_history=self.button_action_open_report_history,
@@ -330,6 +335,14 @@ class Gui:
         self.telemetry_bar.grid(row=2, column=0, columnspan=2, sticky='ew', padx=10, pady=(0, 6))
 
         self._gui_initialized = True
+
+        # Keyboard shortcuts for configuration workflows
+        self.root.bind('<Control-s>', lambda e: self.button_action_save_config())
+        self.root.bind('<Control-S>', lambda e: self.button_action_save_config())
+        self.root.bind('<Control-o>', lambda e: self.button_action_load_config_from_file())
+        self.root.bind('<Control-O>', lambda e: self.button_action_load_config_from_file())
+        self.root.bind('<Control-r>', lambda e: self.button_action_load_config())
+        self.root.bind('<Control-R>', lambda e: self.button_action_load_config())
 
     def apply_theme(self, theme_name: str = 'native'):
         """Apply fast hardware-accelerated Windows native theme and visual styling tokens."""
@@ -400,14 +413,18 @@ class Gui:
             self.get_next_appointment()
             logger.info('GUI configuration was reset')
 
-    def button_action_save_config(self, ask_confirmation=True):
-        if os.path.isfile(self.config_path):
+    def button_action_save_config(self, ask_confirmation=True, file_path=None):
+        target_path = file_path or self.config_path
+        if os.path.isfile(target_path) and ask_confirmation:
             confirmation = messagebox.askyesno(
                 'Caution',
-                'Are you sure you want to save the GUI configuration? This will overwrite an existing configuration',
+                'Are you sure you want to save the GUI configuration? '
+                f'This will overwrite existing configuration at:\n{target_path}',
+                parent=self.root,
             )
         else:
             confirmation = True
+
         if not ask_confirmation or confirmation:
             config_var_names = [
                 'entry_paths',
@@ -423,27 +440,91 @@ class Gui:
                 'checkbox_var_metadata_comparison',
                 'checkbox_var_confirm_sync',
                 'checkbox_var_save_report',
+                'toggle_auto_scroll',
             ]
             config_vars = {}
             for name in config_var_names:
                 if name == 'checkbox_var_reset_mirror':
                     config_vars[name] = False  # Reset mirror is a one-shot option
+                elif name == 'entry_paths' and hasattr(self, 'entry_paths'):
+                    if hasattr(self.entry_paths, 'get_configured_pairs'):
+                        config_vars[name] = self.entry_paths.get_configured_pairs()
+                    else:
+                        config_vars[name] = self.entry_paths.get()
                 elif hasattr(self, name):
                     config_vars[name] = getattr(self, name).get()
 
-            os.makedirs(os.path.dirname(os.path.abspath(self.config_path)), exist_ok=True)
-            with open(self.config_path, 'w') as f:
+            os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
+            tmp_path = f'{target_path}.tmp'
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(config_vars, f, indent=4)
-            logger.info('Configuration was successfully saved')
-            self.load_config(show_success_msg=False)
+            os.replace(tmp_path, target_path)
+
+            logger.info(f'Configuration was successfully saved to {target_path}')
+            self.load_config(file_path=target_path, show_success_msg=False)
 
         self.get_next_appointment()
 
-    def load_config(self, show_success_msg=True):
-        if os.path.isfile(self.config_path):
+    def button_action_save_config_as(self):
+        from tkinter import filedialog
+
+        initial_dir = os.path.dirname(os.path.abspath(self.config_path))
+        file_path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title='Save Configuration As',
+            initialdir=initial_dir if os.path.isdir(initial_dir) else None,
+            defaultextension='.json',
+            filetypes=[('JSON Files', '*.json'), ('All Files', '*.*')],
+        )
+        if file_path:
+            self.button_action_save_config(ask_confirmation=False, file_path=file_path)
+
+    def button_action_load_config(self, ask_confirmation=True, file_path=None):
+        target_path = file_path or self.config_path
+        if not os.path.isfile(target_path):
+            messagebox.showwarning(
+                'Configuration Not Found',
+                f'Configuration file not found:\n{target_path}\n\n'
+                'Please save your configuration first or load from a custom file.',
+                parent=self.root,
+            )
+            return
+
+        if ask_confirmation:
+            confirmation = messagebox.askyesno(
+                'Reload Configuration',
+                'Are you sure you want to reload the GUI configuration from disk?\n\n'
+                f'Source: {target_path}\n\n'
+                'Any unsaved changes in the current session will be discarded.',
+                parent=self.root,
+            )
+            if not confirmation:
+                return
+
+        self.load_config(file_path=target_path, show_success_msg=True)
+
+    def button_action_load_config_from_file(self):
+        from tkinter import filedialog
+
+        initial_dir = os.path.dirname(os.path.abspath(self.config_path))
+        file_path = filedialog.askopenfilename(
+            parent=self.root,
+            title='Load Configuration File',
+            initialdir=initial_dir if os.path.isdir(initial_dir) else None,
+            filetypes=[('JSON Files', '*.json'), ('All Files', '*.*')],
+        )
+        if file_path:
+            self.button_action_load_config(ask_confirmation=True, file_path=file_path)
+
+    def load_config(self, file_path=None, show_success_msg=True) -> bool:
+        target_path = file_path or self.config_path
+        if os.path.isfile(target_path):
             try:
-                with open(self.config_path) as f:
+                with open(target_path, encoding='utf-8') as f:
                     config_vars = json.load(f)
+                if not isinstance(config_vars, dict):
+                    raise ValueError(f'Expected JSON object at root, got {type(config_vars).__name__}')
+
                 for name, value in config_vars.items():
                     if name == 'radio_var_compare_method':
                         self.radio_var_compare_method.set(value)
@@ -451,7 +532,10 @@ class Gui:
                         self.checkbox_var_reset_mirror.set(False)
                     elif hasattr(self, name):
                         gui_element = getattr(self, name)
-                        gui_element.set(value)
+                        if isinstance(gui_element, tk.BooleanVar):
+                            gui_element.set(bool(value))
+                        else:
+                            gui_element.set(value)
 
                 if 'radio_var_compare_method' not in config_vars and 'checkbox_var_metadata_comparison' in config_vars:
                     self.radio_var_compare_method.set(
@@ -459,17 +543,40 @@ class Gui:
                     )
 
                 self.text_logger.set_log_levels(self.log_levels.get())
-                if show_success_msg:
-                    logger.info('Configuration was successfully loaded')
-            except Exception as e:
-                with contextlib.suppress(Exception):
-                    os.rename(self.config_path, self.config_path + '_old.json')
-                raise e
-        else:
-            logger.info('Cannot find default configuration')
-            self.button_action_reset_config(ask_confirmation=False)
+                if hasattr(self, 'paths_panel'):
+                    with contextlib.suppress(Exception):
+                        self.paths_panel._update_pair_stats()
+                        self.paths_panel._update_exclusion_count()
 
-        self.get_next_appointment()
+                if show_success_msg:
+                    logger.info(f'Configuration was successfully loaded from {target_path}')
+                self.get_next_appointment()
+                return True
+            except Exception as e:
+                logger.error(f'Failed to load configuration from <{target_path}>: {e}')
+                messagebox.showerror(
+                    'Configuration Error',
+                    f'Failed to parse configuration file:\n{target_path}\n\nError: {e}',
+                    parent=self.root,
+                )
+                if file_path is None:
+                    with contextlib.suppress(Exception):
+                        backup_name = f'{self.config_path}.corrupted_{int(time.time())}.json'
+                        shutil.copyfile(self.config_path, backup_name)
+                return False
+        else:
+            if file_path is not None:
+                messagebox.showwarning(
+                    'Configuration Not Found',
+                    f'Configuration file not found:\n{target_path}',
+                    parent=self.root,
+                )
+                return False
+            else:
+                logger.info('Cannot find default configuration')
+                self.button_action_reset_config(ask_confirmation=False)
+                self.get_next_appointment()
+                return False
 
     def button_action_open_report(self):
         if not os.path.isdir(logger.log_dir):

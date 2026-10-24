@@ -32,10 +32,11 @@ This guide details all configuration options for **FastMirror**, including direc
 
 Settings are stored in `data/config.json` (template in [`config.example.json`](../config.example.json)).
 
-- The file is saved automatically when clicking **Save** in the *GUI Configuration* panel.
-- On startup, the GUI reads `data/config.json` via [`load_config()`](../src/gui/gui.py).
-- If `config.json` is corrupted, the application backs it up to `data/config.json_old.json` and resets to default values.
-- You can safely edit `data/config.json` with a text editor while the application is not running.
+- **Load**: Clicking **Load** (or pressing `Ctrl+R`) reloads configuration from disk (`data/config.json`), making it easy to reload external edits or discard unsaved changes without restarting the application. Right-clicking the **Load** button (or pressing `Ctrl+O`) opens a file picker to import any custom JSON configuration file.
+- **Save**: Clicking **Save** (or pressing `Ctrl+S`) saves the current UI state and all directory pairs atomically to `data/config.json`. Right-clicking the **Save** button allows exporting the configuration to a custom file path.
+- **Reset**: Clicking **Reset** resets all configuration fields to application defaults.
+- **Offline / Disconnected Safety**: All configured directory pairs (local and remote UNC network shares) are preserved across saves even if network shares or external drives are temporarily unreachable when saving.
+- **Error Handling**: If a configuration file is corrupted or contains invalid JSON, the application reports the error cleanly via a dialog and logs, preserving the original file and saving a timestamped backup copy (`config.json.corrupted_<timestamp>.json`).
 
 ---
 

@@ -29,7 +29,10 @@ class DirectoryPairsModal:
         if parent is not None:
             self.window.transient(parent)
 
-        self._pairs: list[tuple[str, str]] = list(self.entry_paths.get())
+        if hasattr(self.entry_paths, 'get_configured_pairs'):
+            self._pairs = list(self.entry_paths.get_configured_pairs())
+        else:
+            self._pairs = list(self.entry_paths.get())
         self._center_window(width=880, height=520)
         self._create_widgets()
         self._populate_table()
