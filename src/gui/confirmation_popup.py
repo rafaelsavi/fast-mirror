@@ -4,7 +4,7 @@ import subprocess
 import tkinter as tk
 import winsound
 from collections.abc import Callable
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 import ttkwidgets
 
@@ -556,7 +556,7 @@ class ActionSelection:
         self.popup.title('FastMirror - Confirm Actions')
         apply_window_icon(self.popup)
         self.popup.minsize(940, 600)
-        self.popup.protocol('WM_DELETE_WINDOW', self.button_cancel_click)
+        self.popup.protocol('WM_DELETE_WINDOW', self.on_window_close)
 
         # Center window over root or screen
         self._center_window(width=1000, height=660)
@@ -1162,6 +1162,18 @@ class ActionSelection:
             self.popup.destroy()
         if self.on_close_callback:
             self.on_close_callback()
+
+    def on_window_close(self):
+        if self.finished:
+            return
+        if messagebox.askyesno(
+            'Cancel Synchronization?',
+            'Closing this window will cancel the synchronization. No listed actions will be performed.\n\n'
+            'Cancel synchronization?',
+            parent=self.popup,
+            default='no',
+        ):
+            self.button_cancel_click()
 
     def get_outputs(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[str]]:
         return self.files_requested_to_copy, self.files_requested_to_move, self.files_requested_to_delete

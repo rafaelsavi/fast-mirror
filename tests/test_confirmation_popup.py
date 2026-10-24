@@ -109,6 +109,52 @@ def test_action_selection_no_timer_and_cancel(monkeypatch):
     root.destroy()
 
 
+@pytest.mark.parametrize(
+    ('confirm_cancel', 'expected_finished'),
+    [(False, False), (True, True)],
+)
+def test_action_selection_window_close_warns_before_cancel(monkeypatch, confirm_cancel, expected_finished):
+    class DummyPopup:
+        def __init__(self):
+            self.destroyed = False
+
+        def destroy(self):
+            self.destroyed = True
+
+    popup = ActionSelection.__new__(ActionSelection)
+    popup.finished = False
+    popup.proceed = False
+    popup.files_requested_to_copy = [('source', 'target')]
+    popup.files_requested_to_move = [('old', 'new')]
+    popup.files_requested_to_delete = ['obsolete']
+    popup.popup = DummyPopup()
+    popup.on_close_callback = None
+
+    prompts = []
+    monkeypatch.setattr(
+        'gui.confirmation_popup.messagebox.askyesno',
+        lambda *args, **kwargs: prompts.append((args, kwargs)) or confirm_cancel,
+    )
+
+    popup.on_window_close()
+
+    assert len(prompts) == 1
+    assert prompts[0][0][0] == 'Cancel Synchronization?'
+    assert prompts[0][1]['default'] == 'no'
+    assert popup.finished is expected_finished
+    if confirm_cancel:
+        assert popup.files_requested_to_copy == []
+        assert popup.files_requested_to_move == []
+        assert popup.files_requested_to_delete == []
+    else:
+        assert popup.popup.destroyed is False
+        assert popup.files_requested_to_copy == [('source', 'target')]
+        assert popup.files_requested_to_move == [('old', 'new')]
+        assert popup.files_requested_to_delete == ['obsolete']
+    if confirm_cancel:
+        assert popup.popup.destroyed is True
+
+
 def test_custom_checkbox_treeview_headers():
     try:
         root = tk.Tk()
