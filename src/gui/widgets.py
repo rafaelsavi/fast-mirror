@@ -432,3 +432,94 @@ class TextLogger(ScrolledText):
         if self.on_log_updated:
             with contextlib.suppress(Exception):
                 self.on_log_updated()
+
+
+class ToolTip:
+    """Lightweight, non-blocking tooltip for Tkinter and ttk widgets."""
+
+    def __init__(self, widget: tk.Misc, text: str, delay_ms: int = 450):
+        self.widget = widget
+        self.text = text
+        self.delay_ms = delay_ms
+        self._tip_window: tk.Toplevel | None = None
+        self._after_id: str | None = None
+
+        self.widget.bind('<Enter>', self._schedule, add='+')
+        self.widget.bind('<Leave>', self._hide, add='+')
+        self.widget.bind('<ButtonPress>', self._hide, add='+')
+        self.widget.bind('<Destroy>', self._on_destroy, add='+')
+
+    def set_text(self, text: str):
+        """Update tooltip explanation text dynamically."""
+        self.text = text
+        if self._tip_window is not None:
+            self._hide()
+
+    def _schedule(self, event=None):
+        self._cancel()
+        if self.text:
+            self._after_id = self.widget.after(self.delay_ms, self._show)
+
+    def _cancel(self):
+        if self._after_id is not None:
+            with contextlib.suppress(Exception):
+                self.widget.after_cancel(self._after_id)
+            self._after_id = None
+
+    def _show(self):
+        if not self.text:
+            return
+        with contextlib.suppress(Exception):
+            if not self.widget.winfo_exists():
+                return
+
+        self._hide()
+
+        try:
+            x = self.widget.winfo_rootx() + 12
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+
+            # Screen boundary collision check
+            screen_h = self.widget.winfo_screenheight()
+            if y + 30 > screen_h:
+                y = max(0, self.widget.winfo_rooty() - 26)
+
+            self._tip_window = tw = tk.Toplevel(self.widget)
+            tw.wm_overrideredirect(True)
+            tw.wm_geometry(f'+{x}+{y}')
+            with contextlib.suppress(Exception):
+                tw.attributes('-topmost', True)
+
+            lbl = tk.Label(
+                tw,
+                text=self.text,
+                justify='left',
+                background='#2b2b2b',
+                foreground='#ffffff',
+                relief='solid',
+                borderwidth=1,
+                padx=6,
+                pady=3,
+                font=('Segoe UI', 8),
+            )
+            lbl.pack()
+        except Exception:
+            self._hide()
+
+    def _hide(self, event=None):
+        self._cancel()
+        if self._tip_window is not None:
+            with contextlib.suppress(Exception):
+                self._tip_window.destroy()
+            self._tip_window = None
+
+    def _on_destroy(self, event=None):
+        self._cancel()
+        self._hide()
+
+
+def add_tooltip(widget: tk.Misc, text: str, delay_ms: int = 450) -> ToolTip:
+    """Attach a lightweight tooltip to any widget and retain a persistent reference."""
+    tooltip = ToolTip(widget, text, delay_ms=delay_ms)
+    widget._tooltip = tooltip  # type: ignore[attr-defined]
+    return tooltip

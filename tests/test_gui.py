@@ -1404,3 +1404,53 @@ def test_popup_windows_use_app_icon():
         pairs_modal.window.destroy()
 
     root.destroy()
+
+
+def test_tooltip_lifecycle():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.widgets import ToolTip, add_tooltip
+
+    btn = tk.Button(root, text='Hover Me')
+    btn.pack()
+    tip = add_tooltip(btn, 'Test explanation', delay_ms=50)
+    assert isinstance(tip, ToolTip)
+    assert tip.text == 'Test explanation'
+    assert getattr(btn, '_tooltip', None) is tip
+
+    # Test schedule and cancel
+    tip._schedule()
+    assert tip._after_id is not None
+    tip._cancel()
+    assert tip._after_id is None
+
+    # Test dynamic text update
+    tip.set_text('Updated explanation')
+    assert tip.text == 'Updated explanation'
+
+    # Test show and hide
+    btn.update_idletasks()
+    tip._show()
+    assert tip._tip_window is not None
+    tip._hide()
+    assert tip._tip_window is None
+
+    root.destroy()
+
+
+def test_taskbar_progress_lifecycle():
+    from gui.taskbar import TaskbarProgress
+
+    tb = TaskbarProgress(hwnd=12345)
+    # Safe no-ops or valid calls without raising exceptions
+    tb.set_indeterminate()
+    tb.set_determinate(50, 100)
+    tb.set_determinate(0, 0)
+    tb.set_paused()
+    tb.set_error()
+    tb.clear()
+    tb.set_hwnd(54321)
