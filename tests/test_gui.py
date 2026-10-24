@@ -1252,12 +1252,13 @@ def test_paths_panel_text_mode_lifecycle(tmp_path):
     panel.refresh_cards()
     assert '1 configured' in panel.lbl_pair_count.cget('text')
 
-    # Drag and drop folder addition
+    # Add additional directory pair directly
     src2 = tmp_path / 'Src2'
     tgt2 = tmp_path / 'Tgt2'
     src2.mkdir()
     tgt2.mkdir()
-    panel.add_dropped_paths([str(src2), str(tgt2)])
+    panel.entry_paths.add((str(src2), str(tgt2)))
+    panel.refresh_cards()
     assert len(panel.entry_paths.get()) == 2
     assert '2 configured' in panel.lbl_pair_count.cget('text')
 

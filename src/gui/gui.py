@@ -90,7 +90,6 @@ class Gui:
         init_w = self.root.winfo_reqwidth()
         init_h = self.root.winfo_reqheight()
         self.root.minsize(init_w, init_h)
-        self.root._on_files_dropped = lambda paths: self.paths_panel.add_dropped_paths(paths)
 
         # Update overview card mode labels dynamically on setting changes without remote network I/O
         self.checkbox_var_use_mirror.trace_add('write', lambda *_: self.update_mode_labels())

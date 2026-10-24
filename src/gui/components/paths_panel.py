@@ -13,7 +13,6 @@ from typing import Literal
 from gui.health_check import TargetHealth, probe_targets_async
 from gui.icons import apply_icon
 from gui.widgets import EntryExclusions, EntryPaths
-from utils.utils import DirectoryPair
 
 
 class PathsPanel(ttk.LabelFrame):
@@ -305,35 +304,6 @@ class PathsPanel(ttk.LabelFrame):
         if pattern in current:
             remaining = [p for p in current if p != pattern]
             self.entry_exclusions.set(remaining)
-
-    def add_dropped_paths(self, paths: list[str]):
-        """Handle folders dragged and dropped onto the paths panel."""
-        valid_dirs = [p for p in paths if os.path.isdir(p)]
-        if not valid_dirs:
-            return
-        if len(valid_dirs) >= 2:
-            self.entry_paths.add(DirectoryPair(source=valid_dirs[0], target=valid_dirs[1]))
-            top = self.winfo_toplevel()
-            if hasattr(top, 'update_overview_stats'):
-                with contextlib.suppress(Exception):
-                    top.update_overview_stats()
-            self._update_pair_stats()
-            pair_str = f'{os.path.basename(valid_dirs[0])} -> {os.path.basename(valid_dirs[1])}'
-            self.lbl_health_status.config(
-                text=f'Added pair from drag & drop: {pair_str}',
-                foreground='#15803d',
-            )
-        elif len(valid_dirs) == 1:
-            from tkinter import filedialog
-
-            target = filedialog.askdirectory(title=f'Select destination folder for {os.path.basename(valid_dirs[0])}')
-            if target:
-                self.entry_paths.add(DirectoryPair(source=valid_dirs[0], target=target))
-                top = self.winfo_toplevel()
-                if hasattr(top, 'update_overview_stats'):
-                    with contextlib.suppress(Exception):
-                        top.update_overview_stats()
-                self._update_pair_stats()
 
     def set_enabled(self, enabled: bool):
         """Enable or disable interactive widgets in the paths panel."""

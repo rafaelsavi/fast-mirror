@@ -23,11 +23,9 @@
 
 ## Performance and responsiveness
 
-- [ ] Prevent the confirmation-action filter from freezing with 10,000 files.
-- [ ] Investigate drag-and-drop delay. First test a version without the progress bar; if the delay remains, isolate the cause by removing other components incrementally.
-
 ## Completed
 
+- [x] Remove drag-and-drop functionality completely to eliminate interface delays and simplify path management.
 - [x] Show the full current file path in the progress bar when it fits; truncate only when it does not.
 - [x] Simplify the root README into a landing page and preserve the detailed documentation in [`USER_GUIDE.md`](USER_GUIDE.md).
 - [x] Confirm before cancelling via the confirmation window's Close (`X`) button.
