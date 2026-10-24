@@ -71,14 +71,14 @@ class MirrorDatabase:
     def vacuum(self) -> bool:
         """Reclaim unused disk space and defragment SQLite database file."""
         try:
-            logger.info(f'Running VACUUM on database <{self.path}>')
+            logger.info(f"Running VACUUM on database '{self.path}'")
             with self._get_connection() as conn:
                 conn.execute('VACUUM;')
                 conn.commit()
-            logger.info(f'VACUUM completed successfully on <{self.path}>')
+            logger.info(f"VACUUM completed successfully on '{self.path}'")
             return True
         except Exception as e:
-            logger.warning(f'Could not VACUUM database <{self.path}>. Exception: {e}')
+            logger.warning(f"Could not VACUUM database '{self.path}'. Exception: {e}")
             return False
 
     def _to_rel_path(self, root_dir: str | PathLike[str], path: CstmPathType) -> str:
@@ -173,15 +173,15 @@ class MirrorDatabase:
                 )
 
                 if has_data:
-                    logger.info(f'Resetting mirror for <{root_dir}>')
+                    logger.info(f"Resetting mirror for '{root_dir}'")
                     conn.execute('DELETE FROM mirror_cache WHERE root_dir = ?;', (root_str,))
                     conn.execute('DELETE FROM mirror_metadata WHERE root_dir = ?;', (root_str,))
                     conn.commit()
                 else:
-                    logger.info(f'No mirror to reset for <{root_dir}>')
+                    logger.info(f"No mirror to reset for '{root_dir}'")
             return True
         except Exception as e:
-            logger.warning(f'Could not reset database for <{root_dir}>. Exception: {e}')
+            logger.warning(f"Could not reset database for '{root_dir}'. Exception: {e}")
             return False
 
     def get_paths(self, root_dir: str | PathLike[str]) -> set[CstmPath]:
@@ -238,7 +238,7 @@ class MirrorDatabase:
                 if number_files > 10_000:
                     log_progress('Prepared', i, number_files, start_time, interval=10_000)
             except Exception as e:
-                logger.error(f'Could not process file {p} for local mirror. Exception: {e}')
+                logger.error(f"Could not process file '{p}' for local mirror. Exception: {e}")
 
         try:
             with self._get_connection() as conn:
@@ -266,7 +266,7 @@ class MirrorDatabase:
                 with contextlib.suppress(Exception):
                     conn.execute('PRAGMA wal_checkpoint(PASSIVE);')
         except Exception as e:
-            logger.critical(f'Could not open DB to add file(s): {path} Exception: {e}')
+            logger.critical(f"Could not open DB to add file(s): '{path}'. Exception: {e}")
 
     def remove_path(self, root_dir: str | PathLike[str], path: CstmPathType | Iterable[CstmPathType]) -> bool:
         """Remove path(s) from the mirror cache."""
@@ -289,7 +289,7 @@ class MirrorDatabase:
                     if cur.rowcount > 0:
                         deleted_count += 1
                     else:
-                        logger.warning(f'Key does not exist in database: {rel}')
+                        logger.warning(f"Key does not exist in database: '{rel}'")
 
                 count = conn.execute(
                     'SELECT COUNT(*) FROM mirror_cache WHERE root_dir = ?;',
@@ -302,7 +302,7 @@ class MirrorDatabase:
                 conn.commit()
                 return deleted_count > 0 or len(rows) == 0
         except Exception as e:
-            logger.warning(f'Could not open DB to remove file(s): {path} Exception: {e}')
+            logger.warning(f"Could not open DB to remove file(s): '{path}'. Exception: {e}")
             return False
 
     def replace_path(self, root_dir: str | PathLike[str], path: CstmPathType, new_path: CstmPathType):
@@ -326,4 +326,4 @@ class MirrorDatabase:
                 )
                 conn.commit()
         except Exception as e:
-            logger.warning(f'Could not replace path in database: {path} -> {new_path}. Exception: {e}')
+            logger.warning(f"Could not replace path in database: '{path}' -> '{new_path}'. Exception: {e}")

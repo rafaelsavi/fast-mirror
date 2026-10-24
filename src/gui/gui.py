@@ -771,7 +771,7 @@ class Gui:
                     return
             config_vars = self._get_current_config_vars()
             self.profile_manager.export_profile(config_vars, target_path)
-            logger.info(f'Configuration successfully exported to {target_path}')
+            logger.info(f"Configuration successfully exported to '{target_path}'")
             return
 
         active_profile = self.active_profile_name
@@ -848,11 +848,11 @@ class Gui:
                         raise ValueError(f'Expected JSON object at root, got {type(config_vars).__name__}')
                     self._apply_config_vars_to_gui(config_vars)
                     if show_success_msg:
-                        logger.info(f'Configuration was successfully loaded from {target_path}')
+                        logger.info(f"Configuration was successfully loaded from '{target_path}'")
                     self.get_next_appointment()
                     return True
                 except Exception as e:
-                    logger.error(f'Failed to load configuration from <{target_path}>: {e}')
+                    logger.error(f"Failed to load configuration from '{target_path}': {e}")
                     messagebox.showerror(
                         'Configuration Error',
                         f'Failed to parse configuration file:\n{target_path}\n\nError: {e}',
@@ -872,7 +872,7 @@ class Gui:
 
     def button_action_open_report(self):
         if not os.path.isdir(logger.log_dir):
-            logger.error(f'Could not open last report because directory does not exist: <{logger.log_dir}>')
+            logger.error(f"Could not open last report because directory does not exist: '{logger.log_dir}'")
             return
 
         filenames = [
@@ -888,13 +888,13 @@ class Gui:
         )
         if len(filenames) > 0:
             last_filepath = os.path.join(logger.log_dir, filenames[-1])
-            logger.info(f'Opening {last_filepath}')
+            logger.info(f"Opening '{last_filepath}'")
             try:
                 os.startfile(last_filepath)
             except OSError as e:
-                logger.error(f'Could not open last report file <{last_filepath}>: {e}')
+                logger.error(f"Could not open last report file '{last_filepath}': {e}")
         else:
-            logger.error(f'Could not open last report because it was not found in directory <{logger.log_dir}>')
+            logger.error(f"Could not open last report because it was not found in directory '{logger.log_dir}'")
 
     def button_action_open_report_history(self):
         """Open past reports browser dialog."""

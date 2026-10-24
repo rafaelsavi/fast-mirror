@@ -127,7 +127,7 @@ class CstmPath(Path):
 
     @staticmethod
     def get_from_dir(dir_path: CstmPathType, exclude: list[str]) -> set['CstmPath']:
-        logger.info(f'Scanning files from {dir_path}. This may take a while')
+        logger.info(f"Scanning files from '{dir_path}'. This may take a while")
         # pathspec needs frontslashes
         spec = pathspec.PathSpec.from_lines('gitwildmatch', map(lambda x: x.replace('\\', '/'), exclude))
         all_paths: set[CstmPath] = set()
@@ -164,9 +164,11 @@ class CstmPath(Path):
                         except (PermissionError, FileNotFoundError, OSError):
                             continue
             except (PermissionError, FileNotFoundError, OSError) as e:
-                logger.warning(f'Could not scan directory <{curr_dir}>: {e}')
+                logger.warning(f"Could not scan directory '{curr_dir}': {e}")
 
-        logger.info(f'Finished scanning {dir_path} with {len(all_paths):,} files in {format_elapsed_time(start_time)}.')
+        logger.info(
+            f"Finished scanning '{dir_path}' with {len(all_paths):,} files in {format_elapsed_time(start_time)}."
+        )
         return all_paths
 
     def __truediv__(self, other: CstmPathType) -> 'CstmPath':
@@ -289,7 +291,7 @@ class File:
                     self.source, self.target, comparison_method=compare_method
                 )
             else:
-                raise CustomException(f'Cannot compare files <{self.source}> and <{self.target}>. One of them is None.')
+                raise CustomException(f"Cannot compare files '{self.source}' and '{self.target}'. One of them is None.")
 
 
 def compare_files(
@@ -309,5 +311,5 @@ def compare_files(
     except Exception as e:
         error_msg = check_length(f1) + '  ' + check_length(f2)
         error_msg = e if error_msg.strip() == '' else e
-        logger.warning(f'Could not compare files <{f1}> and <{f2}>. Exception: {error_msg}')
+        logger.warning(f"Could not compare files '{f1}' and '{f2}'. Exception: {error_msg}")
     return success, same

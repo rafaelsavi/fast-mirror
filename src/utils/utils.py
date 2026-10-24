@@ -42,7 +42,7 @@ def get_size(path: str | list[str]) -> float:
         except FileNotFoundError:
             return 0
         except Exception as e:
-            logger.warning(f'Could not get size of {path_}. Exception: {e}')
+            logger.warning(f"Could not get size of '{path_}'. Exception: {e}")
             return 0
 
     size_bytes = 0

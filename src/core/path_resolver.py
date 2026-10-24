@@ -34,4 +34,4 @@ def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> Directo
     if best_pair is not None:
         return best_pair
 
-    raise FileNotFoundError(f'Could not identify root folders of path <{path}>. Dirs: {dirs}')
+    raise FileNotFoundError(f"Could not identify root folders of path '{path}'. Dirs: {dirs}")

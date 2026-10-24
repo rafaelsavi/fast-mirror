@@ -266,7 +266,7 @@ class EntryTimes(ScrolledText):
         except Exception as e:
             if t.strip() != '':
                 logger.warning(
-                    f'Time entry "{t}" was ignored because it does not match the format hh:mm. Exception: {e}'
+                    f"Time entry '{t}' was ignored because it does not match the format hh:mm. Exception: {e}"
                 )
             return False
         else:

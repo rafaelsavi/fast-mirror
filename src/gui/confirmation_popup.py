@@ -973,7 +973,7 @@ class ActionSelection:
         if path_to_copy and path_to_copy not in ('(none)', '(select an item to view path)'):
             self.popup.clipboard_clear()
             self.popup.clipboard_append(path_to_copy)
-            logger.info(f'Copied path to clipboard: {path_to_copy}')
+            logger.info(f"Copied path to clipboard: '{path_to_copy}'")
 
     def _open_selected_in_folder(self):
         """Reveal selected file in Windows Explorer, highlighting the file if it exists."""
@@ -1016,7 +1016,7 @@ class ActionSelection:
                 if os.path.isdir(parent_dir):
                     os.startfile(parent_dir)
         except Exception as e:
-            logger.warning(f'Could not open folder for {norm_path}: {e}')
+            logger.warning(f"Could not open folder for '{norm_path}': {e}")
 
     def _on_item_double_click(self, event):
         """Open folder of selected file in Windows Explorer upon double-click."""

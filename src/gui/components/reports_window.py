@@ -163,7 +163,7 @@ class ReportsWindow:
         filename = selected[0]
         filepath = os.path.join(logger.log_dir, filename)
         if os.path.isfile(filepath):
-            logger.info(f'Opening past report: {filepath}')
+            logger.info(f"Opening past report: '{filepath}'")
             with contextlib.suppress(OSError):
                 os.startfile(filepath)
 

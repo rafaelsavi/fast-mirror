@@ -524,7 +524,7 @@ class ActionsPanel(ttk.LabelFrame):
             try:
                 os.startfile(logger.log_dir)
             except OSError as e:
-                logger.error(f'Could not open reports directory <{logger.log_dir}>: {e}')
+                logger.error(f"Could not open reports directory '{logger.log_dir}': {e}")
 
     def _on_reset_mirror_clicked(self):
         """Handle mirror reset click, prompting confirmation if a confirmation callback is registered."""

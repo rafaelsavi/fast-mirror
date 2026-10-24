@@ -80,10 +80,10 @@ class ProfileManager:
                         data = json.load(f)
                     if isinstance(data, dict):
                         self.save_profile(self.DEFAULT_PROFILE_NAME, data, sync_active_config=False)
-                        logger.info(f"Seeded '{self.DEFAULT_PROFILE_NAME}' profile from existing {self.config_path}")
+                        logger.info(f"Seeded '{self.DEFAULT_PROFILE_NAME}' profile from existing '{self.config_path}'")
                         return self.profiles_dir
                 except Exception as e:
-                    logger.warning(f'Could not seed default profile from {self.config_path}: {e}')
+                    logger.warning(f"Could not seed default profile from '{self.config_path}': {e}")
 
             # Create default empty profile
             self.save_profile(self.DEFAULT_PROFILE_NAME, {}, sync_active_config=False)
@@ -159,7 +159,7 @@ class ProfileManager:
                 raise ValueError(f"Profile '{name}' root must be a JSON object, got {type(data).__name__}")
             return data
         except Exception as e:
-            logger.error(f"Failed to read profile '{name}' from {path}: {e}")
+            logger.error(f"Failed to read profile '{name}' from '{path}': {e}")
             raise
 
     def save_profile(
@@ -186,7 +186,7 @@ class ProfileManager:
             json.dump(data_to_write, f, indent=4)
         tmp_path.replace(target_path)
 
-        logger.info(f"Configuration profile '{clean_name}' successfully saved to {target_path}")
+        logger.info(f"Configuration profile '{clean_name}' successfully saved to '{target_path}'")
 
         if sync_active_config:
             self._sync_to_global_config(clean_name, data_to_write)
@@ -202,7 +202,7 @@ class ProfileManager:
                 json.dump(data, f, indent=4)
             tmp_global.replace(self.config_path)
         except Exception as e:
-            logger.warning(f'Could not sync active profile to global config {self.config_path}: {e}')
+            logger.warning(f"Could not sync active profile to global config '{self.config_path}': {e}")
 
     def create_profile(
         self,
@@ -307,7 +307,7 @@ class ProfileManager:
                 data['active_profile'] = clean_name
                 self._sync_to_global_config(clean_name, data)
         except Exception as e:
-            logger.warning(f'Could not record active profile name to {self.config_path}: {e}')
+            logger.warning(f"Could not record active profile name to '{self.config_path}': {e}")
 
     def export_profile(self, config_vars: dict[str, Any], target_path: str | Path) -> Path:
         """Atomically export configuration data to any file path on disk."""
@@ -317,7 +317,7 @@ class ProfileManager:
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(config_vars, f, indent=4)
         tmp.replace(target)
-        logger.info(f'Configuration successfully exported to {target}')
+        logger.info(f"Configuration successfully exported to '{target}'")
         return target
 
     def import_profile(self, source_path: str | Path) -> dict[str, Any]:

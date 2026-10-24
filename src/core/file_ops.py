@@ -22,15 +22,15 @@ def unlock_file_attributes(path: str | os.PathLike[str]) -> bool:
             if res != 0:
                 success = True
             else:
-                logger.debug(f'Windows refused to change attributes on <{path_str}>.')
+                logger.debug(f"Windows refused to change attributes on '{path_str}'.")
         except Exception as e:
-            logger.debug(f'SetFileAttributesW failed for <{path_str}>: {e}')
+            logger.debug(f"SetFileAttributesW failed for '{path_str}': {e}")
 
     try:
         os.chmod(path_str, stat.S_IWRITE)
         success = True
     except Exception as e:
-        logger.debug(f'chmod failed for <{path_str}>: {e}')
+        logger.debug(f"chmod failed for '{path_str}': {e}")
 
     return success
 
@@ -56,7 +56,7 @@ def robust_copy(
     delay = initial_delay
 
     if not os.path.isfile(source_str):
-        raise FileNotFoundError(f'Source file does not exist: <{source_str}>')
+        raise FileNotFoundError(f"Source file does not exist: '{source_str}'")
 
     for attempt in range(1, max(1, max_retries) + 1):
         completed = False
@@ -68,7 +68,7 @@ def robust_copy(
                     unlock_file_attributes(temp_target)
                     os.remove(temp_target)
                 except Exception as pre_clean_err:
-                    logger.debug(f'Could not remove stale temp file <{temp_target}>: {pre_clean_err}')
+                    logger.debug(f"Could not remove stale temp file '{temp_target}': {pre_clean_err}")
 
             shutil.copy2(source_str, temp_target)
             if os.path.isfile(target_str):
@@ -89,7 +89,7 @@ def robust_copy(
                 raise
 
             logger.warning(
-                f'Copy attempt {attempt}/{max_retries} for <{source_str}> -> <{target_str}> '
+                f"Copy attempt {attempt}/{max_retries} for '{source_str}' -> '{target_str}' "
                 f'failed with: {e}. Retrying in {delay:.1f}s...'
             )
             time.sleep(delay)
@@ -99,9 +99,9 @@ def robust_copy(
                 try:
                     unlock_file_attributes(temp_target)
                     os.remove(temp_target)
-                    logger.warning(f'Cleaned up incomplete temporary target file after abort/failure: <{temp_target}>')
+                    logger.warning(f"Cleaned up incomplete temporary target file after abort/failure: '{temp_target}'")
                 except Exception as cleanup_err:
-                    logger.debug(f'Failed to clean up temp file <{temp_target}>: {cleanup_err}')
+                    logger.debug(f"Failed to clean up temp file '{temp_target}': {cleanup_err}")
 
 
 def robust_move(
@@ -118,7 +118,7 @@ def robust_move(
     delay = initial_delay
 
     if not os.path.isfile(source_str):
-        raise FileNotFoundError(f'Source file does not exist: <{source_str}>')
+        raise FileNotFoundError(f"Source file does not exist: '{source_str}'")
 
     for attempt in range(1, max(1, max_retries) + 1):
         try:
@@ -144,14 +144,14 @@ def robust_move(
                             unlock_file_attributes(target_str)
                             os.remove(target_str)
                             logger.warning(
-                                f'Cleaned up incomplete target file after failed move attempts: <{target_str}>'
+                                f"Cleaned up incomplete target file after failed move attempts: '{target_str}'"
                             )
                     except Exception as cleanup_err:
-                        logger.debug(f'Failed to clean up partial target file <{target_str}>: {cleanup_err}')
+                        logger.debug(f"Failed to clean up partial target file '{target_str}': {cleanup_err}")
                 raise
 
             logger.warning(
-                f'Move attempt {attempt}/{max_retries} for <{source_str}> -> <{target_str}> '
+                f"Move attempt {attempt}/{max_retries} for '{source_str}' -> '{target_str}' "
                 f'failed with: {e}. Retrying in {delay:.1f}s...'
             )
             time.sleep(delay)
@@ -187,7 +187,7 @@ def robust_delete(
                 raise
 
             logger.warning(
-                f'Delete attempt {attempt}/{max_retries} for <{path_str}> failed with: {e}. Retrying in {delay:.1f}s...'
+                f"Delete attempt {attempt}/{max_retries} for '{path_str}' failed with: {e}. Retrying in {delay:.1f}s..."
             )
             time.sleep(delay)
             delay *= backoff_factor

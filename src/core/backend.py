@@ -155,24 +155,24 @@ class CompareDirs:
 
             if use_mirror and mirror_exists:
                 logger.info(
-                    f'Using mirror for <{dir_pair.target}>. Table has {self.mirror.size(dir_pair.target):,} entries'
+                    f"Using mirror for '{dir_pair.target}'. Table has {self.mirror.size(dir_pair.target):,} entries"
                 )
                 self.files_in_target[dir_pair.target] = self.mirror.get_paths(root_dir=dir_pair.target)
                 continue
 
             if use_mirror and not mirror_exists:
                 logger.warning(
-                    f'Mirror does not exist for target directory <{dir_pair.target}>. Using file system instead.'
+                    f"Mirror does not exist for target directory '{dir_pair.target}'. Using file system instead."
                 )
 
-            logger.info(f'Using file system to scan target directory <{dir_pair.target}>')
+            logger.info(f"Using file system to scan target directory '{dir_pair.target}'")
             self.files_in_target[dir_pair.target] = CstmPath.get_from_dir(dir_pair.target, exclude=self.exclusions)
 
             if increment_mirror or rebuild_mirror:
                 logger.info(f'Adding {len(self.files_in_target[dir_pair.target]):,} files to mirror')
                 self.mirror.add_path(dir_pair.target, self.files_in_target[dir_pair.target])
                 size = self.mirror.size(dir_pair.target)
-                logger.info(f'Mirror cache updated and saved for <{dir_pair.target}> ({size:,} entries)')
+                logger.info(f"Mirror cache updated and saved for '{dir_pair.target}' ({size:,} entries)")
 
         num_files = sum(len(files) for files in self.files_in_target.values())
         logger.info(
@@ -192,8 +192,8 @@ class CompareDirs:
             files_in_target = copy(self.files_in_target.get(dir_pair.target, set()))
 
             logger.info(
-                f'Linking <{dir_pair.source}> ({len(files_in_source):,} files) and '
-                f'<{dir_pair.target}> ({len(files_in_target):,} files)'
+                f"Linking '{dir_pair.source}' ({len(files_in_source):,} files) and "
+                f"'{dir_pair.target}' ({len(files_in_target):,} files)"
             )
 
             ################################
@@ -369,7 +369,7 @@ class CompareDirs:
         logger.info('Starting to write comparison report')
         os.makedirs(os.path.dirname(self.save_report_path), exist_ok=True)
         df.to_excel(self.save_report_path, index=False)
-        logger.info(f'Comparison report was saved to <{self.save_report_path}>')
+        logger.info(f"Comparison report was saved to '{self.save_report_path}'")
 
     def print_results(self):
         logger.info('-------------------------')
@@ -593,7 +593,7 @@ class SyncDirs:
                         log_progress(meta['past'], i, n_files, start_time, interval=log_interval)
             except Exception as e:
                 error_msg = e if length_check == '' else length_check
-                logger.error(f'There was an error while {meta["gerund"]} file <{primary_path}>. Exception: {error_msg}')
+                logger.error(f"There was an error while {meta['gerund']} file '{primary_path}'. Exception: {error_msg}")
 
             results.append((item, success))
             if self.progress_callback is not None:
@@ -609,7 +609,7 @@ class SyncDirs:
 
         # Skip copy if source file no longer exists (e.g. transient file removed)
         if not os.path.isfile(source):
-            logger.warning(f'Copy skipped because source file no longer exists: <{source}>')
+            logger.warning(f"Copy skipped because source file no longer exists: '{source}'")
             return False, 0
 
         # JIT Self-Healing: If target file already physically exists and matches source, avoid re-copying
@@ -621,15 +621,15 @@ class SyncDirs:
                     source_stat.st_size == target_stat.st_size
                     and abs(source_stat.st_mtime - target_stat.st_mtime) < 2.0
                 ):
-                    logger.info(f'Target already exists and matches source: <{target}>. Self-healing mirror entry.')
+                    logger.info(f"Target already exists and matches source: '{target}'. Self-healing mirror entry.")
                     if self.increment_mirror:
                         self.mirror.add_path(root_dir=dir_pair.target, path=target)
                     return True, target_stat.st_size
             except Exception as jit_err:
-                logger.debug(f'JIT self-heal check skipped for <{target}>: {jit_err}')
+                logger.debug(f"JIT self-heal check skipped for '{target}': {jit_err}")
 
         size = get_size(str(source))
-        logger.debug(f'Copying file {i:,} of {n_files:,}: <{source}> -> <{target}> ({format_size(size)})')
+        logger.debug(f"Copying file {i:,} of {n_files:,}: '{source}' -> '{target}' ({format_size(size)})")
         robust_copy(
             source,
             target,
@@ -654,15 +654,15 @@ class SyncDirs:
         if not os.path.isfile(source):
             if os.path.isfile(target):
                 try:
-                    logger.info(f'Source is already missing and target exists: <{target}>. Self-healing mirror entry.')
+                    logger.info(f"Source is already missing and target exists: '{target}'. Self-healing mirror entry.")
                     if self.increment_mirror:
                         self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
                     return True, 0
                 except Exception as jit_err:
-                    logger.debug(f'JIT move self-heal check skipped for <{target}>: {jit_err}')
+                    logger.debug(f"JIT move self-heal check skipped for '{target}': {jit_err}")
             else:
                 logger.warning(
-                    f'Move skipped because file is missing at both source and target: <{source}>. '
+                    f"Move skipped because file is missing at both source and target: '{source}'. "
                     'Purging phantom mirror record.'
                 )
                 try:
@@ -673,7 +673,7 @@ class SyncDirs:
                 return False, 0
 
         size_str = get_size_as_str(str(source)) if os.path.isfile(source) else 'N/A'
-        logger.debug(f'Moving file {i:,} of {n_files:,}: <{source}> -> <{target}> ({size_str})')
+        logger.debug(f"Moving file {i:,} of {n_files:,}: '{source}' -> '{target}' ({size_str})")
         robust_move(
             source,
             target,
@@ -689,16 +689,16 @@ class SyncDirs:
         return True, 0
 
     def _delete_file(self, path: CstmPath | str, i: int, n_files: int) -> tuple[bool, int | float]:
-        logger.debug(f'Deleting file {i:,} of {n_files:,}: <{path}> ({get_size_as_str(str(path))})')
+        logger.debug(f"Deleting file {i:,} of {n_files:,}: '{path}' ({get_size_as_str(str(path))})")
 
         try:
             dir_pair = get_dirs_from_path(path, self.dirs or [])
         except Exception as e:
-            logger.error(f'Could not identify root directory for deletion target <{path}>: {e}')
+            logger.error(f"Could not identify root directory for deletion target '{path}': {e}")
             return False, 0
 
         if not os.path.isfile(path):
-            logger.warning(f'Skipping deletion of file because it is already missing: <{path}>')
+            logger.warning(f"Skipping deletion of file because it is already missing: '{path}'")
             try:
                 if self.increment_mirror:
                     self.mirror.remove_path(root_dir=dir_pair.target, path=path)
@@ -764,9 +764,9 @@ class SyncDirs:
                 if not os.listdir(current):
                     try:
                         os.rmdir(current)
-                        logger.info(f'Removed empty directory <{current}>')
+                        logger.info(f"Removed empty directory '{current}'")
                     except Exception as e:
-                        logger.error(f'Could not remove empty directory <{current}>. Exception: {e}')
+                        logger.error(f"Could not remove empty directory '{current}'. Exception: {e}")
                         break
                     parent = os.path.dirname(current)
                     if parent == current:
@@ -780,17 +780,19 @@ class SyncDirs:
         if failed_copy:
             logger.warning(
                 'Summary of files that failed to be copied:\n    '
-                + '\n    '.join([f'<{s}> -> <{t}>' for s, t in failed_copy])
+                + '\n    '.join([f"'{s}' -> '{t}'" for s, t in failed_copy])
             )
         failed_move = [p for p, success in self.files_moved if not success]
         if failed_move:
             logger.warning(
                 'Summary of files that failed to be moved:\n    '
-                + '\n    '.join([f'<{s}> -> <{t}>' for s, t in failed_move])
+                + '\n    '.join([f"'{s}' -> '{t}'" for s, t in failed_move])
             )
         failed_delete = [p for p, success in self.files_deleted if not success]
         if failed_delete:
-            logger.warning('Summary of files that failed to be deleted:\n    ' + '\n    '.join(failed_delete))
+            logger.warning(
+                'Summary of files that failed to be deleted:\n    ' + '\n    '.join([f"'{p}'" for p in failed_delete])
+            )
 
 
 if __name__ == '__main__':
