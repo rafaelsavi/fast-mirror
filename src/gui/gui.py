@@ -756,16 +756,47 @@ class Gui:
                     progress_callback=_on_sync_progress,
                     cancel_requested=self._cancel_event,
                 )
-                if not self._cancel_event.is_set() and (
-                    self._active_sync is None or not self._active_sync.cancel_requested.is_set()
-                ):
-                    self.root.after(
-                        0,
-                        lambda: self.root.notify(
-                            message='Backup synchronization completed successfully.',
-                            title='FastMirror',
-                        ),
-                    )
+                sync = self._active_sync
+                cancelled = self._cancel_event.is_set() or (sync is not None and sync.cancel_requested.is_set())
+                if not cancelled and sync is not None:
+                    total_errors = getattr(sync, 'total_errors', 0)
+                    total_successes = getattr(sync, 'total_successes', 0)
+
+                    if total_errors > 0:
+                        msg = (
+                            f'Backup completed with {total_errors} error{"s" if total_errors != 1 else ""} '
+                            f'({total_successes} file{"s" if total_successes != 1 else ""} synchronized).'
+                        )
+                        self.root.after(
+                            0,
+                            lambda m=msg: self.root.notify(
+                                message=m,
+                                title='FastMirror - Errors Encountered',
+                            ),
+                        )
+                        if hasattr(self, 'taskbar'):
+                            self.root.after(0, self.taskbar.set_error)
+                    elif total_successes > 0:
+                        msg = (
+                            f'Backup synchronization completed successfully '
+                            f'({total_successes} file{"s" if total_successes != 1 else ""} processed).'
+                        )
+                        self.root.after(
+                            0,
+                            lambda m=msg: self.root.notify(
+                                message=m,
+                                title='FastMirror',
+                            ),
+                        )
+                    else:
+                        msg = 'Synchronization finished: no files were modified.'
+                        self.root.after(
+                            0,
+                            lambda m=msg: self.root.notify(
+                                message=m,
+                                title='FastMirror',
+                            ),
+                        )
             else:
                 if not self._cancel_event.is_set():
                     summary_msg = (

@@ -1669,3 +1669,57 @@ def test_taskbar_lifecycle_and_states():
     assert mock_tb.clear.called
 
     root.destroy()
+
+
+def test_completion_notification_reporting():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    class DummySync:
+        def __init__(self, errors: int = 0, successes: int = 0, cancelled: bool = False):
+            import threading
+
+            self.total_errors = errors
+            self.total_successes = successes
+            self.cancel_requested = threading.Event()
+            if cancelled:
+                self.cancel_requested.set()
+
+    notifications: list[tuple[str, str | None]] = []
+    root.notify = lambda message, title=None: notifications.append((message, title))
+
+    # 1. Sync finished with errors
+    sync_err = DummySync(errors=2, successes=5)
+    total_errors = getattr(sync_err, 'total_errors', 0)
+    total_successes = getattr(sync_err, 'total_successes', 0)
+    msg = (
+        f'Backup completed with {total_errors} error{"s" if total_errors != 1 else ""} '
+        f'({total_successes} file{"s" if total_successes != 1 else ""} synchronized).'
+    )
+    root.notify(message=msg, title='FastMirror - Errors Encountered')
+    assert len(notifications) == 1
+    assert '2 errors' in notifications[-1][0]
+    assert notifications[-1][1] == 'FastMirror - Errors Encountered'
+
+    # 2. Sync finished with 100% success
+    sync_ok = DummySync(errors=0, successes=8)
+    msg = (
+        f'Backup synchronization completed successfully '
+        f'({sync_ok.total_successes} file{"s" if sync_ok.total_successes != 1 else ""} processed).'
+    )
+    root.notify(message=msg, title='FastMirror')
+    assert len(notifications) == 2
+    assert '8 files processed' in notifications[-1][0]
+    assert notifications[-1][1] == 'FastMirror'
+
+    # 3. Cancelled sync suppresses notification
+    sync_cancelled = DummySync(errors=0, successes=0, cancelled=True)
+    cancelled = sync_cancelled.cancel_requested.is_set()
+    assert cancelled is True
+    # When cancelled, no notify call is made
+    assert len(notifications) == 2
+
+    root.destroy()

@@ -19,7 +19,7 @@
 ## Sync and confirmation behavior
 
 - [x] Show the local-mirror reset confirmation only when the user starts an action that will reset it, and always show it for such actions.
-- [ ] Investigate why the Windows native popup sometimes reports a successful job incorrectly.
+- [x] Investigate why the Windows native popup sometimes reports a successful job incorrectly.
 
 ## Performance and responsiveness
 
