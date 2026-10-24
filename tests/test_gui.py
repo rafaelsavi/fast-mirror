@@ -1546,3 +1546,33 @@ def test_actions_panel_step5_modernization():
     assert hasattr(panel.cb_reset_mirror, '_tooltip')
 
     root.destroy()
+
+
+def test_icons_and_dpi_scaling():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.icons import apply_icon, get_dpi_scale, get_icon
+
+    scale = get_dpi_scale(root)
+    assert isinstance(scale, float)
+    assert scale >= 1.0
+
+    # Test loading pre-rendered icons
+    sync_icon = get_icon('sync', master=root)
+    assert sync_icon is not None
+    assert isinstance(sync_icon, tk.PhotoImage)
+
+    compare_icon = get_icon('compare', master=root)
+    assert compare_icon is not None
+    assert isinstance(compare_icon, tk.PhotoImage)
+
+    btn = ttk.Button(root, text='Test Action')
+    apply_icon(btn, 'sync')
+    assert hasattr(btn, '_icon_ref')
+    assert str(btn.cget('compound')) == 'left'
+
+    root.destroy()

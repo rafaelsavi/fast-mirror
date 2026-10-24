@@ -4,6 +4,7 @@ from collections.abc import Callable
 from tkinter import messagebox, ttk
 
 from gui.enums import TkinterCfgRelief
+from gui.icons import apply_icon
 from gui.widgets import Action, DefaultActions, add_tooltip
 
 
@@ -207,6 +208,7 @@ class ActionsPanel(ttk.LabelFrame):
             command=self.on_reset_config,
             width=11,
         )
+        apply_icon(self.button_new_config, 'broom')
         self.button_new_config.pack(side='left', padx=3)
         add_tooltip(self.button_new_config, 'Reset all configuration fields and options to default values.')
 
@@ -216,6 +218,7 @@ class ActionsPanel(ttk.LabelFrame):
             command=self.on_save_config,
             width=11,
         )
+        apply_icon(self.button_save_config, 'save')
         self.button_save_config.pack(side='left', padx=3)
         add_tooltip(self.button_save_config, 'Save current settings and directory pairs to disk (config.json).')
 
@@ -232,6 +235,7 @@ class ActionsPanel(ttk.LabelFrame):
             command=self.on_quick_compare,
             width=14,
         )
+        apply_icon(self.button_quick_compare, 'compare')
         self.button_quick_compare.pack(side='left', padx=3)
         add_tooltip(self.button_quick_compare, 'Run dry-run comparison to analyze differences without altering files.')
 
@@ -241,6 +245,7 @@ class ActionsPanel(ttk.LabelFrame):
             command=self.on_open_report,
             width=12,
         )
+        apply_icon(self.button_open_report, 'document')
         self.button_open_report.pack(side='left', padx=3)
         add_tooltip(self.button_open_report, 'Open the most recently generated Excel comparison report.')
 
@@ -250,6 +255,7 @@ class ActionsPanel(ttk.LabelFrame):
             command=self._handle_report_history,
             width=11,
         )
+        apply_icon(self.button_report_history, 'folder')
         self.button_report_history.pack(side='left', padx=3)
         add_tooltip(self.button_report_history, 'Browse, open, or manage past Excel comparison reports.')
 
@@ -267,6 +273,7 @@ class ActionsPanel(ttk.LabelFrame):
             width=14,
             default_style='Accent.TButton',
         )
+        apply_icon(self.button_sync_now, 'sync')
         self.button_sync_now.pack(side='left', padx=3)
         add_tooltip(self.button_sync_now, 'Start synchronization between source and target directories.')
 
@@ -276,6 +283,7 @@ class ActionsPanel(ttk.LabelFrame):
             command=self.on_schedule_sync,
             width=14,
         )
+        apply_icon(self.button_schedule_sync, 'pulse')
         self.button_schedule_sync.pack(side='left', padx=3)
         add_tooltip(self.button_schedule_sync, 'Toggle automated background synchronization at scheduled times.')
 
@@ -456,11 +464,13 @@ class ActionsPanel(ttk.LabelFrame):
                 command=self.on_sync_now,
                 default_style='Accent.TButton',
             )
+            apply_icon(self.button_sync_now, 'sync')
             self.button_quick_compare.configure(
                 text='Start Compare',
                 command=self.on_quick_compare,
                 default_style='',
             )
+            apply_icon(self.button_quick_compare, 'compare')
             return
 
         if stopping:

@@ -40,7 +40,19 @@ def apply_window_icon(window: tk.Tk | tk.Toplevel) -> None:
         window.iconbitmap(icon_path)
 
 
-def get_icon(name: str, master: tk.Misc | None = None) -> tk.PhotoImage | None:
+def get_dpi_scale(widget: tk.Misc | None = None) -> float:
+    """Calculate current display DPI scaling factor safely."""
+    if widget is None:
+        return 1.0
+    try:
+        scaling = float(widget.tk.call('tk', 'scaling'))
+        # Standard 96 DPI corresponds to Tk scaling ratio 96 / 72 = 1.33333333
+        return max(1.0, scaling / 1.33333333)
+    except Exception:
+        return 1.0
+
+
+def get_icon(name: str, master: tk.Misc | None = None, auto_scale: bool = False) -> tk.PhotoImage | None:
     """
     Retrieve or load a cached PhotoImage icon by name.
 
@@ -48,13 +60,14 @@ def get_icon(name: str, master: tk.Misc | None = None) -> tk.PhotoImage | None:
     and pytest test suites. Returns None gracefully if no Tk root window exists yet
     or if the icon file is missing.
     """
-    if name in _ICON_CACHE:
-        cached = _ICON_CACHE[name]
+    cache_key = f'{name}_2x' if auto_scale and master and get_dpi_scale(master) >= 1.75 else name
+    if cache_key in _ICON_CACHE:
+        cached = _ICON_CACHE[cache_key]
         try:
             cached.tk.call('image', 'width', cached.name)
             return cached
         except (tk.TclError, RuntimeError, AttributeError):
-            _ICON_CACHE.pop(name, None)
+            _ICON_CACHE.pop(cache_key, None)
 
     icon_path = os.path.join(_ICONS_DIR, f'{name}.png')
     if not os.path.isfile(icon_path):
@@ -62,7 +75,10 @@ def get_icon(name: str, master: tk.Misc | None = None) -> tk.PhotoImage | None:
 
     try:
         img = tk.PhotoImage(file=icon_path, master=master)
-        _ICON_CACHE[name] = img
+        if auto_scale and master and get_dpi_scale(master) >= 1.75:
+            with contextlib.suppress(Exception):
+                img = img.zoom(2, 2)
+        _ICON_CACHE[cache_key] = img
         return img
     except (tk.TclError, RuntimeError):
         return None
@@ -73,6 +89,7 @@ def apply_icon(
     icon_name: str,
     text: str | None = None,
     compound: str = 'left',
+    auto_scale: bool = False,
 ) -> None:
     """
     Configure a button with a real icon and text safely.
@@ -80,7 +97,7 @@ def apply_icon(
     Maintains a persistent reference on the widget object to protect against
     Tkinter garbage collection transparent-bitmap bugs.
     """
-    icon = get_icon(icon_name, master=button)
+    icon = get_icon(icon_name, master=button, auto_scale=auto_scale)
     config_kwargs: dict[str, Any] = {}
 
     if text is not None:
