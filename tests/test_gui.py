@@ -2,6 +2,7 @@ import datetime
 import os
 import sys
 import tkinter as tk
+from tkinter import ttk
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
@@ -507,12 +508,10 @@ def test_gui_initialization_with_light_theme(monkeypatch):
     monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
 
     gui = Gui()
-    assert gui.current_theme == 'native'
-    # Test theme toggle
-    gui.button_action_toggle_theme()
-    assert gui.current_theme == 'sv_ttk'
-    gui.button_action_toggle_theme()
-    assert gui.current_theme == 'native'
+    # Test that native hardware-accelerated style configuration is applied
+    style = ttk.Style()
+    assert style.lookup('TLabelframe.Label', 'font') is not None
+    assert style.lookup('Accent.TButton', 'font') is not None
 
     assert gui.status_bar is not None
     assert gui.paths_panel is not None

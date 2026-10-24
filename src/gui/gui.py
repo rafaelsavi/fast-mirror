@@ -8,8 +8,6 @@ import tkinter as tk
 from logging import LogRecord
 from tkinter import messagebox, ttk
 
-import sv_ttk
-
 from core.backend import CompareDirs, SyncDirs
 from core.mirror import MirrorDatabase
 from gui.components.actions_panel import ActionsPanel
@@ -49,7 +47,6 @@ class Gui:
         apply_window_icon(self.root)
         self.root.title('FastMirror')
 
-        self.current_theme = 'native'
         self.config_path = CONFIG_PATH
 
         # State variables
@@ -82,8 +79,8 @@ class Gui:
         # Build GUI modular components
         self.create_widgets()
 
-        # Apply default theme (hardware-accelerated native theme)
-        self.apply_theme(self.current_theme)
+        # Apply hardware-accelerated native Windows theme
+        self.apply_theme()
 
         # Set minimum window bounds
         self.root.update_idletasks()
@@ -241,7 +238,6 @@ class Gui:
             on_report_history=self.button_action_open_report_history,
             on_sync_now=self.button_action_sync_now,
             on_schedule_sync=self.button_action_schedule_sync,
-            on_toggle_theme=self.button_action_toggle_theme,
             on_rebuild_confirmation=self.on_rebuild_mirror_confirmation,
             padding=6,
         )
@@ -297,33 +293,23 @@ class Gui:
         self._gui_initialized = True
 
     def apply_theme(self, theme_name: str = 'native'):
-        """Apply either fast hardware-accelerated Windows native theme or Sun Valley theme."""
-        self.current_theme = theme_name
+        """Apply fast hardware-accelerated Windows native theme and visual styling tokens."""
         style = ttk.Style()
-        if theme_name == 'native':
-            # Select best available hardware-accelerated theme
-            available = style.theme_names()
-            for cand in ['vista', 'xpnative', 'clam', 'default']:
-                if cand in available:
-                    with contextlib.suppress(Exception):
-                        style.theme_use(cand)
-                    break
+        # Select best available hardware-accelerated theme
+        available = style.theme_names()
+        for cand in ['vista', 'xpnative', 'clam', 'default']:
+            if cand in available:
+                with contextlib.suppress(Exception):
+                    style.theme_use(cand)
+                break
 
-            # Modern crisp Segoe UI typography and visual tokens
-            style.configure('.', font=('Segoe UI', 9))
-            style.configure('TLabelframe', relief='groove', borderwidth=1)
-            style.configure('TLabelframe.Label', font=('Segoe UI', 9, 'bold'), foreground='#003366')
-            style.configure('Accent.TButton', font=('Segoe UI', 9, 'bold'), foreground='#004488')
-            style.configure('ActiveToggle.TButton', font=('Segoe UI', 9, 'bold'), foreground='#006600')
-            style.configure('Stop.TButton', font=('Segoe UI', 9, 'bold'), foreground='#cc0000')
-
-            if hasattr(self, 'actions_panel') and hasattr(self.actions_panel, 'button_toggle_theme'):
-                self.actions_panel.button_toggle_theme.config(text='Theme: Native (Fast)')
-        else:
-            with contextlib.suppress(Exception):
-                sv_ttk.set_theme('light')
-            if hasattr(self, 'actions_panel') and hasattr(self.actions_panel, 'button_toggle_theme'):
-                self.actions_panel.button_toggle_theme.config(text='Theme: Sun Valley')
+        # Modern crisp Segoe UI typography and visual tokens
+        style.configure('.', font=('Segoe UI', 9))
+        style.configure('TLabelframe', relief='groove', borderwidth=1)
+        style.configure('TLabelframe.Label', font=('Segoe UI', 9, 'bold'), foreground='#003366')
+        style.configure('Accent.TButton', font=('Segoe UI', 9, 'bold'), foreground='#004488')
+        style.configure('ActiveToggle.TButton', font=('Segoe UI', 9, 'bold'), foreground='#006600')
+        style.configure('Stop.TButton', font=('Segoe UI', 9, 'bold'), foreground='#cc0000')
 
         if hasattr(self, 'log_panel'):
             self.log_panel.apply_theme('light')
@@ -333,12 +319,6 @@ class Gui:
             w = self.root.winfo_reqwidth()
             h = self.root.winfo_reqheight()
             self.root.minsize(w, h)
-
-    def button_action_toggle_theme(self):
-        """Toggle between hardware-accelerated native theme and Sun Valley theme."""
-        next_theme = 'sv_ttk' if self.current_theme == 'native' else 'native'
-        self.apply_theme(next_theme)
-        logger.info(f'GUI theme switched to {next_theme}')
 
     def on_rebuild_mirror_confirmation(self, confirmed: bool):
         """Update confirmed state for rebuilding the mirror database."""
@@ -400,7 +380,6 @@ class Gui:
                 'checkbox_var_save_report',
             ]
             config_vars = {name: getattr(self, name).get() for name in config_var_names}
-            config_vars['theme'] = getattr(self, 'current_theme', 'native')
             os.makedirs(os.path.dirname(os.path.abspath(self.config_path)), exist_ok=True)
             with open(self.config_path, 'w') as f:
                 json.dump(config_vars, f, indent=4)
@@ -418,11 +397,6 @@ class Gui:
                     if hasattr(self, name):
                         gui_element = getattr(self, name)
                         gui_element.set(value)
-
-                if 'theme' in config_vars:
-                    saved_theme = config_vars['theme']
-                    if saved_theme in ('native', 'sv_ttk') and saved_theme != getattr(self, 'current_theme', None):
-                        self.apply_theme(saved_theme)
 
                 self.text_logger.set_log_levels(self.log_levels.get())
                 if show_success_msg:

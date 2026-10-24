@@ -92,7 +92,6 @@ class ActionsPanel(ttk.LabelFrame):
         on_sync_now: Callable[[], None],
         on_schedule_sync: Callable[[], None],
         on_report_history: Callable[[], None] | None = None,
-        on_toggle_theme: Callable[[], None] | None = None,
         on_rebuild_confirmation: Callable[[bool], None] | None = None,
         **kwargs,
     ):
@@ -112,7 +111,6 @@ class ActionsPanel(ttk.LabelFrame):
         self.on_report_history = on_report_history
         self.on_sync_now = on_sync_now
         self.on_schedule_sync = on_schedule_sync
-        self.on_toggle_theme = on_toggle_theme
         self.on_rebuild_confirmation = on_rebuild_confirmation
 
         self._create_widgets()
@@ -140,15 +138,6 @@ class ActionsPanel(ttk.LabelFrame):
             width=11,
         )
         self.button_save_config.pack(side='left', padx=3)
-
-        self.button_toggle_theme = ModernButton(
-            cfg_frame,
-            text='Theme: Native (Fast)',
-            command=self.on_toggle_theme,
-            width=20,
-        )
-        if self.on_toggle_theme is not None:
-            self.button_toggle_theme.pack(side='left', padx=3)
 
         # Section 2: Comparison
         cmp_frame = ttk.Frame(self)
@@ -350,8 +339,6 @@ class ActionsPanel(ttk.LabelFrame):
             self.button_sync_now,
             self.button_schedule_sync,
         ]
-        if hasattr(self, 'button_toggle_theme'):
-            buttons.append(self.button_toggle_theme)
         for btn in buttons:
             is_sunken = False
             if hasattr(btn, 'config'):
