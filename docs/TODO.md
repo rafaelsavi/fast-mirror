@@ -11,7 +11,10 @@
 - [ ] Make background colors consistent in the native theme.
 - [ ] Explore clearer icons that remain understandable at small sizes.
 - [ ] Add taskbar progress indication.
-- [ ] Document creating a Windows shortcut with the existing launcher and icon.
+
+# Launcher
+
+- [ ] Explain ways of changing the app to easily create a Windows shortcut with the existing launcher and icon.
 
 ## Sync and confirmation behavior
 
