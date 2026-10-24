@@ -1102,6 +1102,36 @@ class Gui:
     ):
         mirror = MirrorDatabase(exclusions=exclusions)
 
+        def _on_scan_progress(action: str, current: int, total: int, current_path: str):
+            if self._cancel_event.is_set():
+                return
+            if action == 'Comparing':
+                if hasattr(self, 'telemetry_bar'):
+                    self.root.after(
+                        0,
+                        lambda: self.telemetry_bar.set_indeterminate('Comparing and analyzing files...'),
+                    )
+                if hasattr(self, 'taskbar'):
+                    self.root.after(0, self.taskbar.set_indeterminate)
+            else:
+                if hasattr(self, 'telemetry_bar'):
+
+                    def _update_telemetry(a=action, c=current, t=total, cp=current_path):
+                        self.telemetry_bar.set_determinate(
+                            action=a,
+                            current=c,
+                            total=t,
+                            current_file=cp,
+                        )
+
+                    self.root.after(0, _update_telemetry)
+                if hasattr(self, 'taskbar'):
+
+                    def _update_taskbar(c=current, t=total):
+                        self.taskbar.set_determinate(c, t)
+
+                    self.root.after(0, _update_taskbar)
+
         if hasattr(self, 'telemetry_bar'):
             self.root.after(0, lambda: self.telemetry_bar.set_indeterminate('Scanning and comparing files...'))
         if hasattr(self, 'taskbar'):
@@ -1116,6 +1146,7 @@ class Gui:
             use_mirror=use_mirror,
             increment_mirror=not build_mirror,
             rebuild_mirror=build_mirror,
+            progress_callback=_on_scan_progress,
             cancel_requested=self._cancel_event,
         )
 

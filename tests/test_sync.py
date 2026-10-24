@@ -641,3 +641,40 @@ def test_execute_batch_cancellation_midway(tmp_path):
     assert processed == ['a.txt']
     assert len(results) == 1
     assert results[0] == ('a.txt', True)
+
+
+def test_compare_dirs_scan_progress_callback(tmp_path):
+    src1 = tmp_path / 'src1'
+    tgt1 = tmp_path / 'tgt1'
+    src2 = tmp_path / 'src2'
+    tgt2 = tmp_path / 'tgt2'
+    for p in (src1, tgt1, src2, tgt2):
+        p.mkdir()
+    (src1 / 'f1.txt').write_text('1')
+    (src2 / 'f2.txt').write_text('2')
+
+    dirs = [
+        DirectoryPair(str(src1), str(tgt1)),
+        DirectoryPair(str(src2), str(tgt2)),
+    ]
+    mirror = MirrorDatabase(path=str(tmp_path / 'mirror.db'))
+
+    events: list[tuple[str, int, int, str]] = []
+
+    def on_progress(action: str, current: int, total: int, current_path: str):
+        events.append((action, current, total, current_path))
+
+    CompareDirs(
+        mirror=mirror,
+        dirs=dirs,
+        exclusions=[],
+        progress_callback=on_progress,
+    )
+
+    assert events == [
+        ('Scanning', 1, 4, str(src1)),
+        ('Scanning', 2, 4, str(src2)),
+        ('Scanning', 3, 4, str(tgt1)),
+        ('Scanning', 4, 4, str(tgt2)),
+        ('Comparing', 4, 4, ''),
+    ]

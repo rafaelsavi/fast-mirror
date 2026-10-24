@@ -55,6 +55,7 @@ class CompareDirs:
         use_mirror=False,
         increment_mirror=True,
         rebuild_mirror=False,
+        progress_callback: Callable[[str, int, int, str], None] | None = None,
         cancel_requested: threading.Event | None = None,
     ):
         logger.info('-----------------------------')
@@ -68,6 +69,7 @@ class CompareDirs:
         self.dirs = dirs
         self.exclusions = exclusions
         self.comparison_method = comparison_method
+        self.progress_callback = progress_callback
         self.cancel_requested = cancel_requested
 
         # Initialize comparison variables
@@ -80,6 +82,8 @@ class CompareDirs:
         self.files_to_move: list[tuple[CstmPath, CstmPath]] = []
         self.files_to_delete: list[CstmPath] = []
 
+        total_items = len(self.dirs) * 2
+
         self.scan_source_files()
         if self.cancel_requested and self.cancel_requested.is_set():
             logger.info('Comparison stopped upon cancellation request')
@@ -88,6 +92,8 @@ class CompareDirs:
         if self.cancel_requested and self.cancel_requested.is_set():
             logger.info('Comparison stopped upon cancellation request')
             return
+        if self.progress_callback:
+            self.progress_callback('Comparing', total_items, total_items, '')
         self.link_files()
         if self.cancel_requested and self.cancel_requested.is_set():
             logger.info('Comparison stopped upon cancellation request')
@@ -113,10 +119,13 @@ class CompareDirs:
         logger.info('Starting to scan source files')
         start_time = time.time()
         self.files_in_source = {}
-        for dir_pair in self.dirs:
+        total_items = len(self.dirs) * 2
+        for i, dir_pair in enumerate(self.dirs, 1):
             if self.cancel_requested and self.cancel_requested.is_set():
                 logger.info('Scanning source files aborted due to cancellation request')
                 break
+            if self.progress_callback:
+                self.progress_callback('Scanning', i, total_items, str(dir_pair.source))
             self.files_in_source[dir_pair.source] = CstmPath.get_from_dir(dir_pair.source, exclude=self.exclusions)
         num_files = sum(len(files) for files in self.files_in_source.values())
         logger.info(
@@ -131,10 +140,15 @@ class CompareDirs:
             raise Exception('Cannot increment mirror and rebuild it at the same time.')
 
         start_time = time.time()
-        for dir_pair in self.dirs:
+        total_items = len(self.dirs) * 2
+        source_offset = len(self.dirs)
+        for i, dir_pair in enumerate(self.dirs, 1):
             if self.cancel_requested and self.cancel_requested.is_set():
                 logger.info('Scanning target files aborted due to cancellation request')
                 break
+            current_step = source_offset + i
+            if self.progress_callback:
+                self.progress_callback('Scanning', current_step, total_items, str(dir_pair.target))
             mirror_exists = self.mirror.exists_table(dir_pair.target)
             if rebuild_mirror and mirror_exists:
                 self.mirror.reset(dir_pair.target)

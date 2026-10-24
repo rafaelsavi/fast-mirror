@@ -717,4 +717,6 @@ class BadgeLabel(tk.Label):
             kwargs['bd'] = 0
         return super().config(cnf, **kwargs)
 
-    configure = config
+    def configure(self, cnf=None, **kwargs):
+        """Alias for config."""
+        return self.config(cnf, **kwargs)
