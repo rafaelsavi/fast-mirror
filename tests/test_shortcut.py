@@ -17,17 +17,17 @@ from utils.shortcut import (
 
 
 def test_get_desktop_dir():
-    """Verify get_desktop_dir returns a valid path ending in Desktop."""
+    """Verify get_desktop_dir returns an existing directory path."""
     desktop = get_desktop_dir()
     assert isinstance(desktop, Path)
-    assert desktop.name == 'Desktop'
+    assert desktop.is_dir()
 
 
 def test_get_start_menu_dir():
-    """Verify get_start_menu_dir returns a valid path ending in Programs."""
+    """Verify get_start_menu_dir returns an existing directory path."""
     sm = get_start_menu_dir()
     assert isinstance(sm, Path)
-    assert sm.name == 'Programs'
+    assert sm.is_dir()
 
 
 def test_get_launcher_targets():

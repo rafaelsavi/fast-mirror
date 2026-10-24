@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import contextlib
 import os
 import subprocess
 import sys
@@ -11,17 +13,85 @@ from utils.constants import ROOT_DIR
 
 
 def get_desktop_dir() -> Path:
-    """Return the current user's Windows Desktop directory path."""
-    userprofile = os.environ.get('USERPROFILE')
-    if userprofile:
-        desktop = Path(userprofile) / 'Desktop'
+    """
+    Return the current user's active Windows Desktop directory path.
+
+    Supports Windows Shell folder redirection, OneDrive Desktop sync,
+    and localized folder names (e.g. 'Área de Trabalho') via SHGetFolderPathW
+    and Windows User Shell Folders registry queries.
+    """
+    # 1. Primary: Windows Shell API SHGetFolderPathW (CSIDL_DESKTOPDIRECTORY = 0x0010)
+    try:
+        import ctypes
+        import ctypes.wintypes
+
+        buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
+        if ctypes.windll.shell32.SHGetFolderPathW(None, 0x0010, None, 0, buf) == 0:
+            desktop = Path(buf.value)
+            if desktop.is_dir():
+                return desktop
+    except Exception:
+        pass
+
+    # 2. Secondary: Windows Registry User Shell Folders
+    try:
+        import winreg
+
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r'Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders',
+        )
+        val, _ = winreg.QueryValueEx(key, 'Desktop')
+        desktop = Path(os.path.expandvars(str(val)))
         if desktop.is_dir():
             return desktop
+    except Exception:
+        pass
+
+    # 3. Fallback heuristics
+    userprofile = os.environ.get('USERPROFILE')
+    if userprofile:
+        for candidate in (
+            Path(userprofile) / 'OneDrive' / 'Área de Trabalho',
+            Path(userprofile) / 'OneDrive' / 'Desktop',
+            Path(userprofile) / 'Desktop',
+        ):
+            if candidate.is_dir():
+                return candidate
+
     return Path.home() / 'Desktop'
 
 
 def get_start_menu_dir() -> Path:
     """Return the current user's Start Menu Programs directory path."""
+    # 1. Primary: Windows Shell API SHGetFolderPathW (CSIDL_PROGRAMS = 0x0002)
+    try:
+        import ctypes
+        import ctypes.wintypes
+
+        buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
+        if ctypes.windll.shell32.SHGetFolderPathW(None, 0x0002, None, 0, buf) == 0:
+            sm = Path(buf.value)
+            if sm.is_dir():
+                return sm
+    except Exception:
+        pass
+
+    # 2. Secondary: Windows Registry User Shell Folders
+    try:
+        import winreg
+
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r'Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders',
+        )
+        val, _ = winreg.QueryValueEx(key, 'Programs')
+        sm = Path(os.path.expandvars(str(val)))
+        if sm.is_dir():
+            return sm
+    except Exception:
+        pass
+
     appdata = os.environ.get('APPDATA')
     if appdata:
         sm = Path(appdata) / 'Microsoft' / 'Windows' / 'Start Menu' / 'Programs'
@@ -83,8 +153,10 @@ def create_windows_shortcut(
         f'$s.Save()'
     )
 
+    encoded_command = base64.b64encode(ps_script.encode('utf-16le')).decode('ascii')
+
     proc = subprocess.run(
-        ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', ps_script],
+        ['powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded_command],
         capture_output=True,
         text=True,
     )
@@ -92,5 +164,14 @@ def create_windows_shortcut(
     if proc.returncode != 0 or not shortcut_path.is_file():
         err = proc.stderr.strip() or proc.stdout.strip() or 'Unknown error'
         raise RuntimeError(f'Failed to create Windows shortcut at {shortcut_path}: {err}')
+
+    # If an orphaned shortcut exists in unredirected USERPROFILE/Desktop, remove it
+    if destination_dir is None:
+        userprofile = os.environ.get('USERPROFILE')
+        if userprofile:
+            legacy_path = Path(userprofile) / 'Desktop' / shortcut_name
+            if legacy_path != shortcut_path and legacy_path.is_file():
+                with contextlib.suppress(OSError):
+                    legacy_path.unlink()
 
     return str(shortcut_path)
