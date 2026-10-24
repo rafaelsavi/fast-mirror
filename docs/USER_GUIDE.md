@@ -229,16 +229,12 @@ fast-mirror/
 
 You can launch and integrate FastMirror into your Windows workflow in several ways:
 
-1. **Automatic Desktop Shortcut Creation (Recommended)**:
-   - **From the GUI**: Click the **Shortcut** button in the **Configuration** panel of the main window. FastMirror will automatically generate a desktop shortcut with the application's native icon (`app_icon.ico`) and point it to the windowless launcher (`launch.pyw`).
-   - **From PowerShell / Command Line**:
-     ```powershell
-     python launch.pyw --shortcut
-     ```
-     or:
-     ```powershell
-     python launch.pyw --create-shortcut
-     ```
+1. **Creating a Desktop Shortcut (Recommended)**:
+   Generate a Windows desktop shortcut configured with the windowless launcher (`launch.pyw`), native application icon (`app_icon.ico`), and working directory in one command:
+   ```powershell
+   python launch.pyw --shortcut
+   ```
+   *(or `python launch.pyw --create-shortcut`)*
 
 2. **Windowless Launcher (`launch.pyw`)**:
    Double-click `launch.pyw` in Windows Explorer or run from PowerShell:

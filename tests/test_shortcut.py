@@ -1,11 +1,13 @@
 """Tests for Windows shortcut creation utility and launcher integration."""
 
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from utils.constants import ROOT_DIR
 from utils.shortcut import (
     create_windows_shortcut,
     get_desktop_dir,
@@ -62,59 +64,14 @@ def test_create_windows_shortcut_failure(tmp_path, monkeypatch):
         create_windows_shortcut(destination_dir=tmp_path, shortcut_name='Fail.lnk')
 
 
-def test_gui_create_shortcut_success(monkeypatch, tmp_path):
-    """Verify GUI button_action_create_shortcut displays success dialog."""
-    import tkinter as tk
-
-    try:
-        root = tk.Tk()
-        root.withdraw()
-    except tk.TclError:
-        pytest.skip('Tkinter display not available')
-
-    from gui.gui import Gui
-
-    monkeypatch.setattr(Gui, '__init__', lambda self: None)
-    gui = Gui()
-    gui.root = root
-
-    info_called = []
-    monkeypatch.setattr('tkinter.messagebox.showinfo', lambda title, msg: info_called.append((title, msg)))
-    monkeypatch.setattr('utils.shortcut.create_windows_shortcut', lambda: str(tmp_path / 'FastMirror.lnk'))
-
-    gui.button_action_create_shortcut()
-
-    assert len(info_called) == 1
-    assert 'Desktop Shortcut' in info_called[0][0]
-    root.destroy()
-
-
-def test_gui_create_shortcut_error(monkeypatch):
-    """Verify GUI button_action_create_shortcut displays error dialog on failure."""
-    import tkinter as tk
-
-    try:
-        root = tk.Tk()
-        root.withdraw()
-    except tk.TclError:
-        pytest.skip('Tkinter display not available')
-
-    from gui.gui import Gui
-
-    monkeypatch.setattr(Gui, '__init__', lambda self: None)
-    gui = Gui()
-    gui.root = root
-
-    error_called = []
-    monkeypatch.setattr('tkinter.messagebox.showerror', lambda title, msg: error_called.append((title, msg)))
-
-    def _fail():
-        raise RuntimeError('Simulated COM failure')
-
-    monkeypatch.setattr('utils.shortcut.create_windows_shortcut', _fail)
-
-    gui.button_action_create_shortcut()
-
-    assert len(error_called) == 1
-    assert 'Shortcut Error' in error_called[0][0]
-    root.destroy()
+def test_launcher_cli_help():
+    """Verify launch.pyw --help output."""
+    root = Path(ROOT_DIR)
+    proc = subprocess.run(
+        [sys.executable, str(root / 'launch.pyw'), '--help'],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    assert 'FastMirror Launcher' in proc.stdout
+    assert '--shortcut' in proc.stdout

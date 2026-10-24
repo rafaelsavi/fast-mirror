@@ -101,7 +101,6 @@ class ActionsPanel(ttk.LabelFrame):
         checkbox_var_metadata_comparison: tk.BooleanVar | None = None,
         on_report_history: Callable[[], None] | None = None,
         on_rebuild_confirmation: Callable[[bool], None] | None = None,
-        on_create_shortcut: Callable[[], None] | None = None,
         **kwargs,
     ):
         super().__init__(master, text=' Actions & Operations ', **kwargs)
@@ -112,7 +111,6 @@ class ActionsPanel(ttk.LabelFrame):
 
         self.on_reset_config = on_reset_config
         self.on_save_config = on_save_config
-        self.on_create_shortcut = on_create_shortcut
         self.on_quick_compare = on_quick_compare
         self.on_open_report = on_open_report
         self.on_report_history = on_report_history
@@ -223,19 +221,6 @@ class ActionsPanel(ttk.LabelFrame):
         apply_icon(self.button_save_config, 'save')
         self.button_save_config.pack(side='left', padx=3)
         add_tooltip(self.button_save_config, 'Save current settings and directory pairs to disk (config.json).')
-
-        self.button_create_shortcut = ModernButton(
-            cfg_frame,
-            text='Shortcut',
-            command=self.on_create_shortcut if self.on_create_shortcut else (lambda: None),
-            width=11,
-        )
-        apply_icon(self.button_create_shortcut, 'plus')
-        self.button_create_shortcut.pack(side='left', padx=3)
-        add_tooltip(
-            self.button_create_shortcut,
-            'Create a Windows desktop shortcut for FastMirror with native icon and silent launcher.',
-        )
 
         # Section 2: Comparison
         cmp_frame = ttk.Frame(self)

@@ -272,7 +272,6 @@ class Gui:
             checkbox_var_confirm_sync=self.checkbox_var_confirm_sync,
             on_reset_config=self.button_action_reset_config,
             on_save_config=self.button_action_save_config,
-            on_create_shortcut=self.button_action_create_shortcut,
             on_quick_compare=self.button_action_quick_compare,
             on_open_report=self.button_action_open_report,
             on_report_history=self.button_action_open_report_history,
@@ -501,24 +500,6 @@ class Gui:
     def button_action_open_report_history(self):
         """Open past reports browser dialog."""
         ReportsWindow(self.root)
-
-    def button_action_create_shortcut(self):
-        """Create a Windows desktop shortcut for FastMirror with native launcher and icon."""
-        from utils.shortcut import create_windows_shortcut
-
-        try:
-            path = create_windows_shortcut()
-            logger.info(f'Created desktop shortcut at: {path}')
-            messagebox.showinfo(
-                'Desktop Shortcut',
-                f'Desktop shortcut created successfully!\n\nLocation: {path}',
-            )
-        except Exception as e:
-            logger.error(f'Failed to create desktop shortcut: {e}')
-            messagebox.showerror(
-                'Shortcut Error',
-                f'Could not create desktop shortcut:\n\n{e}',
-            )
 
     def button_action_quick_compare(self):
         self.toggle_state_quick_compare = not self.toggle_state_quick_compare
