@@ -428,7 +428,6 @@ class SyncDirs:
                 raise ValueError('Cannot confirm sync without a valid root_gui')
             if not self.open_confirmation_popup():
                 logger.info('Synchronization canceled by user')
-                self.cancel_requested.set()
                 return
         else:
             if Action.COPY in self.default_actions:
@@ -776,24 +775,6 @@ class SyncDirs:
         failed_delete = [p for p, success in self.files_deleted if not success]
         if failed_delete:
             logger.warning('Summary of files that failed to be deleted:\n    ' + '\n    '.join(failed_delete))
-
-    @property
-    def total_errors(self) -> int:
-        """Count total files that encountered errors during copy, move, or delete actions."""
-        return (
-            sum(1 for _, success in self.files_copied if not success)
-            + sum(1 for _, success in self.files_moved if not success)
-            + sum(1 for _, success in self.files_deleted if not success)
-        )
-
-    @property
-    def total_successes(self) -> int:
-        """Count total files that were successfully copied, moved, or deleted."""
-        return (
-            sum(1 for _, success in self.files_copied if success)
-            + sum(1 for _, success in self.files_moved if success)
-            + sum(1 for _, success in self.files_deleted if success)
-        )
 
 
 if __name__ == '__main__':

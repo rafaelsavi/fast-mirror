@@ -1679,47 +1679,85 @@ def test_completion_notification_reporting():
         pytest.skip('Tkinter display not available')
 
     class DummySync:
-        def __init__(self, errors: int = 0, successes: int = 0, cancelled: bool = False):
-            import threading
-
-            self.total_errors = errors
-            self.total_successes = successes
-            self.cancel_requested = threading.Event()
-            if cancelled:
-                self.cancel_requested.set()
+        def __init__(
+            self,
+            files_copied: list | None = None,
+            files_moved: list | None = None,
+            files_deleted: list | None = None,
+        ):
+            self.files_copied = files_copied or []
+            self.files_moved = files_moved or []
+            self.files_deleted = files_deleted or []
 
     notifications: list[tuple[str, str | None]] = []
     root.notify = lambda message, title=None: notifications.append((message, title))
 
+    # Helper replicating gui.py calculation
+    def calc_and_notify(sync, had_work: bool, cancelled: bool):
+        if not cancelled and sync is not None:
+            total_errors = (
+                sum(1 for _, success in sync.files_copied if not success)
+                + sum(1 for _, success in sync.files_moved if not success)
+                + sum(1 for _, success in sync.files_deleted if not success)
+            )
+            total_successes = (
+                sum(1 for _, success in sync.files_copied if success)
+                + sum(1 for _, success in sync.files_moved if success)
+                + sum(1 for _, success in sync.files_deleted if success)
+            )
+
+            if total_errors > 0:
+                msg = (
+                    f'Backup completed with {total_errors} error{"s" if total_errors != 1 else ""} '
+                    f'({total_successes} file{"s" if total_successes != 1 else ""} synchronized).'
+                )
+                root.notify(message=msg, title='FastMirror - Errors Encountered')
+            elif total_successes > 0:
+                msg = (
+                    f'Backup synchronization completed successfully '
+                    f'({total_successes} file{"s" if total_successes != 1 else ""} processed).'
+                )
+                root.notify(message=msg, title='FastMirror')
+            elif not had_work:
+                msg = 'Synchronization finished: no files were modified.'
+                root.notify(message=msg, title='FastMirror')
+
     # 1. Sync finished with errors
-    sync_err = DummySync(errors=2, successes=5)
-    total_errors = getattr(sync_err, 'total_errors', 0)
-    total_successes = getattr(sync_err, 'total_successes', 0)
-    msg = (
-        f'Backup completed with {total_errors} error{"s" if total_errors != 1 else ""} '
-        f'({total_successes} file{"s" if total_successes != 1 else ""} synchronized).'
+    sync_err = DummySync(
+        files_copied=[(('s1', 't1'), True), (('s2', 't2'), False)],
+        files_moved=[(('s3', 't3'), True)],
+        files_deleted=[('t4', False), ('t5', True)],
     )
-    root.notify(message=msg, title='FastMirror - Errors Encountered')
+    calc_and_notify(sync_err, had_work=True, cancelled=False)
     assert len(notifications) == 1
     assert '2 errors' in notifications[-1][0]
+    assert '3 files synchronized' in notifications[-1][0]
     assert notifications[-1][1] == 'FastMirror - Errors Encountered'
 
     # 2. Sync finished with 100% success
-    sync_ok = DummySync(errors=0, successes=8)
-    msg = (
-        f'Backup synchronization completed successfully '
-        f'({sync_ok.total_successes} file{"s" if sync_ok.total_successes != 1 else ""} processed).'
+    sync_ok = DummySync(
+        files_copied=[(('s1', 't1'), True)],
+        files_moved=[(('s2', 't2'), True)],
+        files_deleted=[('t3', True)],
     )
-    root.notify(message=msg, title='FastMirror')
+    calc_and_notify(sync_ok, had_work=True, cancelled=False)
     assert len(notifications) == 2
-    assert '8 files processed' in notifications[-1][0]
+    assert '3 files processed' in notifications[-1][0]
     assert notifications[-1][1] == 'FastMirror'
 
     # 3. Cancelled sync suppresses notification
-    sync_cancelled = DummySync(errors=0, successes=0, cancelled=True)
-    cancelled = sync_cancelled.cancel_requested.is_set()
-    assert cancelled is True
-    # When cancelled, no notify call is made
+    calc_and_notify(sync_ok, had_work=True, cancelled=True)
     assert len(notifications) == 2
+
+    # 4. Aborted in confirmation popup (had work, but 0 processed and 0 errors) suppresses notification
+    sync_aborted = DummySync()
+    calc_and_notify(sync_aborted, had_work=True, cancelled=False)
+    assert len(notifications) == 2
+
+    # 5. No files were modified (had_work is False)
+    sync_idle = DummySync()
+    calc_and_notify(sync_idle, had_work=False, cancelled=False)
+    assert len(notifications) == 3
+    assert 'no files were modified' in notifications[-1][0]
 
     root.destroy()

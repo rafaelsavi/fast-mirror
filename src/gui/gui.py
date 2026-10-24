@@ -757,10 +757,19 @@ class Gui:
                     cancel_requested=self._cancel_event,
                 )
                 sync = self._active_sync
-                cancelled = self._cancel_event.is_set() or (sync is not None and sync.cancel_requested.is_set())
+                had_work = bool(compare.files_to_copy or compare.files_to_move or compare.files_to_delete)
+                cancelled = self._cancel_event.is_set()
                 if not cancelled and sync is not None:
-                    total_errors = getattr(sync, 'total_errors', 0)
-                    total_successes = getattr(sync, 'total_successes', 0)
+                    total_errors = (
+                        sum(1 for _, success in sync.files_copied if not success)
+                        + sum(1 for _, success in sync.files_moved if not success)
+                        + sum(1 for _, success in sync.files_deleted if not success)
+                    )
+                    total_successes = (
+                        sum(1 for _, success in sync.files_copied if success)
+                        + sum(1 for _, success in sync.files_moved if success)
+                        + sum(1 for _, success in sync.files_deleted if success)
+                    )
 
                     if total_errors > 0:
                         msg = (
@@ -788,7 +797,7 @@ class Gui:
                                 title='FastMirror',
                             ),
                         )
-                    else:
+                    elif not had_work:
                         msg = 'Synchronization finished: no files were modified.'
                         self.root.after(
                             0,
