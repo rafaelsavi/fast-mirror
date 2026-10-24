@@ -76,15 +76,6 @@ class PathsPanel(ttk.LabelFrame):
         apply_icon(self.btn_check_targets, 'pulse')
         self.btn_check_targets.pack(side='left', padx=2)
 
-        self.btn_open_selected = ttk.Button(
-            toolbar,
-            text='Explorer',
-            command=self.open_selected_folder,
-            width=12,
-        )
-        apply_icon(self.btn_open_selected, 'folder')
-        self.btn_open_selected.pack(side='left', padx=2)
-
         # Row 1: Non-Editable Syntax-Highlighted Directory Pairs Display (ScrolledText)
         if entry_paths is not None:
             self.entry_paths = entry_paths
@@ -300,7 +291,7 @@ class PathsPanel(ttk.LabelFrame):
         state: Literal['normal', 'disabled'] = 'normal' if enabled else 'disabled'
         self.btn_manage_paths.configure(state=state)
         self.btn_check_targets.configure(state=state)
-        self.btn_open_selected.configure(state=state)
+
         self.btn_manage_exclusions.configure(state=state)
         with contextlib.suppress(Exception):
             self.entry_paths.configure(state=tk.DISABLED)
