@@ -1496,3 +1496,54 @@ def test_action_selection_file_type_filter_chips(tmp_path, monkeypatch):
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_action_selection_keyboard_shortcuts(monkeypatch):
+    """Test Ctrl+F focuses filter entry and Escape smartly clears active filter."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+
+        # 1. Test Ctrl+F helper
+        res = popup._focus_filter_entry()
+        assert res == 'break'
+        with contextlib.suppress(Exception):
+            popup.popup.update()
+        assert popup.popup.focus_get() in (popup.entry_filter, popup.popup)
+
+        # 2. Test smart Escape when query is present
+        popup.filter_var.set('search_text')
+        assert popup.filter_var.get() == 'search_text'
+        res_esc = popup._on_escape_pressed()
+        assert res_esc == 'break'
+        assert popup.filter_var.get() == ''
+        assert popup.finished is False  # Dialog NOT cancelled
+
+        # 3. Test smart Escape when category filter is active
+        popup.active_category = 'image'
+        res_esc2 = popup._on_escape_pressed()
+        assert res_esc2 == 'break'
+        assert popup.active_category == 'all'
+        assert popup.finished is False
+
+        # 4. Test Escape when no filter active -> prompts/cancels
+        monkeypatch.setattr('tkinter.messagebox.askyesno', lambda *args, **kwargs: True)
+        res_esc3 = popup._on_escape_pressed()
+        assert res_esc3 == 'break'
+        assert popup.finished is True
+        assert popup.proceed is False
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

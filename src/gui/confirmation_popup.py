@@ -10,7 +10,7 @@ import ttkwidgets
 
 from core.file import CstmPath
 from gui.icons import apply_icon, apply_window_icon
-from gui.widgets import Action
+from gui.widgets import Action, add_tooltip
 from utils.logger import logger
 from utils.utils import format_size
 
@@ -598,7 +598,9 @@ class ActionSelection:
 
         # Keyboard shortcuts
         self.popup.bind('<Return>', lambda e: self.button_save_click())
-        self.popup.bind('<Escape>', lambda e: self.button_cancel_click())
+        self.popup.bind('<Escape>', self._on_escape_pressed)
+        self.popup.bind('<Control-f>', lambda e: self._focus_filter_entry())
+        self.popup.bind('<Control-F>', lambda e: self._focus_filter_entry())
 
         # Modal grab (safe fallback for headless / tests)
         with contextlib.suppress(Exception):
@@ -739,6 +741,7 @@ class ActionSelection:
             command=lambda: self.tree.select_all(),
             width=11,
         )
+        add_tooltip(btn_select_all, 'Select and check all synchronization actions.')
         btn_select_all.pack(side='left', padx=(0, 4))
 
         btn_deselect_all = ttk.Button(
@@ -747,6 +750,7 @@ class ActionSelection:
             command=lambda: self.tree.deselect_all(),
             width=11,
         )
+        add_tooltip(btn_deselect_all, 'Deselect and uncheck all synchronization actions.')
         btn_deselect_all.pack(side='left', padx=(0, 6))
 
         # Expand / Collapse
@@ -756,6 +760,7 @@ class ActionSelection:
             command=lambda: self.tree.expand_all(),
             width=11,
         )
+        add_tooltip(btn_expand, 'Expand all action categories to display every file.')
         btn_expand.pack(side='left', padx=(0, 4))
 
         btn_collapse = ttk.Button(
@@ -764,6 +769,7 @@ class ActionSelection:
             command=lambda: self.tree.collapse_all(),
             width=11,
         )
+        add_tooltip(btn_collapse, 'Collapse all action categories.')
         btn_collapse.pack(side='left', padx=(0, 8))
 
         ttk.Separator(row_actions, orient='vertical').pack(side='left', fill='y', padx=4)
@@ -775,6 +781,7 @@ class ActionSelection:
             command=lambda: self.tree.uncheck_action(Action.DELETE),
         )
         apply_icon(self.btn_uncheck_deletions, 'shield')
+        add_tooltip(self.btn_uncheck_deletions, 'Safely uncheck all deletion operations with one click.')
         self.btn_uncheck_deletions.pack(side='left', padx=(6, 4))
 
         self.btn_copies_only = ttk.Button(
@@ -783,6 +790,7 @@ class ActionSelection:
             command=lambda: self.tree.set_copies_only(),
         )
         apply_icon(self.btn_copies_only, 'check_circle')
+        add_tooltip(self.btn_copies_only, 'Check only copy operations; uncheck moves and deletions.')
         self.btn_copies_only.pack(side='left', padx=(0, 4))
 
         # Row 2: Search Entry & File Type Filter Chips
@@ -795,6 +803,7 @@ class ActionSelection:
         self.filter_var = tk.StringVar()
         self.filter_var.trace_add('write', self._on_filter_changed)
         self.entry_filter = ttk.Entry(row_filter, textvariable=self.filter_var, width=24)
+        add_tooltip(self.entry_filter, 'Filter by file name, path, or extension (Ctrl+F). Press Esc to clear.')
         self.entry_filter.pack(side='left', padx=(0, 4))
 
         btn_clear_filter = ttk.Button(
@@ -803,6 +812,7 @@ class ActionSelection:
             command=self._on_clear_filter,
             width=3,
         )
+        add_tooltip(btn_clear_filter, 'Clear filter and restore all items (Esc).')
         btn_clear_filter.pack(side='left', padx=(0, 8))
 
         ttk.Separator(row_filter, orient='vertical').pack(side='left', fill='y', padx=4)
@@ -830,6 +840,7 @@ class ActionSelection:
             )
             if icon_name:
                 apply_icon(btn, icon_name)
+            add_tooltip(btn, f'Filter by {cat_label.lower()} files.')
             btn.pack(side='left', padx=2)
             self.category_buttons[cat_id] = btn
 
@@ -1149,6 +1160,24 @@ class ActionSelection:
                 self._on_item_selected(None)
         else:
             self.lbl_filter_count.config(text='')
+
+    def _focus_filter_entry(self):
+        """Focus the search filter entry and select all text (Ctrl+F)."""
+        if hasattr(self, 'entry_filter'):
+            self.entry_filter.focus_set()
+            self.entry_filter.select_range(0, 'end')
+        return 'break'
+
+    def _on_escape_pressed(self, event=None):
+        """Smart Escape: clears filter if active; otherwise prompts/cancels."""
+        if getattr(self, 'filter_var', None) and self.filter_var.get():
+            self._on_clear_filter()
+            return 'break'
+        if getattr(self, 'active_category', 'all') != 'all':
+            self._on_clear_filter()
+            return 'break'
+        self.button_cancel_click()
+        return 'break'
 
     def button_save_click(self):
         if self.finished:
