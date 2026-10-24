@@ -182,8 +182,15 @@ def test_actions_panel_all_clicks_and_corner_cases(monkeypatch, tmp_path):
     gui.actions_panel.button_schedule_sync.invoke()
     assert gui.toggle_state_schedule is False
 
+    # 5b. Toggle Schedule via SchedulePanel directly
+    gui.schedule_panel.cb_enable_schedule.invoke()
+    assert gui.toggle_state_schedule is True
+    gui.schedule_panel.cb_enable_schedule.invoke()
+    assert gui.toggle_state_schedule is False
+
     # 6. Open Report when no report exists (should log without crashing)
     gui.actions_panel.button_open_report.invoke()
+    assert str(gui.actions_panel.button_reports.cget('text')) == 'Reports...'
 
     # 7. Checkboxes: Mutually exclusive rebuild vs use mirror
     gui.checkbox_var_build_mirror.set(True)

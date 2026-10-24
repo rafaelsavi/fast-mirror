@@ -67,6 +67,7 @@ class Gui:
         self._active_sync: SyncDirs | None = None
         self._last_tray_state: tuple[str, str] | None = None
         self._build_mirror_confirmed: bool = False
+        self._last_saved_config_vars: dict[str, Any] | None = None
 
         # Tkinter control variables
         self.toggle_auto_scroll = tk.BooleanVar(value=True)
@@ -143,6 +144,7 @@ class Gui:
             on_stop_operation=self.request_stop_operation,
             on_open_report=self.button_action_open_report,
             is_running=lambda: self.backend_thread_status == BackendThreadStatus.RUNNING,
+            on_exit_check=self.confirm_exit_unsaved_changes,
         )
         self.update_tray_status()
 
@@ -152,6 +154,7 @@ class Gui:
         self.log_queue_watchdog()
 
         # Load existing configuration
+        self._snapshot_saved_config()
         self.load_config()
 
         # Run GUI loop
@@ -217,14 +220,22 @@ class Gui:
 
     @property
     def toggle_state_schedule(self) -> bool:
-        return self.actions_panel.button_schedule_sync.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
+        if hasattr(self, 'schedule_panel') and hasattr(self.schedule_panel, 'toggle_state_schedule'):
+            return self.schedule_panel.toggle_state_schedule
+        if hasattr(self, 'actions_panel') and hasattr(self.actions_panel, 'button_schedule_sync'):
+            return self.actions_panel.button_schedule_sync.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
+        return False
 
     @toggle_state_schedule.setter
     def toggle_state_schedule(self, value: bool):
-        self.actions_panel.button_schedule_sync.config(
-            relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value,
-            text='Schedule (ON)' if value else 'Schedule (OFF)',
-        )
+        if hasattr(self, 'schedule_panel') and hasattr(self.schedule_panel, 'toggle_state_schedule'):
+            self.schedule_panel.toggle_state_schedule = value
+        if hasattr(self, 'actions_panel') and hasattr(self.actions_panel, 'button_schedule_sync'):
+            with contextlib.suppress(Exception):
+                self.actions_panel.button_schedule_sync.config(
+                    relief=TkinterCfgRelief.SUNKEN.value if value else TkinterCfgRelief.RAISED.value,
+                    text='Schedule (ON)' if value else 'Schedule (OFF)',
+                )
 
     @property
     def toggle_state_quick_compare(self) -> bool:
@@ -320,6 +331,8 @@ class Gui:
         self.schedule_panel = SchedulePanel(
             left_container,
             week_days=self.week_days,
+            on_toggle_schedule=self.on_schedule_panel_toggled,
+            text_var_next_appointment=self.text_var_next_appointment,
             padding=6,
         )
         self.schedule_panel.pack(fill='x')
@@ -510,6 +523,111 @@ class Gui:
                 self.paths_panel._update_pair_stats()
                 self.paths_panel._update_exclusion_count()
 
+    def _normalize_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Normalize configuration values into canonical immutable types for dirty detection."""
+        entry_paths_raw = config.get('entry_paths', [])
+        normalized_paths: list[tuple[str, str]] = []
+        for p in entry_paths_raw:
+            if isinstance(p, list | tuple) and len(p) >= 2:
+                normalized_paths.append((str(p[0]).strip(), str(p[1]).strip()))
+            elif hasattr(p, 'source') and hasattr(p, 'target'):
+                normalized_paths.append((str(p.source).strip(), str(p.target).strip()))
+        normalized_paths.sort()
+
+        compare_method = config.get('radio_var_compare_method')
+        if not compare_method:
+            compare_method = 'metadata' if config.get('checkbox_var_metadata_comparison', True) else 'content'
+        compare_method = str(compare_method).lower()
+
+        return {
+            'entry_paths': tuple(normalized_paths),
+            'week_days': tuple(sorted(str(d).strip().upper() for d in config.get('week_days', []))),
+            'entry_times': tuple(sorted(str(t).strip() for t in config.get('entry_times', []))),
+            'entry_exclusions': tuple(
+                sorted(str(e).strip() for e in config.get('entry_exclusions', ['$RECYCLE.BIN', r'\~$']))
+            ),
+            'log_levels': tuple(
+                sorted(
+                    str(lvl).strip().upper()
+                    for lvl in config.get('log_levels', ['INFO', 'WARNING', 'ERROR', 'CRITICAL'])
+                )
+            ),
+            'checkbox_default_actions': tuple(
+                sorted(str(a).strip().lower() for a in config.get('checkbox_default_actions', ['copy']))
+            ),
+            'radio_var_compare_method': compare_method,
+            'checkbox_var_use_mirror': bool(config.get('checkbox_var_use_mirror', True)),
+            'checkbox_var_build_mirror': bool(config.get('checkbox_var_build_mirror', False)),
+            'checkbox_var_metadata_comparison': (compare_method == 'metadata'),
+            'checkbox_var_confirm_sync': bool(config.get('checkbox_var_confirm_sync', True)),
+            'checkbox_var_save_report': bool(config.get('checkbox_var_save_report', False)),
+            'toggle_auto_scroll': bool(config.get('toggle_auto_scroll', True)),
+        }
+
+    def _snapshot_saved_config(self):
+        """Record the current GUI configuration as the saved baseline for dirty detection."""
+        try:
+            self._last_saved_config_vars = self._normalize_config(self._get_current_config_vars())
+        except Exception as e:
+            logger.warning(f'Could not record saved config snapshot: {e}')
+
+    def has_unsaved_changes(self) -> bool:
+        """Check whether current GUI configuration has unsaved changes compared to the active profile."""
+        try:
+            current = self._normalize_config(self._get_current_config_vars())
+            if getattr(self, '_last_saved_config_vars', None) is not None:
+                return current != self._last_saved_config_vars
+
+            profile_data = self.profile_manager.load_profile(self.active_profile_name)
+            return current != self._normalize_config(profile_data)
+        except Exception as e:
+            logger.warning(f'Error evaluating unsaved changes: {e}')
+            return False
+
+    def confirm_exit_unsaved_changes(self) -> bool:
+        """
+        Check for unsaved configuration changes before closing the application.
+
+        Prompts the user if settings were modified without saving to the active profile:
+        - Yes: Saves changes to the active profile and returns True (proceed with exit).
+        - No: Discards changes and returns True (proceed with exit).
+        - Cancel: Returns False (abort exit).
+        """
+        if not self.has_unsaved_changes():
+            return True
+
+        with contextlib.suppress(Exception):
+            self.root.deiconify()
+            self.root.lift()
+
+        active_profile = self.active_profile_name
+        response = messagebox.askyesnocancel(
+            'Unsaved Changes',
+            f"You have unsaved changes in profile '{active_profile}'.\n\n"
+            f'Do you want to save them to the active profile before closing?',
+            parent=self.root,
+        )
+
+        if response is True:
+            try:
+                self.button_action_save_config(ask_confirmation=False)
+                logger.info(f"Saved unsaved changes to active profile '{active_profile}' before closing")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to save profile '{active_profile}' before closing: {e}")
+                messagebox.showerror(
+                    'Save Error',
+                    f"Failed to save configuration to profile '{active_profile}':\n{e}",
+                    parent=self.root,
+                )
+                return False
+        elif response is False:
+            logger.info(f"Discarding unsaved changes in profile '{active_profile}' upon exit")
+            return True
+        else:
+            logger.info('Application exit cancelled by user due to unsaved changes')
+            return False
+
     def button_action_switch_profile(self, profile_name: str, show_success_msg: bool = True) -> bool:
         """Switch active configuration profile, updating GUI controls and internal state."""
         try:
@@ -518,6 +636,7 @@ class Gui:
             self._apply_config_vars_to_gui(data)
             self.active_profile_name = clean_name
             self.profile_manager.set_active_profile_name(clean_name)
+            self._snapshot_saved_config()
             if hasattr(self, 'actions_panel'):
                 self.actions_panel.set_profiles(self.profile_manager.list_profiles(), clean_name)
             if show_success_msg:
@@ -665,6 +784,7 @@ class Gui:
 
         config_vars = self._get_current_config_vars()
         self.profile_manager.save_profile(active_profile, config_vars, sync_active_config=True)
+        self._snapshot_saved_config()
         logger.info(f"Configuration profile '{active_profile}' was successfully saved")
         self.get_next_appointment()
 
@@ -785,6 +905,16 @@ class Gui:
     def button_action_schedule_sync(self):
         self.toggle_state_schedule = not self.toggle_state_schedule
         self.get_next_appointment()
+
+    def on_schedule_panel_toggled(self, active: bool):
+        """Handle user toggling automated schedule directly in SchedulePanel."""
+        self.get_next_appointment()
+        if hasattr(self, 'actions_panel') and hasattr(self.actions_panel, 'button_schedule_sync'):
+            with contextlib.suppress(Exception):
+                self.actions_panel.button_schedule_sync.config(
+                    relief=TkinterCfgRelief.SUNKEN.value if active else TkinterCfgRelief.RAISED.value,
+                    text='Schedule (ON)' if active else 'Schedule (OFF)',
+                )
 
     def button_action_update_log_levels(self):
         self.text_logger.set_log_levels(self.log_levels.get())

@@ -1,4 +1,5 @@
 import contextlib
+import os
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import messagebox, ttk
@@ -6,6 +7,7 @@ from tkinter import messagebox, ttk
 from gui.enums import TkinterCfgRelief
 from gui.icons import apply_icon
 from gui.widgets import Action, DefaultActions, add_tooltip
+from utils.logger import logger
 
 
 class ModernButton(ttk.Button):
@@ -326,25 +328,33 @@ class ActionsPanel(ttk.LabelFrame):
         self.button_quick_compare.pack(side='left', padx=3)
         add_tooltip(self.button_quick_compare, 'Run dry-run comparison to analyze differences without altering files.')
 
-        self.button_open_report = ModernButton(
+        self.button_reports = ModernButton(
             cmp_frame,
+            text='Reports...',
+            command=self._handle_report_history,
+            width=14,
+        )
+        apply_icon(self.button_reports, 'document')
+        self.button_reports.pack(side='left', padx=3)
+        add_tooltip(
+            self.button_reports,
+            'Browse and manage past comparison reports. Right-click for options (Open Latest, Open Folder).',
+        )
+
+        reports_menu = tk.Menu(self.button_reports, tearoff=0)
+        reports_menu.add_command(label='📄 Open Latest Report', command=self.on_open_report)
+        reports_menu.add_command(label='📂 Browse Reports History...', command=self._handle_report_history)
+        reports_menu.add_separator()
+        reports_menu.add_command(label='📁 Open Reports Folder', command=self._open_reports_dir)
+        self.button_reports.bind('<Button-3>', lambda e: reports_menu.tk_popup(e.x_root, e.y_root))
+
+        # Backward compatibility aliases for existing tests & scripts
+        self.button_report_history = self.button_reports
+        self.button_open_report = ModernButton(
+            self,
             text='Open Report',
             command=self.on_open_report,
-            width=12,
         )
-        apply_icon(self.button_open_report, 'document')
-        self.button_open_report.pack(side='left', padx=3)
-        add_tooltip(self.button_open_report, 'Open the most recently generated Excel comparison report.')
-
-        self.button_report_history = ModernButton(
-            cmp_frame,
-            text='History...',
-            command=self._handle_report_history,
-            width=11,
-        )
-        apply_icon(self.button_report_history, 'folder')
-        self.button_report_history.pack(side='left', padx=3)
-        add_tooltip(self.button_report_history, 'Browse, open, or manage past Excel comparison reports.')
 
         # Section 3: Synchronization
         sync_frame = ttk.Frame(self)
@@ -364,15 +374,13 @@ class ActionsPanel(ttk.LabelFrame):
         self.button_sync_now.pack(side='left', padx=3)
         add_tooltip(self.button_sync_now, 'Start synchronization between source and target directories.')
 
+        # Backward compatibility alias for button_schedule_sync
         self.button_schedule_sync = ModernButton(
-            sync_frame,
+            self,
             text='Schedule (OFF)',
             command=self.on_schedule_sync,
             width=14,
         )
-        apply_icon(self.button_schedule_sync, 'pulse')
-        self.button_schedule_sync.pack(side='left', padx=3)
-        add_tooltip(self.button_schedule_sync, 'Toggle automated background synchronization at scheduled times.')
 
         # Section 4: Behavior Options
         self.frame_options = ttk.Frame(self)
@@ -510,6 +518,14 @@ class ActionsPanel(ttk.LabelFrame):
 
             ReportsWindow(self.winfo_toplevel())
 
+    def _open_reports_dir(self):
+        """Open the directory containing comparison reports in File Explorer."""
+        if hasattr(logger, 'log_dir') and os.path.isdir(logger.log_dir):
+            try:
+                os.startfile(logger.log_dir)
+            except OSError as e:
+                logger.error(f'Could not open reports directory <{logger.log_dir}>: {e}')
+
     def _on_reset_mirror_clicked(self):
         """Handle mirror reset click, prompting confirmation if a confirmation callback is registered."""
         if self.on_rebuild_confirmation is not None:
@@ -589,9 +605,9 @@ class ActionsPanel(ttk.LabelFrame):
             self.button_load_config,
             self.button_save_config,
             self.button_quick_compare,
-            self.button_open_report,
-            self.button_report_history,
+            self.button_reports,
             self.button_sync_now,
+            self.button_open_report,
             self.button_schedule_sync,
         ]
         for btn in buttons:

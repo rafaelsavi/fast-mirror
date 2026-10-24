@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import sys
 import tkinter as tk
@@ -263,6 +264,21 @@ def test_schedule_panel_interactions():
     panel.entry_times.set(['09:30', '18:00'])
     assert panel.entry_times.get() == ['09:30', '18:00']
 
+    assert panel.toggle_state_schedule is False
+    assert '(Inactive)' in panel.lbl_schedule_status.cget('text')
+
+    toggled_records = []
+    panel.on_toggle_schedule = lambda active: toggled_records.append(active)
+
+    panel.cb_enable_schedule.invoke()
+    assert panel.toggle_state_schedule is True
+    assert '(Active)' in panel.lbl_schedule_status.cget('text')
+    assert toggled_records == [True]
+
+    panel.toggle_state_schedule = False
+    assert panel.toggle_state_schedule is False
+    assert '(Inactive)' in panel.lbl_schedule_status.cget('text')
+
     root.destroy()
 
 
@@ -446,6 +462,7 @@ def test_gui_log_queue_watchdog_batching_and_autoscroll(monkeypatch):
     try:
         root = tk.Tk()
         root.withdraw()
+        root.destroy()
     except tk.TclError:
         pytest.skip('Tkinter display not available')
 
@@ -629,6 +646,7 @@ def test_gui_tray_status_and_actions(monkeypatch):
     try:
         root = tk.Tk()
         root.withdraw()
+        root.destroy()
     except tk.TclError:
         pytest.skip('Tkinter display not available')
 
@@ -1957,3 +1975,148 @@ def test_gui_managed_profiles_workflow(tmp_path, monkeypatch):
     assert gui.active_profile_name == 'Default'
 
     gui.root.destroy()
+
+
+def test_unsaved_changes_dirty_detection(tmp_path, monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.destroy()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.gui import Gui
+
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    cfg_file = tmp_path / 'config.json'
+    with open(cfg_file, 'w', encoding='utf-8') as f:
+        json.dump(
+            {
+                'entry_paths': [['C:\\source', 'D:\\target']],
+                'week_days': ['MON'],
+                'checkbox_var_save_report': False,
+            },
+            f,
+        )
+
+    gui = Gui(config_path=str(cfg_file))
+    try:
+        # Initially clean
+        assert not gui.has_unsaved_changes()
+
+        # Toggle save report -> dirty
+        gui.checkbox_var_save_report.set(True)
+        assert gui.has_unsaved_changes()
+
+        # Revert back to original value -> clean
+        gui.checkbox_var_save_report.set(False)
+        assert not gui.has_unsaved_changes()
+
+        # Change weekdays -> dirty
+        gui.week_days.set(['MON', 'WED'])
+        assert gui.has_unsaved_changes()
+
+        # Save to active profile -> clean
+        gui.button_action_save_config(ask_confirmation=False)
+        assert not gui.has_unsaved_changes()
+
+        # Change compare method -> dirty
+        gui.radio_var_compare_method.set('content')
+        assert gui.has_unsaved_changes()
+    finally:
+        gui.root.destroy()
+
+
+def test_confirm_exit_unsaved_changes(tmp_path, monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.destroy()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.gui import Gui
+
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    cfg_file = tmp_path / 'config.json'
+    with open(cfg_file, 'w', encoding='utf-8') as f:
+        json.dump(
+            {
+                'entry_paths': [],
+                'week_days': ['MON'],
+                'checkbox_var_save_report': False,
+            },
+            f,
+        )
+
+    gui = Gui(config_path=str(cfg_file))
+    try:
+        # Clean: confirm_exit_unsaved_changes returns True immediately without dialog
+        ask_called = []
+        monkeypatch.setattr(
+            'tkinter.messagebox.askyesnocancel',
+            lambda *args, **kwargs: ask_called.append(True) or True,
+        )
+        assert gui.confirm_exit_unsaved_changes() is True
+        assert len(ask_called) == 0
+
+        # Dirty setting
+        gui.checkbox_var_save_report.set(True)
+        assert gui.has_unsaved_changes()
+
+        # Case 1: User clicks Cancel (None) -> abort exit
+        monkeypatch.setattr('tkinter.messagebox.askyesnocancel', lambda *args, **kwargs: None)
+        assert gui.confirm_exit_unsaved_changes() is False
+
+        # Case 2: User clicks No (False) -> proceed with exit, without saving
+        saved_calls = []
+        monkeypatch.setattr(
+            gui,
+            'button_action_save_config',
+            lambda *args, **kwargs: saved_calls.append(True),
+        )
+        monkeypatch.setattr('tkinter.messagebox.askyesnocancel', lambda *args, **kwargs: False)
+        assert gui.confirm_exit_unsaved_changes() is True
+        assert len(saved_calls) == 0
+
+        # Case 3: User clicks Yes (True) -> saves changes and proceeds with exit
+        monkeypatch.setattr('tkinter.messagebox.askyesnocancel', lambda *args, **kwargs: True)
+        assert gui.confirm_exit_unsaved_changes() is True
+        assert len(saved_calls) == 1
+    finally:
+        gui.root.destroy()
+
+
+def test_tray_finalize_quit_exit_check(monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.destroy()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.tray import TrayableTk
+
+    tray_window = TrayableTk()
+    try:
+        # Prevent exit check from proceeding
+        tray_window.set_exit_check(lambda: False)
+        destroy_called = []
+        monkeypatch.setattr(tray_window, 'destroy', lambda: destroy_called.append(True))
+
+        tray_window.finalize_quit()
+        assert len(destroy_called) == 0
+
+        # Allow exit check to proceed
+        tray_window.set_exit_check(lambda: True)
+        tray_window.finalize_quit()
+        assert len(destroy_called) == 1
+    finally:
+        # Real destruction
+        TrayableTk.destroy(tray_window)

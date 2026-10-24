@@ -34,6 +34,7 @@ class TrayableTk(tk.Tk):
         self._on_stop_operation: Callable[[], None] | None = None
         self._on_open_report: Callable[[], None] | None = None
         self._is_running_check: Callable[[], bool] | None = None
+        self._on_exit_check: Callable[[], bool] | None = None
 
         self.add_system_tray_icon()
         self.protocol('WM_DELETE_WINDOW', self.on_closing)
@@ -46,14 +47,20 @@ class TrayableTk(tk.Tk):
         on_stop_operation: Callable[[], None] | None = None,
         on_open_report: Callable[[], None] | None = None,
         is_running: Callable[[], bool] | None = None,
+        on_exit_check: Callable[[], bool] | None = None,
     ):
-        """Register callbacks for quick actions triggered from the system tray menu."""
+        """Register callbacks for quick actions triggered from the system tray menu and exit verification."""
         self._on_sync_now = on_sync_now
         self._on_quick_compare = on_quick_compare
         self._on_stop_operation = on_stop_operation
         self._on_open_report = on_open_report
         self._is_running_check = is_running
+        self._on_exit_check = on_exit_check
         self._update_tray_menu()
+
+    def set_exit_check(self, on_exit_check: Callable[[], bool] | None):
+        """Register callback invoked before application finalization/exit."""
+        self._on_exit_check = on_exit_check
 
     # Alias for flexibility
     set_tray_actions = set_tray_callbacks
@@ -149,7 +156,15 @@ class TrayableTk(tk.Tk):
             self._tray_icon = None
         super().destroy()
 
-    def finalize_quit(self):
+    def finalize_quit(self, force: bool = False):
+        if not force and self._on_exit_check is not None:
+            try:
+                can_exit = self._on_exit_check()
+            except Exception as e:
+                logger.error(f'Error during exit confirmation check: {e}')
+                can_exit = True
+            if not can_exit:
+                return
         self._is_closing = True
         if self._tray_icon is not None:
             with contextlib.suppress(Exception):
