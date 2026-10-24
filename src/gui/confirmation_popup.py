@@ -571,6 +571,12 @@ class ActionSelection:
         with contextlib.suppress(Exception):
             self.popup.grab_set()
 
+        # Pause taskbar progress while awaiting user action review
+        root_gui = getattr(self, 'root_gui', None)
+        if root_gui is not None and getattr(root_gui, 'taskbar', None):
+            with contextlib.suppress(Exception):
+                root_gui.after(0, root_gui.taskbar.set_paused)
+
         self.create_widgets()
         self.popup.deiconify()
 
@@ -1148,6 +1154,10 @@ class ActionSelection:
 
         with contextlib.suppress(Exception):
             self.popup.destroy()
+        root_gui = getattr(self, 'root_gui', None)
+        if root_gui is not None and getattr(root_gui, 'taskbar', None):
+            with contextlib.suppress(Exception):
+                root_gui.after(0, root_gui.taskbar.clear)
         if self.on_close_callback:
             self.on_close_callback()
 
@@ -1162,6 +1172,10 @@ class ActionSelection:
         self.files_requested_to_delete = list()
         with contextlib.suppress(Exception):
             self.popup.destroy()
+        root_gui = getattr(self, 'root_gui', None)
+        if root_gui is not None and getattr(root_gui, 'taskbar', None):
+            with contextlib.suppress(Exception):
+                root_gui.after(0, root_gui.taskbar.clear)
         if self.on_close_callback:
             self.on_close_callback()
 

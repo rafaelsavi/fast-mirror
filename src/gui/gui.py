@@ -20,6 +20,7 @@ from gui.components.telemetry_bar import TelemetryBar
 from gui.enums import BackendThreadStatus, TkinterCfgRelief
 from gui.icons import apply_window_icon
 from gui.scheduler import calculate_next_run
+from gui.taskbar import TaskbarProgress
 from gui.tray import TrayableTk
 from gui.widgets import (
     Action,
@@ -47,6 +48,7 @@ class Gui:
         self.root.title('FastMirror')
 
         self.config_path = CONFIG_PATH
+        self.taskbar = TaskbarProgress()
 
         # State variables
 
@@ -124,6 +126,8 @@ class Gui:
         init_w = self.root.winfo_reqwidth()
         init_h = self.root.winfo_reqheight()
         self.root.minsize(init_w, init_h)
+        with contextlib.suppress(Exception):
+            self.taskbar.set_hwnd(self.root.winfo_id())
 
         # Register tray actions and update initial tray state
         self.root.set_tray_callbacks(
@@ -653,6 +657,9 @@ class Gui:
         confirm_sync = self.checkbox_var_confirm_sync.get()
         default_actions = self.checkbox_default_actions.get_as_actions()
 
+        if hasattr(self, 'taskbar'):
+            self.root.after(0, self.taskbar.clear)
+
         self._cancel_event.clear()
         self.backend_thread_holder = WorkerThread(
             target=self.backend_thread,
@@ -688,6 +695,8 @@ class Gui:
 
         if hasattr(self, 'telemetry_bar'):
             self.root.after(0, lambda: self.telemetry_bar.set_indeterminate('Scanning and comparing files...'))
+        if hasattr(self, 'taskbar'):
+            self.root.after(0, self.taskbar.set_indeterminate)
 
         compare = CompareDirs(
             mirror=mirror,
@@ -703,8 +712,11 @@ class Gui:
 
         if self._cancel_event.is_set():
             logger.info('Operation stopped upon cancellation request')
+            if hasattr(self, 'taskbar'):
+                self.root.after(0, self.taskbar.clear)
             return
 
+        has_error = False
         try:
             if also_sync:
 
@@ -728,6 +740,8 @@ class Gui:
                                 speed=speed,
                             ),
                         )
+                    if hasattr(self, 'taskbar'):
+                        self.root.after(0, lambda: self.taskbar.set_determinate(current, total))
 
                 self._active_sync = SyncDirs(
                     files_to_copy=compare.files_to_copy,
@@ -765,10 +779,18 @@ class Gui:
                             title='FastMirror',
                         ),
                     )
+        except Exception as e:
+            has_error = True
+            logger.error(f'Backend execution encountered an unexpected error: {e}')
+            if hasattr(self, 'taskbar'):
+                self.root.after(0, self.taskbar.set_error)
+            raise
         finally:
             self._active_sync = None
             if hasattr(self, 'telemetry_bar'):
                 self.root.after(0, lambda: self.telemetry_bar.reset('Ready'))
+            if hasattr(self, 'taskbar') and not has_error:
+                self.root.after(0, self.taskbar.clear)
             if build_mirror or self.checkbox_var_reset_mirror.get():
                 self.root.after(0, lambda: self.checkbox_var_reset_mirror.set(False))
                 self.root.after(0, lambda: self.checkbox_var_build_mirror.set(False))

@@ -368,6 +368,7 @@ class TextLogger(ScrolledText):
         self.tag_config('WARNING', foreground='orange')
         self.tag_config('ERROR', foreground='red')
         self.tag_config('CRITICAL', foreground='red', underline=True)
+        self.tag_config('TAG_JUMP_HIGHLIGHT', background='#fed7aa')
 
     @property
     def level_counts(self) -> dict[str, int]:
@@ -432,6 +433,53 @@ class TextLogger(ScrolledText):
         if self.on_log_updated:
             with contextlib.suppress(Exception):
                 self.on_log_updated()
+
+    def jump_to_next_tag(self, tags: str | list[str] | tuple[str, ...]) -> bool:
+        """Scroll and highlight the next occurrence of the specified tag(s)."""
+        target_tags = (tags,) if isinstance(tags, str) else tuple(tags)
+
+        # Collect all start positions for the target tags
+        match_positions: list[str] = []
+        for tag in target_tags:
+            ranges = self.tag_ranges(tag)
+            for i in range(0, len(ranges), 2):
+                match_positions.append(str(ranges[i]))
+
+        if not match_positions:
+            return False
+
+        def _idx_key(idx: str) -> tuple[int, int]:
+            parts = idx.split('.')
+            return (int(parts[0]), int(parts[1]))
+
+        match_positions.sort(key=_idx_key)
+
+        # Determine current view/insert position to find the next entry
+        current_insert = self.index('insert')
+        next_pos = None
+        for pos in match_positions:
+            if self.compare(pos, '>', current_insert):
+                next_pos = pos
+                break
+        if next_pos is None:
+            # Wrap around to the first match
+            next_pos = match_positions[0]
+
+        # Focus, move insertion cursor, and scroll into view
+        self.mark_set('insert', next_pos)
+        self.see(next_pos)
+
+        # Apply a temporary highlight tag to the matched line
+        self.tag_remove('TAG_JUMP_HIGHLIGHT', '1.0', tk.END)
+        line_start = f'{next_pos.split(".")[0]}.0'
+        line_end = f'{next_pos.split(".")[0]}.end'
+        self.tag_add('TAG_JUMP_HIGHLIGHT', line_start, line_end)
+
+        # Schedule automatic removal of the jump highlight
+        with contextlib.suppress(Exception):
+            self.after(1800, lambda: self.tag_remove('TAG_JUMP_HIGHLIGHT', '1.0', tk.END))
+
+        return True
 
 
 class ToolTip:

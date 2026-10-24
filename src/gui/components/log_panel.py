@@ -6,7 +6,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from gui.enums import TkinterCfgState
 from gui.icons import apply_icon
-from gui.widgets import LogLevels, TextLogger
+from gui.widgets import LogLevels, TextLogger, add_tooltip
 from utils.logger import logger
 
 
@@ -165,6 +165,7 @@ class LogPanel(ttk.LabelFrame):
             bd=1,
         )
         self.lbl_stat_info.pack(side='left', padx=3)
+        add_tooltip(self.lbl_stat_info, 'Total number of informational log messages.')
 
         self.lbl_stat_warning = tk.Label(
             self.stats_frame,
@@ -176,8 +177,11 @@ class LogPanel(ttk.LabelFrame):
             pady=2,
             relief='groove',
             bd=1,
+            cursor='hand2',
         )
         self.lbl_stat_warning.pack(side='left', padx=3)
+        self.lbl_stat_warning.bind('<Button-1>', lambda _e: self.jump_to_next_warning())
+        add_tooltip(self.lbl_stat_warning, 'Click to navigate to the next warning in the log.')
 
         self.lbl_stat_error = tk.Label(
             self.stats_frame,
@@ -189,8 +193,11 @@ class LogPanel(ttk.LabelFrame):
             pady=2,
             relief='groove',
             bd=1,
+            cursor='hand2',
         )
         self.lbl_stat_error.pack(side='left', padx=3)
+        self.lbl_stat_error.bind('<Button-1>', lambda _e: self.jump_to_next_error())
+        add_tooltip(self.lbl_stat_error, 'Click to navigate to the next error or critical issue in the log.')
 
         # Main Log Text View (Row 2)
         if text_logger is not None:
@@ -384,6 +391,22 @@ class LogPanel(ttk.LabelFrame):
                 bd=1,
             )
 
+    def jump_to_next_warning(self):
+        """Navigate and scroll to the next warning entry in the log."""
+        if 'WARNING' not in self.log_levels.get():
+            self.log_levels.checkboxes['WARNING'].set(True)
+            self._handle_level_change()
+        self.text_logger.jump_to_next_tag('WARNING')
+
+    def jump_to_next_error(self):
+        """Navigate and scroll to the next error or critical entry in the log."""
+        needed_levels = [lvl for lvl in ('ERROR', 'CRITICAL') if lvl not in self.log_levels.get()]
+        if needed_levels:
+            for lvl in needed_levels:
+                self.log_levels.checkboxes[lvl].set(True)
+            self._handle_level_change()
+        self.text_logger.jump_to_next_tag(('ERROR', 'CRITICAL'))
+
     def apply_theme(self, theme_name: str = 'light'):
         """Apply clean light or dark theme styling to text logger."""
         if theme_name == 'dark':
@@ -398,6 +421,7 @@ class LogPanel(ttk.LabelFrame):
             self.text_logger.tag_config('WARNING', foreground='#e5c07b')
             self.text_logger.tag_config('ERROR', foreground='#f44747')
             self.text_logger.tag_config('CRITICAL', foreground='#f44747', underline=True)
+            self.text_logger.tag_config('TAG_JUMP_HIGHLIGHT', background='#7c2d12')
             self.text_logger.tag_config('SEARCH_MATCH', background='#613214', foreground='#ffffff')
             self.text_logger.tag_config('SEARCH_CURRENT', background='#e5a158', foreground='#000000')
         else:
@@ -412,5 +436,6 @@ class LogPanel(ttk.LabelFrame):
             self.text_logger.tag_config('WARNING', foreground='orange')
             self.text_logger.tag_config('ERROR', foreground='red')
             self.text_logger.tag_config('CRITICAL', foreground='red', underline=True)
+            self.text_logger.tag_config('TAG_JUMP_HIGHLIGHT', background='#fed7aa')
             self.text_logger.tag_config('SEARCH_MATCH', background='#fff3bf', foreground='#000000')
             self.text_logger.tag_config('SEARCH_CURRENT', background='#ff922b', foreground='#ffffff')

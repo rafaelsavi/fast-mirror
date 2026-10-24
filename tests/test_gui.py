@@ -1576,3 +1576,96 @@ def test_icons_and_dpi_scaling():
     assert str(btn.cget('compound')) == 'left'
 
     root.destroy()
+
+
+def test_interactive_log_badges_and_jump():
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.log_panel import LogPanel
+    from gui.widgets import LogLevels
+
+    log_levels = LogLevels()
+    panel = LogPanel(root, log_levels=log_levels)
+
+    # Validate badges configuration
+    assert str(panel.lbl_stat_warning.cget('cursor')) == 'hand2'
+    assert str(panel.lbl_stat_error.cget('cursor')) == 'hand2'
+    assert hasattr(panel.lbl_stat_info, '_tooltip')
+    assert hasattr(panel.lbl_stat_warning, '_tooltip')
+    assert hasattr(panel.lbl_stat_error, '_tooltip')
+
+    # Insert log records
+    panel.text_logger.insert('Line 1 info', 'INFO')
+    panel.text_logger.insert('Line 2 warning A', 'WARNING')
+    panel.text_logger.insert('Line 3 error', 'ERROR')
+    panel.text_logger.insert('Line 4 warning B', 'WARNING')
+
+    assert panel.text_logger.level_counts['WARNING'] == 2
+    assert panel.text_logger.level_counts['ERROR'] == 1
+
+    # Test jump_to_next_warning
+    success = panel.text_logger.jump_to_next_tag('WARNING')
+    assert success is True
+    first_jump = panel.text_logger.index('insert')
+
+    success2 = panel.text_logger.jump_to_next_tag('WARNING')
+    assert success2 is True
+    second_jump = panel.text_logger.index('insert')
+    assert first_jump != second_jump
+
+    # Test clicking error badge auto-enables ERROR level if disabled
+    panel.log_levels.checkboxes['ERROR'].set(False)
+    panel._handle_level_change()
+    assert 'ERROR' not in panel.log_levels.get()
+
+    panel.jump_to_next_error()
+    assert 'ERROR' in panel.log_levels.get()
+    assert panel.text_logger.tag_ranges('TAG_JUMP_HIGHLIGHT')
+
+    root.destroy()
+
+
+def test_taskbar_lifecycle_and_states():
+    from unittest.mock import MagicMock
+
+    from core.file import CstmPath
+    from gui.confirmation_popup import ActionSelection
+    from gui.taskbar import TaskbarProgress
+
+    taskbar = TaskbarProgress()
+    # Test safe invocation of all progress methods
+    taskbar.set_indeterminate()
+    taskbar.set_determinate(5, 10)
+    taskbar.set_paused()
+    taskbar.set_error()
+    taskbar.clear()
+
+    # Mock taskbar on dummy root to verify ActionSelection pause/clear
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    mock_tb = MagicMock()
+    root.taskbar = mock_tb
+
+    popup = ActionSelection(
+        root_gui=root,
+        files_available_to_copy=[],
+        files_available_to_move=[],
+        files_available_to_delete=[CstmPath('d:/test/file.txt')],
+        default_actions=[],
+    )
+    root.update()
+    assert mock_tb.set_paused.called
+
+    popup.button_cancel_click()
+    root.update()
+    assert mock_tb.clear.called
+
+    root.destroy()
