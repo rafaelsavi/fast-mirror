@@ -28,15 +28,44 @@ This guide details all configuration options for **FastMirror**, including direc
 
 ---
 
-## Configuration File Overview
+## Configuration & Profile Overview
 
-Settings are stored in `data/config.json` (template in [`config.example.json`](../config.example.json)).
+FastMirror supports **Multiple Configuration Profiles** stored in `data/profiles/<profile_name>.json`, with active settings mirrored in `data/config.json` for full backward compatibility.
 
-- **Load**: Clicking **Load** (or pressing `Ctrl+R`) reloads configuration from disk (`data/config.json`), making it easy to reload external edits or discard unsaved changes without restarting the application. Right-clicking the **Load** button (or pressing `Ctrl+O`) opens a file picker to import any custom JSON configuration file.
-- **Save**: Clicking **Save** (or pressing `Ctrl+S`) saves the current UI state and all directory pairs atomically to `data/config.json`. Right-clicking the **Save** button allows exporting the configuration to a custom file path.
-- **Reset**: Clicking **Reset** resets all configuration fields to application defaults.
+### Toolbar Controls
+- **Profile Selector**: A dropdown combobox (`Profile: [ Default ▾ ]`) directly in the toolbar. Selecting any profile immediately loads its directory pairs, exclusions, schedules, comparison method, and preferences into the GUI.
+- **Save (`Ctrl+S`)**: Saves the current UI settings and directory pairs atomically to the active profile file (`data/profiles/<name>.json`) and mirrors them to `data/config.json`.
+- **+ New**: Opens the **New Profile** modal prompting for a profile name and starting configuration template:
+  - 🔘 **Based on current profile ('<active>')**: Copies current directory pairs, ignore patterns, schedules, and synchronization options.
+  - 🔘 **Blank profile**: Starts clean with empty directory pairs and default settings.
+- **Delete**: Prompts for confirmation and deletes the active profile from `data/profiles/`, switching back to `Default` (`Default` profile cannot be deleted).
+
+### Context Menus & Advanced Operations
+- **Right-Click Combobox**: Access profile actions:
+  - `🔄 Reload Profile (Ctrl+R)` (reverts in-session modifications back to saved state)
+  - `📋 Clone Active Profile...` (duplicate profile under a new name)
+  - `✏️ Rename Active Profile...` (rename profile file and UI selection)
+  - `📁 Import Profile from File...` (import any JSON config into the profile)
+  - `📂 Open Profiles Folder` (opens `data/profiles/` in Windows Explorer)
+  - `🧹 Reset to Defaults` (reset active configuration to default values)
+- **Right-Click Save**:
+  - `💾 Save to Active Profile`
+  - `💾 Save As / Export to File...` (export config to any destination on disk)
+
+### Launcher CLI Arguments
+FastMirror supports launching directly into a specific profile:
+```bash
+# Launch with the 'NAS' profile active
+python launch.pyw --profile "NAS"
+
+# Launch with an external configuration file
+python launch.pyw --config "D:\Backups\custom_job.json"
+```
+
+### Safety & Offline Protection
 - **Offline / Disconnected Safety**: All configured directory pairs (local and remote UNC network shares) are preserved across saves even if network shares or external drives are temporarily unreachable when saving.
-- **Error Handling**: If a configuration file is corrupted or contains invalid JSON, the application reports the error cleanly via a dialog and logs, preserving the original file and saving a timestamped backup copy (`config.json.corrupted_<timestamp>.json`).
+- **Atomic Writes**: Profiles and global configuration are written to temporary `.tmp` files first and atomically replaced, eliminating file corruption risks.
+- **Error Handling**: Corrupted or invalid JSON files are preserved without data loss and backed up (`<profile>.corrupted_<timestamp>.json`).
 
 ---
 

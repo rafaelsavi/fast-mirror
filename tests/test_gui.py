@@ -1857,3 +1857,103 @@ def test_gui_configuration_load_and_save_workflow(tmp_path, monkeypatch):
     assert gui.load_config(file_path=str(missing_file)) is False
 
     gui.root.destroy()
+
+
+def test_gui_managed_profiles_workflow(tmp_path, monkeypatch):
+    """Verify managed profile switching, creation, cloning, renaming, and deletion in GUI."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+    root.destroy()
+
+    import json
+
+    from gui.gui import Gui
+
+    monkeypatch.setattr('gui.gui.CONFIG_PATH', str(tmp_path / 'config.json'))
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'get_next_appointment', lambda self: None)
+    monkeypatch.setattr('tkinter.messagebox.askyesno', lambda *args, **kwargs: True)
+    monkeypatch.setattr('tkinter.messagebox.showwarning', lambda *args, **kwargs: None)
+    monkeypatch.setattr('tkinter.messagebox.showerror', lambda *args, **kwargs: None)
+
+    gui = Gui()
+    # Initial state has Default profile
+    assert gui.active_profile_name == 'Default'
+    assert 'Default' in gui.actions_panel.combobox_profile['values']
+
+    # 1. Configure settings in Default profile and save
+    gui.week_days.set(['MON'])
+    gui.button_action_save_config(ask_confirmation=False)
+    default_json = tmp_path / 'profiles' / 'Default.json'
+    assert default_json.exists()
+    with open(default_json, encoding='utf-8') as f:
+        data = json.load(f)
+    assert data['week_days'] == ['MON']
+
+    # 2. Create new profile 'Work' based on current profile
+    monkeypatch.setattr(
+        'gui.components.new_profile_modal.prompt_new_profile',
+        lambda *args, **kwargs: ('Work', 'current'),
+    )
+    gui.button_action_new_profile()
+    assert gui.active_profile_name == 'Work'
+    assert 'Work' in gui.actions_panel.combobox_profile['values']
+    assert gui.actions_panel.get_active_profile() == 'Work'
+    # Copied settings from Default ('MON')
+    assert gui.week_days.get() == ['MON']
+
+    # 2b. Create a blank profile 'CleanProject' with blank template
+    monkeypatch.setattr(
+        'gui.components.new_profile_modal.prompt_new_profile',
+        lambda *args, **kwargs: ('CleanProject', 'blank'),
+    )
+    gui.button_action_new_profile()
+    assert gui.active_profile_name == 'CleanProject'
+    assert gui.week_days.get() == []
+    assert gui.entry_paths.get() == []
+
+    # Switch back to Work profile
+    gui.button_action_switch_profile('Work')
+    assert gui.active_profile_name == 'Work'
+
+    # Modify settings in Work profile and save
+    gui.week_days.set(['TUE', 'THU'])
+    gui.button_action_save_config(ask_confirmation=False)
+
+    work_json = tmp_path / 'profiles' / 'Work.json'
+    assert work_json.exists()
+    with open(work_json, encoding='utf-8') as f:
+        work_data = json.load(f)
+    assert work_data['week_days'] == ['TUE', 'THU']
+
+    # 3. Switch back to Default profile
+    gui.button_action_switch_profile('Default')
+    assert gui.active_profile_name == 'Default'
+    assert gui.week_days.get() == ['MON']
+
+    # 4. Switch back to Work profile
+    gui.button_action_switch_profile('Work')
+    assert gui.active_profile_name == 'Work'
+    assert sorted(gui.week_days.get()) == ['THU', 'TUE']
+
+    # 5. Clone profile 'Work' -> 'Work_Copy'
+    monkeypatch.setattr('tkinter.simpledialog.askstring', lambda *args, **kwargs: 'Work_Copy')
+    gui.button_action_clone_profile()
+    assert gui.active_profile_name == 'Work_Copy'
+    assert 'Work_Copy' in gui.actions_panel.combobox_profile['values']
+
+    # 6. Delete profile 'Work_Copy'
+    gui.button_action_delete_profile()
+    assert gui.active_profile_name == 'Default'
+    assert 'Work_Copy' not in gui.actions_panel.combobox_profile['values']
+
+    # 7. Cannot delete 'Default'
+    gui.button_action_delete_profile()
+    assert gui.active_profile_name == 'Default'
+
+    gui.root.destroy()

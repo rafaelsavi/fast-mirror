@@ -3,12 +3,12 @@ import datetime
 import json
 import os
 import queue
-import shutil
 import threading
-import time
 import tkinter as tk
 from logging import LogRecord
+from pathlib import Path
 from tkinter import messagebox, ttk
+from typing import Any
 
 from core.backend import CompareDirs, SyncDirs
 from core.mirror import MirrorDatabase
@@ -37,19 +37,23 @@ from gui.widgets import (
 from gui.worker_thread import WorkerThread
 from utils.constants import CONFIG_PATH
 from utils.logger import logger
+from utils.profile_manager import ProfileManager, sanitize_profile_name
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
 
 
 class Gui:
     """Main application orchestrator coordinating GUI panels, scheduler watchdogs, and backend execution."""
 
-    def __init__(self):
+    def __init__(self, config_path: str | None = None, profile_name: str | None = None):
         # Initialize GUI window
         self.root = TrayableTk()
         apply_window_icon(self.root)
         self.root.title('FastMirror')
 
-        self.config_path = CONFIG_PATH
+        self._config_path = Path(config_path or CONFIG_PATH).resolve()
+        self.profile_manager = ProfileManager(config_path=self._config_path)
+        self.profile_manager.ensure_profiles_dir()
+        self.active_profile_name = profile_name or self.profile_manager.get_active_profile_name()
         self.taskbar = TaskbarProgress()
 
         # State variables
@@ -119,6 +123,7 @@ class Gui:
 
         # Build GUI modular components
         self.create_widgets()
+        self.actions_panel.set_profiles(self.profile_manager.list_profiles(), self.active_profile_name)
 
         # Apply hardware-accelerated native Windows theme
         self.apply_theme()
@@ -200,6 +205,17 @@ class Gui:
         self.backend_thread_status = BackendThreadStatus.RUNNING if thread is not None else BackendThreadStatus.STANDBY
 
     @property
+    def config_path(self) -> str:
+        return str(self._config_path)
+
+    @config_path.setter
+    def config_path(self, value: str | Path):
+        self._config_path = Path(value).resolve()
+        if hasattr(self, 'profile_manager'):
+            self.profile_manager.config_path = self._config_path
+            self.profile_manager.profiles_dir = self._config_path.parent / 'profiles'
+
+    @property
     def toggle_state_schedule(self) -> bool:
         return self.actions_panel.button_schedule_sync.config('relief')[-1] == TkinterCfgRelief.SUNKEN.value
 
@@ -277,6 +293,12 @@ class Gui:
             on_load_config_from_file=self.button_action_load_config_from_file,
             on_save_config=self.button_action_save_config,
             on_save_config_as=self.button_action_save_config_as,
+            on_select_profile=self.button_action_switch_profile,
+            on_new_profile=self.button_action_new_profile,
+            on_delete_profile=self.button_action_delete_profile,
+            on_clone_profile=self.button_action_clone_profile,
+            on_rename_profile=self.button_action_rename_profile,
+            on_open_profiles_dir=self.button_action_open_profiles_dir,
             on_quick_compare=self.button_action_quick_compare,
             on_open_report=self.button_action_open_report,
             on_report_history=self.button_action_open_report_history,
@@ -362,9 +384,9 @@ class Gui:
         style.configure('.', font=('Segoe UI', 9))
         style.configure('TLabelframe', relief='groove', borderwidth=1)
         style.configure('TLabelframe.Label', font=('Segoe UI', 9, 'bold'), foreground='#003366')
-        style.configure('Accent.TButton', font=('Segoe UI', 9, 'bold'), foreground='#004488')
-        style.configure('ActiveToggle.TButton', font=('Segoe UI', 9, 'bold'), foreground='#006600')
-        style.configure('Stop.TButton', font=('Segoe UI', 9, 'bold'), foreground='#cc0000')
+        style.configure('Accent.TButton', font=('Segoe UI', 9))
+        style.configure('ActiveToggle.TButton', font=('Segoe UI', 9))
+        style.configure('Stop.TButton', font=('Segoe UI', 9), foreground='#cc0000')
 
         if hasattr(self, 'log_panel'):
             self.log_panel.apply_theme('light')
@@ -413,62 +435,243 @@ class Gui:
             self.get_next_appointment()
             logger.info('GUI configuration was reset')
 
-    def button_action_save_config(self, ask_confirmation=True, file_path=None):
-        target_path = file_path or self.config_path
-        if os.path.isfile(target_path) and ask_confirmation:
-            confirmation = messagebox.askyesno(
-                'Caution',
-                'Are you sure you want to save the GUI configuration? '
-                f'This will overwrite existing configuration at:\n{target_path}',
+    def _get_current_config_vars(self) -> dict[str, Any]:
+        """Extract all current GUI configuration values into a dictionary."""
+        config_var_names = [
+            'entry_paths',
+            'week_days',
+            'entry_times',
+            'entry_exclusions',
+            'log_levels',
+            'checkbox_default_actions',
+            'radio_var_compare_method',
+            'checkbox_var_reset_mirror',
+            'checkbox_var_use_mirror',
+            'checkbox_var_build_mirror',
+            'checkbox_var_metadata_comparison',
+            'checkbox_var_confirm_sync',
+            'checkbox_var_save_report',
+            'toggle_auto_scroll',
+        ]
+        config_vars: dict[str, Any] = {}
+        for name in config_var_names:
+            if name == 'checkbox_var_reset_mirror':
+                config_vars[name] = False  # Reset mirror is a one-shot option
+            elif name == 'entry_paths' and hasattr(self, 'entry_paths'):
+                if hasattr(self.entry_paths, 'get_configured_pairs'):
+                    config_vars[name] = self.entry_paths.get_configured_pairs()
+                else:
+                    config_vars[name] = self.entry_paths.get()
+            elif hasattr(self, name):
+                config_vars[name] = getattr(self, name).get()
+        return config_vars
+
+    def _get_blank_config_vars(self) -> dict[str, Any]:
+        """Return a clean default configuration dictionary with no configured directory pairs."""
+        return {
+            'entry_paths': [],
+            'week_days': [],
+            'entry_times': [],
+            'entry_exclusions': ['$RECYCLE.BIN', r'\~$'],
+            'log_levels': ['INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+            'checkbox_default_actions': ['copy'],
+            'radio_var_compare_method': 'metadata',
+            'checkbox_var_reset_mirror': False,
+            'checkbox_var_use_mirror': True,
+            'checkbox_var_build_mirror': False,
+            'checkbox_var_metadata_comparison': True,
+            'checkbox_var_confirm_sync': True,
+            'checkbox_var_save_report': False,
+            'toggle_auto_scroll': True,
+        }
+
+    def _apply_config_vars_to_gui(self, config_vars: dict[str, Any]):
+        """Populate GUI widgets and control variables from a dictionary."""
+        for name, value in config_vars.items():
+            if name == 'radio_var_compare_method':
+                self.radio_var_compare_method.set(value)
+            elif name == 'checkbox_var_reset_mirror':
+                self.checkbox_var_reset_mirror.set(False)
+            elif hasattr(self, name):
+                gui_element = getattr(self, name)
+                if isinstance(gui_element, tk.BooleanVar):
+                    gui_element.set(bool(value))
+                else:
+                    gui_element.set(value)
+
+        if 'radio_var_compare_method' not in config_vars and 'checkbox_var_metadata_comparison' in config_vars:
+            self.radio_var_compare_method.set(
+                'metadata' if config_vars['checkbox_var_metadata_comparison'] else 'content'
+            )
+
+        self.text_logger.set_log_levels(self.log_levels.get())
+        if hasattr(self, 'paths_panel'):
+            with contextlib.suppress(Exception):
+                self.paths_panel._update_pair_stats()
+                self.paths_panel._update_exclusion_count()
+
+    def button_action_switch_profile(self, profile_name: str, show_success_msg: bool = True) -> bool:
+        """Switch active configuration profile, updating GUI controls and internal state."""
+        try:
+            clean_name = sanitize_profile_name(profile_name)
+            data = self.profile_manager.load_profile(clean_name)
+            self._apply_config_vars_to_gui(data)
+            self.active_profile_name = clean_name
+            self.profile_manager.set_active_profile_name(clean_name)
+            if hasattr(self, 'actions_panel'):
+                self.actions_panel.set_profiles(self.profile_manager.list_profiles(), clean_name)
+            if show_success_msg:
+                logger.info(f"Loaded configuration profile '{clean_name}'")
+            self.get_next_appointment()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to switch to profile '{profile_name}': {e}")
+            messagebox.showerror(
+                'Profile Error',
+                f"Failed to load profile '{profile_name}':\n{e}",
                 parent=self.root,
             )
+            return False
+
+    def button_action_new_profile(self):
+        """Prompt user for a new profile name and template choice ('blank' vs 'current')."""
+        from gui.components.new_profile_modal import prompt_new_profile
+
+        prompt_result = prompt_new_profile(
+            self.root,
+            active_profile_name=self.active_profile_name,
+            existing_profiles=self.profile_manager.list_profiles(),
+        )
+        if not prompt_result:
+            return
+
+        if isinstance(prompt_result, tuple):
+            new_name, template = prompt_result
         else:
-            confirmation = True
+            new_name, template = str(prompt_result), 'current'
 
-        if not ask_confirmation or confirmation:
-            config_var_names = [
-                'entry_paths',
-                'week_days',
-                'entry_times',
-                'entry_exclusions',
-                'log_levels',
-                'checkbox_default_actions',
-                'radio_var_compare_method',
-                'checkbox_var_reset_mirror',
-                'checkbox_var_use_mirror',
-                'checkbox_var_build_mirror',
-                'checkbox_var_metadata_comparison',
-                'checkbox_var_confirm_sync',
-                'checkbox_var_save_report',
-                'toggle_auto_scroll',
-            ]
-            config_vars = {}
-            for name in config_var_names:
-                if name == 'checkbox_var_reset_mirror':
-                    config_vars[name] = False  # Reset mirror is a one-shot option
-                elif name == 'entry_paths' and hasattr(self, 'entry_paths'):
-                    if hasattr(self.entry_paths, 'get_configured_pairs'):
-                        config_vars[name] = self.entry_paths.get_configured_pairs()
-                    else:
-                        config_vars[name] = self.entry_paths.get()
-                elif hasattr(self, name):
-                    config_vars[name] = getattr(self, name).get()
+        try:
+            clean_name = sanitize_profile_name(new_name)
+        except ValueError as e:
+            messagebox.showwarning('Invalid Profile Name', str(e), parent=self.root)
+            return
 
-            os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
-            tmp_path = f'{target_path}.tmp'
-            with open(tmp_path, 'w', encoding='utf-8') as f:
-                json.dump(config_vars, f, indent=4)
-            os.replace(tmp_path, target_path)
+        config_vars = self._get_blank_config_vars() if template == 'blank' else self._get_current_config_vars()
 
-            logger.info(f'Configuration was successfully saved to {target_path}')
-            self.load_config(file_path=target_path, show_success_msg=False)
+        self.profile_manager.save_profile(clean_name, config_vars, sync_active_config=True)
+        self.button_action_switch_profile(clean_name, show_success_msg=True)
 
+    def button_action_delete_profile(self):
+        """Delete active profile after user confirmation (Default cannot be deleted)."""
+        active = self.active_profile_name
+        if active.lower() == self.profile_manager.DEFAULT_PROFILE_NAME.lower():
+            messagebox.showwarning(
+                'Cannot Delete Profile',
+                f"The '{self.profile_manager.DEFAULT_PROFILE_NAME}' profile cannot be deleted.",
+                parent=self.root,
+            )
+            return
+
+        confirmed = messagebox.askyesno(
+            'Delete Profile',
+            f"Are you sure you want to delete profile '{active}'?\n\nThis will remove it from data/profiles/.",
+            parent=self.root,
+        )
+        if confirmed:
+            self.profile_manager.delete_profile(active)
+            logger.info(f"Deleted profile '{active}'")
+            self.button_action_switch_profile(self.profile_manager.DEFAULT_PROFILE_NAME)
+
+    def button_action_clone_profile(self):
+        """Clone the current profile into a new named profile."""
+        from tkinter import simpledialog
+
+        clone_name = simpledialog.askstring(
+            'Clone Profile',
+            f"Enter name for clone of profile '{self.active_profile_name}':",
+            parent=self.root,
+        )
+        if not clone_name:
+            return
+        try:
+            clean_name = sanitize_profile_name(clone_name)
+            self.profile_manager.clone_profile(self.active_profile_name, clean_name)
+            self.button_action_switch_profile(clean_name)
+        except Exception as e:
+            messagebox.showerror('Clone Profile Error', str(e), parent=self.root)
+
+    def button_action_rename_profile(self):
+        """Rename the current profile (Default cannot be renamed)."""
+        from tkinter import simpledialog
+
+        if self.active_profile_name.lower() == self.profile_manager.DEFAULT_PROFILE_NAME.lower():
+            messagebox.showwarning(
+                'Cannot Rename Profile',
+                f"The '{self.profile_manager.DEFAULT_PROFILE_NAME}' profile cannot be renamed.",
+                parent=self.root,
+            )
+            return
+
+        new_name = simpledialog.askstring(
+            'Rename Profile',
+            f"Enter new name for profile '{self.active_profile_name}':",
+            initialvalue=self.active_profile_name,
+            parent=self.root,
+        )
+        if not new_name:
+            return
+        try:
+            clean_name = sanitize_profile_name(new_name)
+            self.profile_manager.rename_profile(self.active_profile_name, clean_name)
+            self.button_action_switch_profile(clean_name)
+        except Exception as e:
+            messagebox.showerror('Rename Profile Error', str(e), parent=self.root)
+
+    def button_action_open_profiles_dir(self):
+        """Open the data/profiles directory in Windows File Explorer."""
+        try:
+            os.startfile(str(self.profile_manager.profiles_dir))
+        except Exception as e:
+            logger.error(f'Could not open profiles directory: {e}')
+
+    def button_action_save_config(self, ask_confirmation=True, file_path=None):
+        if file_path:
+            target_path = file_path
+            if os.path.isfile(target_path) and ask_confirmation:
+                confirmation = messagebox.askyesno(
+                    'Caution',
+                    'Are you sure you want to save configuration? '
+                    f'This will overwrite existing configuration at:\n{target_path}',
+                    parent=self.root,
+                )
+                if not confirmation:
+                    return
+            config_vars = self._get_current_config_vars()
+            self.profile_manager.export_profile(config_vars, target_path)
+            logger.info(f'Configuration successfully exported to {target_path}')
+            return
+
+        active_profile = self.active_profile_name
+        profile_path = self.profile_manager.get_profile_path(active_profile)
+        if profile_path.is_file() and ask_confirmation:
+            confirmation = messagebox.askyesno(
+                'Save Profile',
+                f"Are you sure you want to save current settings to profile '{active_profile}'?\n\n"
+                f'Target: {profile_path}',
+                parent=self.root,
+            )
+            if not confirmation:
+                return
+
+        config_vars = self._get_current_config_vars()
+        self.profile_manager.save_profile(active_profile, config_vars, sync_active_config=True)
+        logger.info(f"Configuration profile '{active_profile}' was successfully saved")
         self.get_next_appointment()
 
     def button_action_save_config_as(self):
         from tkinter import filedialog
 
-        initial_dir = os.path.dirname(os.path.abspath(self.config_path))
+        initial_dir = str(self.profile_manager.profiles_dir)
         file_path = filedialog.asksaveasfilename(
             parent=self.root,
             title='Save Configuration As',
@@ -480,33 +683,27 @@ class Gui:
             self.button_action_save_config(ask_confirmation=False, file_path=file_path)
 
     def button_action_load_config(self, ask_confirmation=True, file_path=None):
-        target_path = file_path or self.config_path
-        if not os.path.isfile(target_path):
-            messagebox.showwarning(
-                'Configuration Not Found',
-                f'Configuration file not found:\n{target_path}\n\n'
-                'Please save your configuration first or load from a custom file.',
-                parent=self.root,
-            )
+        if file_path:
+            self.load_config(file_path=file_path, show_success_msg=True)
             return
 
+        active_profile = self.active_profile_name
         if ask_confirmation:
             confirmation = messagebox.askyesno(
-                'Reload Configuration',
-                'Are you sure you want to reload the GUI configuration from disk?\n\n'
-                f'Source: {target_path}\n\n'
+                'Reload Profile',
+                f"Are you sure you want to reload profile '{active_profile}' from disk?\n\n"
                 'Any unsaved changes in the current session will be discarded.',
                 parent=self.root,
             )
             if not confirmation:
                 return
 
-        self.load_config(file_path=target_path, show_success_msg=True)
+        self.button_action_switch_profile(active_profile, show_success_msg=True)
 
     def button_action_load_config_from_file(self):
         from tkinter import filedialog
 
-        initial_dir = os.path.dirname(os.path.abspath(self.config_path))
+        initial_dir = str(self.profile_manager.profiles_dir)
         file_path = filedialog.askopenfilename(
             parent=self.root,
             title='Load Configuration File',
@@ -514,69 +711,40 @@ class Gui:
             filetypes=[('JSON Files', '*.json'), ('All Files', '*.*')],
         )
         if file_path:
-            self.button_action_load_config(ask_confirmation=True, file_path=file_path)
+            self.load_config(file_path=file_path, show_success_msg=True)
 
     def load_config(self, file_path=None, show_success_msg=True) -> bool:
-        target_path = file_path or self.config_path
-        if os.path.isfile(target_path):
-            try:
-                with open(target_path, encoding='utf-8') as f:
-                    config_vars = json.load(f)
-                if not isinstance(config_vars, dict):
-                    raise ValueError(f'Expected JSON object at root, got {type(config_vars).__name__}')
-
-                for name, value in config_vars.items():
-                    if name == 'radio_var_compare_method':
-                        self.radio_var_compare_method.set(value)
-                    elif name == 'checkbox_var_reset_mirror':
-                        self.checkbox_var_reset_mirror.set(False)
-                    elif hasattr(self, name):
-                        gui_element = getattr(self, name)
-                        if isinstance(gui_element, tk.BooleanVar):
-                            gui_element.set(bool(value))
-                        else:
-                            gui_element.set(value)
-
-                if 'radio_var_compare_method' not in config_vars and 'checkbox_var_metadata_comparison' in config_vars:
-                    self.radio_var_compare_method.set(
-                        'metadata' if config_vars['checkbox_var_metadata_comparison'] else 'content'
+        if file_path:
+            target_path = file_path
+            if os.path.isfile(target_path):
+                try:
+                    with open(target_path, encoding='utf-8') as f:
+                        config_vars = json.load(f)
+                    if not isinstance(config_vars, dict):
+                        raise ValueError(f'Expected JSON object at root, got {type(config_vars).__name__}')
+                    self._apply_config_vars_to_gui(config_vars)
+                    if show_success_msg:
+                        logger.info(f'Configuration was successfully loaded from {target_path}')
+                    self.get_next_appointment()
+                    return True
+                except Exception as e:
+                    logger.error(f'Failed to load configuration from <{target_path}>: {e}')
+                    messagebox.showerror(
+                        'Configuration Error',
+                        f'Failed to parse configuration file:\n{target_path}\n\nError: {e}',
+                        parent=self.root,
                     )
-
-                self.text_logger.set_log_levels(self.log_levels.get())
-                if hasattr(self, 'paths_panel'):
-                    with contextlib.suppress(Exception):
-                        self.paths_panel._update_pair_stats()
-                        self.paths_panel._update_exclusion_count()
-
-                if show_success_msg:
-                    logger.info(f'Configuration was successfully loaded from {target_path}')
-                self.get_next_appointment()
-                return True
-            except Exception as e:
-                logger.error(f'Failed to load configuration from <{target_path}>: {e}')
-                messagebox.showerror(
-                    'Configuration Error',
-                    f'Failed to parse configuration file:\n{target_path}\n\nError: {e}',
-                    parent=self.root,
-                )
-                if file_path is None:
-                    with contextlib.suppress(Exception):
-                        backup_name = f'{self.config_path}.corrupted_{int(time.time())}.json'
-                        shutil.copyfile(self.config_path, backup_name)
-                return False
-        else:
-            if file_path is not None:
+                    return False
+            else:
                 messagebox.showwarning(
                     'Configuration Not Found',
                     f'Configuration file not found:\n{target_path}',
                     parent=self.root,
                 )
                 return False
-            else:
-                logger.info('Cannot find default configuration')
-                self.button_action_reset_config(ask_confirmation=False)
-                self.get_next_appointment()
-                return False
+
+        # Load active profile by default
+        return self.button_action_switch_profile(self.active_profile_name, show_success_msg=show_success_msg)
 
     def button_action_open_report(self):
         if not os.path.isdir(logger.log_dir):

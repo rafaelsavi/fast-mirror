@@ -95,6 +95,12 @@ class ActionsPanel(ttk.LabelFrame):
         on_load_config: Callable[[], None] | None = None,
         on_load_config_from_file: Callable[[], None] | None = None,
         on_save_config_as: Callable[[], None] | None = None,
+        on_select_profile: Callable[[str], None] | None = None,
+        on_new_profile: Callable[[], None] | None = None,
+        on_delete_profile: Callable[[], None] | None = None,
+        on_clone_profile: Callable[[], None] | None = None,
+        on_rename_profile: Callable[[], None] | None = None,
+        on_open_profiles_dir: Callable[[], None] | None = None,
         on_stop: Callable[[], None] | None = None,
         radio_var_compare_method: tk.StringVar | None = None,
         checkbox_var_reset_mirror: tk.BooleanVar | None = None,
@@ -117,6 +123,12 @@ class ActionsPanel(ttk.LabelFrame):
         self.on_load_config_from_file = on_load_config_from_file
         self.on_save_config = on_save_config
         self.on_save_config_as = on_save_config_as
+        self.on_select_profile = on_select_profile
+        self.on_new_profile = on_new_profile
+        self.on_delete_profile = on_delete_profile
+        self.on_clone_profile = on_clone_profile
+        self.on_rename_profile = on_rename_profile
+        self.on_open_profiles_dir = on_open_profiles_dir
         self.on_quick_compare = on_quick_compare
         self.on_open_report = on_open_report
         self.on_report_history = on_report_history
@@ -201,57 +213,98 @@ class ActionsPanel(ttk.LabelFrame):
         self.checkbox_var_use_mirror.trace_add('write', _sync_legacy_use_to_reset)
 
     def _create_widgets(self):
-        # Section 1: Configuration Management
+        # Section 1: Profile & Configuration Management
         cfg_frame = ttk.Frame(self)
         cfg_frame.pack(fill='x', padx=8, pady=(4, 6))
 
-        lbl_cfg = ttk.Label(cfg_frame, text='Configuration:', font=('Segoe UI', 9, 'bold'), width=14)
-        lbl_cfg.pack(side='left')
+        lbl_prof = ttk.Label(cfg_frame, text='Profile:', font=('Segoe UI', 9, 'bold'), width=7)
+        lbl_prof.pack(side='left')
 
-        self.button_new_config = ModernButton(
+        self.profile_var = tk.StringVar(value='Default')
+        self.combobox_profile = ttk.Combobox(
             cfg_frame,
-            text='Reset',
-            command=self.on_reset_config,
-            width=10,
+            textvariable=self.profile_var,
+            state='readonly',
+            width=12,
+            values=['Default'],
         )
-        apply_icon(self.button_new_config, 'broom')
-        self.button_new_config.pack(side='left', padx=2)
-        add_tooltip(self.button_new_config, 'Reset all configuration fields and options to default values.')
-
-        self.button_load_config = ModernButton(
-            cfg_frame,
-            text='Load',
-            command=self.on_load_config,
-            width=10,
-        )
-        apply_icon(self.button_load_config, 'folder')
-        self.button_load_config.pack(side='left', padx=2)
-        add_tooltip(
-            self.button_load_config,
-            'Reload configuration from disk (config.json). Right-click for more options.',
-        )
-
-        load_menu = tk.Menu(self.button_load_config, tearoff=0)
-        load_menu.add_command(label='📂 Reload Default (config.json)', command=self.on_load_config)
-        if self.on_load_config_from_file:
-            load_menu.add_command(label='📁 Load from File...', command=self.on_load_config_from_file)
-        self.button_load_config.bind('<Button-3>', lambda e: load_menu.tk_popup(e.x_root, e.y_root))
+        self.combobox_profile.pack(side='left', padx=2)
+        self.combobox_profile.bind('<<ComboboxSelected>>', self._on_combobox_profile_selected)
+        add_tooltip(self.combobox_profile, 'Active configuration profile. Select from dropdown to switch and load.')
 
         self.button_save_config = ModernButton(
             cfg_frame,
             text='Save',
             command=self.on_save_config,
-            width=10,
+            width=6,
         )
         apply_icon(self.button_save_config, 'save')
         self.button_save_config.pack(side='left', padx=2)
         add_tooltip(
             self.button_save_config,
-            'Save current settings and directory pairs to disk (config.json). Right-click for more options.',
+            'Save current settings to active profile. Right-click for options.',
         )
 
+        self.button_new_profile = ModernButton(
+            cfg_frame,
+            text='+ New',
+            command=self.on_new_profile or self.on_reset_config,
+            width=6,
+        )
+        apply_icon(self.button_new_profile, 'document')
+        self.button_new_profile.pack(side='left', padx=2)
+        add_tooltip(self.button_new_profile, 'Create a new named configuration profile.')
+
+        self.button_delete_profile = ModernButton(
+            cfg_frame,
+            text='Delete',
+            command=self.on_delete_profile or (lambda: None),
+            width=6,
+        )
+        apply_icon(self.button_delete_profile, 'broom')
+        self.button_delete_profile.pack(side='left', padx=2)
+        add_tooltip(self.button_delete_profile, 'Delete active configuration profile (Default cannot be deleted).')
+
+        # Backward compatibility aliases for tests and programmatic reload/reset workflows
+        self.button_load_config = ModernButton(
+            cfg_frame,
+            text='Load',
+            command=self.on_load_config,
+            width=6,
+        )
+        apply_icon(self.button_load_config, 'folder')
+        add_tooltip(
+            self.button_load_config,
+            'Reload active profile configuration from disk.',
+        )
+
+        self.button_new_config = ModernButton(
+            cfg_frame,
+            text='Reset',
+            command=self.on_reset_config,
+            width=6,
+        )
+        apply_icon(self.button_new_config, 'broom')
+        add_tooltip(self.button_new_config, 'Reset all configuration fields to default values.')
+
+        # Context menus for advanced profile operations
+        profile_menu = tk.Menu(self.combobox_profile, tearoff=0)
+        profile_menu.add_command(label='🔄 Reload Profile (Ctrl+R)', command=self.on_load_config)
+        if self.on_clone_profile:
+            profile_menu.add_command(label='📋 Clone Active Profile...', command=self.on_clone_profile)
+        if self.on_rename_profile:
+            profile_menu.add_command(label='✏️ Rename Active Profile...', command=self.on_rename_profile)
+        profile_menu.add_separator()
+        if self.on_load_config_from_file:
+            profile_menu.add_command(label='📁 Import Profile from File...', command=self.on_load_config_from_file)
+        if self.on_open_profiles_dir:
+            profile_menu.add_command(label='📂 Open Profiles Folder', command=self.on_open_profiles_dir)
+        profile_menu.add_separator()
+        profile_menu.add_command(label='🧹 Reset to Defaults', command=self.on_reset_config)
+        self.combobox_profile.bind('<Button-3>', lambda e: profile_menu.tk_popup(e.x_root, e.y_root))
+
         save_menu = tk.Menu(self.button_save_config, tearoff=0)
-        save_menu.add_command(label='💾 Save to Default (config.json)', command=self.on_save_config)
+        save_menu.add_command(label='💾 Save to Active Profile', command=self.on_save_config)
         if self.on_save_config_as:
             save_menu.add_command(label='💾 Save As / Export to File...', command=self.on_save_config_as)
         self.button_save_config.bind('<Button-3>', lambda e: save_menu.tk_popup(e.x_root, e.y_root))
@@ -561,3 +614,28 @@ class ActionsPanel(ttk.LabelFrame):
         for child in self.frame_default_actions.winfo_children():
             with contextlib.suppress(Exception):
                 child.configure(state=state)
+
+        if hasattr(self, 'combobox_profile'):
+            with contextlib.suppress(Exception):
+                self.combobox_profile.configure(state='readonly' if enabled else 'disabled')
+        if hasattr(self, 'button_new_profile'):
+            with contextlib.suppress(Exception):
+                self.button_new_profile.configure(state=state)
+        if hasattr(self, 'button_delete_profile'):
+            with contextlib.suppress(Exception):
+                self.button_delete_profile.configure(state=state)
+
+    def _on_combobox_profile_selected(self, _event=None):
+        selected = self.profile_var.get()
+        if self.on_select_profile:
+            self.on_select_profile(selected)
+
+    def set_profiles(self, profiles: list[str], active_profile: str):
+        """Update profile combobox choices and select the active profile."""
+        if hasattr(self, 'combobox_profile'):
+            self.combobox_profile['values'] = profiles
+            self.profile_var.set(active_profile)
+
+    def get_active_profile(self) -> str:
+        """Return the currently selected profile name."""
+        return self.profile_var.get()

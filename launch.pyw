@@ -31,6 +31,8 @@ if any(arg in sys.argv for arg in ('--help', '-h')):
     print('FastMirror Launcher')
     print('Usage:')
     print('  pythonw launch.pyw                Launch FastMirror GUI (silent, no console)')
+    print('  python launch.pyw --profile "NAS" Launch with a specific configuration profile')
+    print('  python launch.pyw --config "path" Launch with an external configuration JSON file')
     print('  python launch.pyw --shortcut      Create a desktop shortcut with icon and launcher')
     print('  python launch.pyw --help          Show this help message')
     sys.exit(0)
@@ -71,4 +73,18 @@ if src_dir not in sys.path:
 
 from gui.gui import Gui  # noqa: E402
 
-gui = Gui()
+# Parse optional profile or config parameters
+profile_arg = None
+config_arg = None
+arg_idx = 1
+while arg_idx < len(sys.argv):
+    arg = sys.argv[arg_idx]
+    if arg in ('--profile', '-p') and arg_idx + 1 < len(sys.argv):
+        profile_arg = sys.argv[arg_idx + 1]
+        arg_idx += 1
+    elif arg in ('--config', '-c') and arg_idx + 1 < len(sys.argv):
+        config_arg = sys.argv[arg_idx + 1]
+        arg_idx += 1
+    arg_idx += 1
+
+gui = Gui(config_path=config_arg, profile_name=profile_arg)
