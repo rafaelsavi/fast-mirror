@@ -23,7 +23,7 @@
 
 ## Performance and responsiveness
 
-- [ ] Prevent the confirmation-action filter from freezing with 10,000 files.
+- [x] Prevent the confirmation-action filter from freezing with 10,000 files.
 
 ## Completed
 

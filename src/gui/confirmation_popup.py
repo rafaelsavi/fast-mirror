@@ -33,9 +33,13 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self._item_actions: dict[str, tuple[Action, str, str]] = {}
         self._cached_checked_by_action: dict[str, list[str]] = {}
         self._all_group_children: dict[str, list[str]] = {}
+        self._attached_items: dict[str, set[str]] = {}
+        self._highlighted_items: set[str] = set()
+        self._search_cache: dict[str, tuple[str, str]] = {}
         self.on_stats_changed = on_stats_changed
         self._sort_col: str | None = None
         self._sort_descending: bool = False
+        self._is_filtered: bool = False
 
         # Configure Treeview columns and headers
         self['columns'] = self.custom_headers[1:]
@@ -131,6 +135,10 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         self._item_actions.clear()
         self._all_group_children.clear()
+        self._attached_items.clear()
+        self._highlighted_items.clear()
+        self._search_cache.clear()
+        self._is_filtered = False
         self._sort_col = None
         self._sort_descending = False
         self.heading('#0', text=self.custom_headers[0])
@@ -165,9 +173,18 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                 open=True,
             )
             self._all_group_children[action.value] = []
+            self._attached_items[action.value] = set()
             action_style_tag = f'{action.value}_tag'
             for key, row in rows.items():
                 self._all_group_children[action.value].append(key)
+                self._attached_items[action.value].add(key)
+                src_val = str(row['source'])
+                tgt_val = str(row['target'])
+                path_for_cat = src_val if (src_val and src_val != '(none)') else tgt_val
+                cat = get_file_category_group(path_for_cat)
+                search_str = f'{key.lower()} {src_val.lower()} {tgt_val.lower()}'
+                self._search_cache[key] = (search_str, cat)
+
                 self.insert(
                     parent=group_item,
                     index='end',
@@ -182,6 +199,8 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                     ),
                     tags=(action_style_tag,),
                 )
+
+        self._attached_items[''] = set(self._all_group_children.keys())
 
     def get_checked(self) -> list[str]:
         """High-performance retrieval of checked leaf items."""
@@ -348,9 +367,12 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             sorted_children = sorted(children, key=_sort_key, reverse=reverse)
             self._all_group_children[group] = sorted_children
 
-            for idx, item_id in enumerate(sorted_children):
-                if self.exists(item_id):
+            attached = self._attached_items.get(group, set())
+            idx = 0
+            for item_id in sorted_children:
+                if self.exists(item_id) and (not self._is_filtered or item_id in attached):
                     self.move(item_id, group, idx)
+                    idx += 1
 
     def expand_all(self):
         """Expand all action groups."""
@@ -379,76 +401,87 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             if not getattr(self, '_is_filtered', False):
                 return 0, None
             self._is_filtered = False
-            for group, children in self._all_group_children.items():
-                if self.exists(group):
-                    if group not in self.get_children(''):
-                        self.reattach(group, '', 'end')
-                    for child in children:
-                        if self.exists(child):
-                            if child not in self.get_children(group):
-                                self.reattach(child, group, 'end')
-                            tags = [t for t in self.item(child, 'tags') if t != 'highlight_match']
-                            self.item(child, tags=tuple(tags))
+
+            # Clear highlight tag only on previously highlighted items
+            for child in list(self._highlighted_items):
+                if self.exists(child):
+                    tags = tuple(t for t in self.item(child, 'tags') if t != 'highlight_match')
+                    self.item(child, tags=tags)
+            self._highlighted_items.clear()
+
+            # Restore any detached items and groups in order
+            root_attached = self._attached_items.setdefault('', set(self.get_children('')))
+            for group, all_children in self._all_group_children.items():
+                if not self.exists(group):
+                    continue
+                attached = self._attached_items.setdefault(group, set())
+                if len(attached) < len(all_children):
+                    for child in all_children:
+                        if child not in attached and self.exists(child):
+                            self.reattach(child, group, 'end')
+                    attached.update(all_children)
+                if group not in root_attached:
+                    self.reattach(group, '', 'end')
+                    root_attached.add(group)
+
             return 0, None
 
         self._is_filtered = True
-        # Filter items by query and category
-        for group, children in self._all_group_children.items():
+
+        root_attached = self._attached_items.setdefault('', set(self.get_children('')))
+
+        for group, all_children in self._all_group_children.items():
             if not self.exists(group):
                 continue
 
-            group_matches = []
-            action_data = self._data.get(Action.from_str(group), {})
+            attached = self._attached_items.setdefault(group, set())
+            group_has_matches = False
 
-            for child in children:
-                if not self.exists(child):
-                    continue
-
-                row = action_data.get(child, {})
-                src = str(row.get('source', ''))
-                tgt = str(row.get('target', ''))
-                src_l = src.lower()
-                tgt_l = tgt.lower()
-
-                # Text search match
-                text_match = not query or (query in src_l or query in tgt_l or query in child.lower())
-
-                # File type category match
-                if cat_filter is None:
-                    cat_match = True
-                else:
-                    path_for_cat = src if (src and src != '(none)') else tgt
-                    cat_match = get_file_category_group(path_for_cat) == cat_filter
+            for child in all_children:
+                search_str, cat = self._search_cache.get(child, ('', ''))
+                text_match = not query or (query in search_str)
+                cat_match = (cat_filter is None) or (cat == cat_filter)
 
                 if text_match and cat_match:
                     match_count += 1
-                    group_matches.append(child)
+                    group_has_matches = True
                     if first_match is None:
                         first_match = child
 
-                    if child not in self.get_children(group):
+                    if child not in attached:
                         self.reattach(child, group, 'end')
+                        attached.add(child)
 
-                    tags = list(self.item(child, 'tags'))
-                    if query and 'highlight_match' not in tags:
-                        tags.append('highlight_match')
-                    elif not query and 'highlight_match' in tags:
-                        tags.remove('highlight_match')
-                    self.item(child, tags=tuple(tags))
+                    if query:
+                        if child not in self._highlighted_items:
+                            tags = tuple(t for t in self.item(child, 'tags') if t != 'highlight_match') + (
+                                'highlight_match',
+                            )
+                            self.item(child, tags=tags)
+                            self._highlighted_items.add(child)
+                    elif child in self._highlighted_items:
+                        tags = tuple(t for t in self.item(child, 'tags') if t != 'highlight_match')
+                        self.item(child, tags=tags)
+                        self._highlighted_items.discard(child)
                 else:
-                    if child in self.get_children(group):
+                    if child in attached:
                         self.detach(child)
+                        attached.discard(child)
 
-                    tags = [t for t in self.item(child, 'tags') if t != 'highlight_match']
-                    self.item(child, tags=tuple(tags))
+                    if child in self._highlighted_items:
+                        tags = tuple(t for t in self.item(child, 'tags') if t != 'highlight_match')
+                        self.item(child, tags=tags)
+                        self._highlighted_items.discard(child)
 
-            if group_matches:
-                if group not in self.get_children(''):
+            if group_has_matches:
+                if group not in root_attached:
                     self.reattach(group, '', 'end')
+                    root_attached.add(group)
                 self.item(group, open=True)
             else:
-                if group in self.get_children(''):
+                if group in root_attached:
                     self.detach(group)
+                    root_attached.discard(group)
 
         return match_count, first_match
 

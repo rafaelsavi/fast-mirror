@@ -633,6 +633,81 @@ def test_action_selection_high_volume_performance(tmp_path, monkeypatch):
             root.destroy()
 
 
+def test_action_selection_high_volume_filter_performance(tmp_path, monkeypatch):
+    """Test filter operations execute within milliseconds without freezing on 10,000 items."""
+    import time
+
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 'src'
+    tgt = tmp_path / 'tgt'
+    src.mkdir()
+    tgt.mkdir()
+
+    num_items = 10000
+    exts = ['.pdf', '.jpg', '.mp4', '.zip', '.py']
+    copies = []
+    for i in range(num_items):
+        ext = exts[i % len(exts)]
+        src_p = CstmPath(src / f'file_{i:05d}{ext}', root_dir=src)
+        tgt_p = CstmPath(tgt / f'file_{i:05d}{ext}', root_dir=tgt)
+        src_p._stats = os.stat_result((0, 0, 0, 0, 0, 0, 1024 + i, 1700000000, 1700000000, 1700000000))
+        tgt_p._is_new_target = True
+        copies.append((src_p, tgt_p))
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=copies,
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+
+        # 1. Filter by specific text (100 matches) should take well under 0.5s (typically ~20ms)
+        t0 = time.perf_counter()
+        popup.filter_var.set('file_005')
+        t_filter = time.perf_counter() - t0
+        assert t_filter < 0.5
+        assert '100 matches' in popup.lbl_filter_count.cget('text')
+
+        # 2. Filter by category chip should take well under 0.5s
+        t0 = time.perf_counter()
+        popup._on_category_chip_clicked('image')
+        t_cat = time.perf_counter() - t0
+        assert t_cat < 0.5
+        assert '20 matches' in popup.lbl_filter_count.cget('text')
+        assert '[Image]' in popup.lbl_filter_count.cget('text')
+
+        # 3. Clearing filter should take well under 0.5s
+        t0 = time.perf_counter()
+        popup._on_clear_filter()
+        t_clear = time.perf_counter() - t0
+        assert t_clear < 0.5
+        assert popup.lbl_filter_count.cget('text') == ''
+
+        # 4. Typing simulation should not freeze
+        for typed in ('f', 'fi', 'fil'):
+            t0 = time.perf_counter()
+            popup.filter_var.set(typed)
+            assert (time.perf_counter() - t0) < 0.5
+
+        # 5. Saving filtered or cleared state preserves items
+        popup.button_save_click()
+        assert popup.finished is True
+        copy_out, _, _ = popup.get_outputs()
+        assert len(copy_out) == num_items
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
 def test_action_selection_filter_and_highlight(tmp_path, monkeypatch):
     """Test filter updates match counter, highlights matching items, and clears cleanly."""
     monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
