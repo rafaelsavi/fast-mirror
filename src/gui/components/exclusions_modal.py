@@ -5,7 +5,7 @@ from tkinter import messagebox, simpledialog, ttk
 import pathspec
 
 from gui.icons import apply_icon, apply_window_icon
-from gui.widgets import EntryExclusions
+from gui.widgets import BadgeLabel, EntryExclusions
 from utils.utils import sanitize_path
 
 
@@ -64,16 +64,10 @@ class ExclusionsModal:
         )
         lbl_title.pack(side='left')
 
-        self.lbl_stats = tk.Label(
+        self.lbl_stats = BadgeLabel(
             header_top,
             text=f'{len(self._patterns)} active patterns',
-            font=('Segoe UI', 8, 'bold'),
-            bg='#e2e8f0',
-            fg='#1e293b',
-            padx=8,
-            pady=2,
-            relief='solid',
-            bd=1,
+            variant='neutral_bold',
         )
         self.lbl_stats.pack(side='right')
 
@@ -197,16 +191,11 @@ class ExclusionsModal:
         entry_test = ttk.Entry(tester_card, textvariable=self.test_path_var)
         entry_test.pack(fill='x', pady=(0, 6))
 
-        self.lbl_test_result = tk.Label(
+        self.lbl_test_result = BadgeLabel(
             tester_card,
             text='🔴 Ignored',
+            variant='error',
             font=('Segoe UI', 9, 'bold'),
-            bg='#fee2e2',
-            fg='#b91c1c',
-            padx=8,
-            pady=3,
-            relief='solid',
-            bd=1,
         )
         self.lbl_test_result.pack(anchor='w')
 
@@ -240,17 +229,14 @@ class ExclusionsModal:
         grid_frame.columnconfigure(1, weight=1)
 
         for r_idx, (pat, desc, note) in enumerate(examples):
-            btn_pat = tk.Label(
+            btn_pat = BadgeLabel(
                 grid_frame,
                 text=pat,
+                variant='neutral_bold',
                 font=('Consolas', 9, 'bold'),
-                bg='#f1f5f9',
-                fg='#0f172a',
-                padx=5,
+                interactive=True,
+                padx=6,
                 pady=1,
-                relief='solid',
-                bd=1,
-                cursor='hand2',
             )
             btn_pat.grid(row=r_idx * 2, column=0, sticky='w', pady=(3, 1))
 
@@ -401,11 +387,7 @@ class ExclusionsModal:
     def _evaluate_test_path(self, *args):
         path = self.test_path_var.get().strip()
         if not path or not self._patterns:
-            self.lbl_test_result.config(
-                text='⚪ No Pattern Evaluated',
-                bg='#f1f5f9',
-                fg='#64748b',
-            )
+            self.lbl_test_result.set_variant('neutral', text='⚪ No Pattern Evaluated')
             return
 
         try:
@@ -423,23 +405,11 @@ class ExclusionsModal:
                         break
 
                 pat_str = f' (matches: {matching_pat})' if matching_pat else ''
-                self.lbl_test_result.config(
-                    text=f'🔴 Ignored{pat_str}',
-                    bg='#fee2e2',
-                    fg='#b91c1c',
-                )
+                self.lbl_test_result.set_variant('error', text=f'🔴 Ignored{pat_str}')
             else:
-                self.lbl_test_result.config(
-                    text='🟢 Included in backup',
-                    bg='#dcfce7',
-                    fg='#15803d',
-                )
+                self.lbl_test_result.set_variant('success', text='🟢 Included in backup')
         except Exception as e:
-            self.lbl_test_result.config(
-                text=f'⚠️ Syntax Error: {e}',
-                bg='#fef3c7',
-                fg='#b45309',
-            )
+            self.lbl_test_result.set_variant('warning', text=f'⚠️ Syntax Error: {e}')
 
     def _apply_and_close(self):
         self.entry_exclusions.set(self._patterns)

@@ -400,6 +400,10 @@ class Gui:
         style.configure('Accent.TButton', font=('Segoe UI', 9))
         style.configure('ActiveToggle.TButton', font=('Segoe UI', 9))
         style.configure('Stop.TButton', font=('Segoe UI', 9), foreground='#cc0000')
+        style.map(
+            'Stop.TButton',
+            foreground=[('disabled', '#888888'), ('pressed', '#990000'), ('active', '#cc0000')],
+        )
 
         if hasattr(self, 'log_panel'):
             self.log_panel.apply_theme('light')

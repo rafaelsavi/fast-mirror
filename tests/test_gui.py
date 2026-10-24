@@ -1537,7 +1537,7 @@ def test_actions_panel_step5_modernization():
 
     # 3. Dynamic Stop Button state for sync
     panel.set_running_state(True, trigger='sync_now')
-    assert panel.button_sync_now.cget('text') == '🛑 Stop Sync'
+    assert panel.button_sync_now.cget('text') == 'Stop Sync'
     panel.button_sync_now.invoke()
     assert stopped == [True]
 
@@ -1549,7 +1549,7 @@ def test_actions_panel_step5_modernization():
 
     # 4. Dynamic Stop Button state for compare
     panel.set_running_state(True, trigger='quick_compare')
-    assert panel.button_quick_compare.cget('text') == '🛑 Stop Compare'
+    assert panel.button_quick_compare.cget('text') == 'Stop Compare'
     panel.button_quick_compare.invoke()
     assert stopped == [True, True]
 

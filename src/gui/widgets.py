@@ -595,3 +595,126 @@ def add_tooltip(widget: tk.Misc, text: str, delay_ms: int = 450) -> ToolTip:
     tooltip = ToolTip(widget, text, delay_ms=delay_ms)
     widget._tooltip = tooltip  # type: ignore[attr-defined]
     return tooltip
+
+
+BADGE_PALETTES: dict[str, dict[str, str]] = {
+    'neutral': {
+        'bg': '#f1f5f9',
+        'fg': '#64748b',
+        'border': '#e2e8f0',
+        'hover_bg': '#e2e8f0',
+    },
+    'neutral_bold': {
+        'bg': '#f1f5f9',
+        'fg': '#334155',
+        'border': '#cbd5e1',
+        'hover_bg': '#e2e8f0',
+    },
+    'info': {
+        'bg': '#e0f2fe',
+        'fg': '#0369a1',
+        'border': '#bae6fd',
+        'hover_bg': '#bae6fd',
+    },
+    'warning': {
+        'bg': '#fef3c7',
+        'fg': '#b45309',
+        'border': '#fde68a',
+        'hover_bg': '#fde68a',
+    },
+    'error': {
+        'bg': '#fee2e2',
+        'fg': '#b91c1c',
+        'border': '#fecaca',
+        'hover_bg': '#fecaca',
+    },
+    'success': {
+        'bg': '#dcfce7',
+        'fg': '#15803d',
+        'border': '#bbf7d0',
+        'hover_bg': '#bbf7d0',
+    },
+    'primary': {
+        'bg': '#dbeafe',
+        'fg': '#1d4ed8',
+        'border': '#bfdbfe',
+        'hover_bg': '#bfdbfe',
+    },
+}
+
+
+class BadgeLabel(tk.Label):
+    """
+    Modern flat status indicator / pill badge with subtle uniform tint border.
+
+    Eliminates 3D bevels (groove/sunken) and harsh solid borders that make
+    indicator labels look like pressed buttons or vintage form fields.
+    """
+
+    def __init__(
+        self,
+        master: tk.Misc,
+        text: str = '',
+        variant: str = 'neutral',
+        interactive: bool = False,
+        **kwargs,
+    ):
+        self._variant = variant
+        self._interactive = interactive
+        palette = BADGE_PALETTES.get(variant, BADGE_PALETTES['neutral'])
+
+        kwargs.setdefault('font', ('Segoe UI', 8, 'bold') if variant != 'neutral' else ('Segoe UI', 8))
+        kwargs.setdefault('padx', 8)
+        kwargs.setdefault('pady', 2)
+        kwargs['relief'] = 'flat'
+        kwargs['bd'] = 0
+        kwargs.setdefault('bg', palette['bg'])
+        kwargs.setdefault('fg', palette['fg'])
+        kwargs.setdefault('highlightthickness', 1)
+        kwargs.setdefault('highlightbackground', palette['border'])
+        kwargs.setdefault('highlightcolor', palette['border'])
+
+        if interactive:
+            kwargs.setdefault('cursor', 'hand2')
+
+        super().__init__(master, text=text, **kwargs)
+
+        if interactive:
+            self.bind('<Enter>', self._on_enter)
+            self.bind('<Leave>', self._on_leave)
+
+    def _on_enter(self, _event=None):
+        palette = BADGE_PALETTES.get(self._variant, BADGE_PALETTES['neutral'])
+        super().config(bg=palette['hover_bg'])
+
+    def _on_leave(self, _event=None):
+        palette = BADGE_PALETTES.get(self._variant, BADGE_PALETTES['neutral'])
+        super().config(bg=palette['bg'])
+
+    def set_variant(self, variant: str, text: str | None = None, is_bold: bool | None = None):
+        """Update badge palette variant and optionally text/font weight."""
+        self._variant = variant
+        palette = BADGE_PALETTES.get(variant, BADGE_PALETTES['neutral'])
+        cfg: dict = {
+            'bg': palette['bg'],
+            'fg': palette['fg'],
+            'highlightbackground': palette['border'],
+            'highlightcolor': palette['border'],
+            'relief': 'flat',
+            'bd': 0,
+        }
+        if text is not None:
+            cfg['text'] = text
+        if is_bold is not None:
+            cfg['font'] = ('Segoe UI', 8, 'bold') if is_bold else ('Segoe UI', 8)
+        super().config(**cfg)
+
+    def config(self, cnf=None, **kwargs):
+        """Ensure relief stays flat to avoid pressed-button regressions."""
+        if 'relief' in kwargs and kwargs['relief'] in ('groove', 'sunken', 'raised', 'solid'):
+            kwargs['relief'] = 'flat'
+        if 'bd' in kwargs and kwargs['bd'] > 0:
+            kwargs['bd'] = 0
+        return super().config(cnf, **kwargs)
+
+    configure = config

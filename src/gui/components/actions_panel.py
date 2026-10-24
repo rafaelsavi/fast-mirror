@@ -566,36 +566,53 @@ class ActionsPanel(ttk.LabelFrame):
                 text='Sync Now',
                 command=self.on_sync_now,
                 default_style='Accent.TButton',
+                state='normal',
             )
             apply_icon(self.button_sync_now, 'sync')
+            if hasattr(self.button_sync_now, '_tooltip'):
+                self.button_sync_now._tooltip.text = 'Start synchronization between source and target directories.'
+
             self.button_quick_compare.configure(
                 text='Start Compare',
                 command=self.on_quick_compare,
                 default_style='',
+                state='normal',
             )
             apply_icon(self.button_quick_compare, 'compare')
+            if hasattr(self.button_quick_compare, '_tooltip'):
+                self.button_quick_compare._tooltip.text = (
+                    'Run dry-run comparison to analyze differences without altering files.'
+                )
             return
 
         if stopping:
             if trigger == 'sync_now':
                 self.button_sync_now.configure(text='Stopping...', state='disabled')
+                if hasattr(self.button_sync_now, '_tooltip'):
+                    self.button_sync_now._tooltip.text = 'Cancelling active synchronization...'
             elif trigger == 'quick_compare':
                 self.button_quick_compare.configure(text='Stopping...', state='disabled')
+                if hasattr(self.button_quick_compare, '_tooltip'):
+                    self.button_quick_compare._tooltip.text = 'Cancelling active comparison...'
         else:
             if trigger == 'sync_now':
                 self.button_sync_now.configure(
-                    text='🛑 Stop Sync',
                     command=stop_cmd,
                     default_style='Stop.TButton',
                     state='normal',
                 )
+                apply_icon(self.button_sync_now, 'stop', text='Stop Sync')
+                if hasattr(self.button_sync_now, '_tooltip'):
+                    self.button_sync_now._tooltip.text = 'Stop active synchronization safely.'
             elif trigger == 'quick_compare':
                 self.button_quick_compare.configure(
-                    text='🛑 Stop Compare',
                     command=stop_cmd,
                     default_style='Stop.TButton',
                     state='normal',
                 )
+                apply_icon(self.button_quick_compare, 'stop', text='Stop Compare')
+                if hasattr(self.button_quick_compare, '_tooltip'):
+                    self.button_quick_compare._tooltip.text = 'Stop active comparison safely.'
 
     def set_enabled(self, enabled: bool, leave_sunken_enabled: bool = False):
         """Enable or disable interactive controls in the actions panel."""

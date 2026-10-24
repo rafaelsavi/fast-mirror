@@ -5,7 +5,7 @@ from collections.abc import Callable
 from tkinter import filedialog, messagebox, ttk
 
 from gui.icons import apply_icon, apply_window_icon
-from gui.widgets import DirectoryPair, EntryPaths
+from gui.widgets import BadgeLabel, DirectoryPair, EntryPaths
 from utils.utils import sanitize_path
 
 
@@ -67,16 +67,10 @@ class DirectoryPairsModal:
         )
         lbl_title.pack(side='left')
 
-        self.lbl_stats = tk.Label(
+        self.lbl_stats = BadgeLabel(
             header_top,
             text=f'{len(self._pairs)} configured pairs',
-            font=('Segoe UI', 8, 'bold'),
-            bg='#e2e8f0',
-            fg='#1e293b',
-            padx=8,
-            pady=2,
-            relief='solid',
-            bd=1,
+            variant='neutral_bold',
         )
         self.lbl_stats.pack(side='right')
 

@@ -12,7 +12,7 @@ from typing import Literal
 
 from gui.health_check import TargetHealth, probe_targets_async
 from gui.icons import apply_icon
-from gui.widgets import EntryExclusions, EntryPaths
+from gui.widgets import BadgeLabel, EntryExclusions, EntryPaths
 
 
 class PathsPanel(ttk.LabelFrame):
@@ -45,16 +45,10 @@ class PathsPanel(ttk.LabelFrame):
         lbl_paths = ttk.Label(toolbar, text='Directory Pairs:', font=('Segoe UI', 9, 'bold'))
         lbl_paths.pack(side='left', padx=(0, 6))
 
-        self.lbl_pair_count = tk.Label(
+        self.lbl_pair_count = BadgeLabel(
             toolbar,
             text='0 configured',
-            font=('Segoe UI', 8, 'bold'),
-            bg='#e5e7eb',
-            fg='#374151',
-            padx=6,
-            pady=1,
-            relief='groove',
-            bd=1,
+            variant='neutral_bold',
         )
         self.lbl_pair_count.pack(side='left', padx=(0, 8))
 
@@ -102,16 +96,10 @@ class PathsPanel(ttk.LabelFrame):
         lbl_exclusions = ttk.Label(excl_header, text='Ignore List (Exclusions):', font=('Segoe UI', 9, 'bold'))
         lbl_exclusions.pack(side='left', padx=(0, 6))
 
-        self.lbl_excl_count = tk.Label(
+        self.lbl_excl_count = BadgeLabel(
             excl_header,
             text='0 patterns',
-            font=('Segoe UI', 8, 'bold'),
-            bg='#e5e7eb',
-            fg='#374151',
-            padx=6,
-            pady=1,
-            relief='groove',
-            bd=1,
+            variant='neutral_bold',
         )
         self.lbl_excl_count.pack(side='left', padx=(0, 8))
 
@@ -143,14 +131,20 @@ class PathsPanel(ttk.LabelFrame):
             return
         pairs = self.entry_paths.get_raw_pairs()
         valid_count = sum(1 for s, t, _ in pairs if s and t)
-        self.lbl_pair_count.config(text=f'{valid_count} configured')
+        if valid_count > 0:
+            self.lbl_pair_count.set_variant('info', text=f'{valid_count} configured', is_bold=True)
+        else:
+            self.lbl_pair_count.set_variant('neutral_bold', text='0 configured', is_bold=True)
 
     def _update_exclusion_count(self):
         """Update the exclusion pattern count badge."""
         if not hasattr(self, 'lbl_excl_count') or not hasattr(self, 'entry_exclusions'):
             return
         patterns = self.entry_exclusions.get()
-        self.lbl_excl_count.config(text=f'{len(patterns)} patterns')
+        if patterns:
+            self.lbl_excl_count.set_variant('neutral_bold', text=f'{len(patterns)} patterns', is_bold=True)
+        else:
+            self.lbl_excl_count.set_variant('neutral', text='0 patterns', is_bold=False)
 
     def open_pairs_manager(self):
         """Open the interactive directory pairs manager modal."""

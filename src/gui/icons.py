@@ -111,3 +111,18 @@ def apply_icon(
 
     with contextlib.suppress(Exception):
         button.configure(**config_kwargs)
+
+
+def clear_icon(button: ttk.Button | tk.Button, text: str | None = None) -> None:
+    """
+    Remove any icon image from a button safely.
+
+    Clears the image attribute and compound layout, resetting widget reference.
+    """
+    config_kwargs: dict[str, Any] = {'image': '', 'compound': 'none'}
+    if text is not None:
+        config_kwargs['text'] = text
+
+    with contextlib.suppress(Exception):
+        button.configure(**config_kwargs)
+    button._icon_ref = None  # type: ignore[union-attr]

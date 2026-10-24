@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
 
+from gui.widgets import BadgeLabel
+
 
 class StatusBar(ttk.Frame):
     """Status bar displaying engine status and next scheduled synchronization."""
@@ -28,16 +30,13 @@ class StatusBar(ttk.Frame):
         lbl_status_title = ttk.Label(status_box, text='Engine Status: ', font=('Segoe UI', 10, 'bold'))
         lbl_status_title.pack(side='left')
 
-        self.lbl_status_pill = tk.Label(
+        self.lbl_status_pill = BadgeLabel(
             status_box,
             text='● Standby',
+            variant='success',
             font=('Segoe UI', 9, 'bold'),
-            bg='#dcfce7',
-            fg='#15803d',
             padx=8,
             pady=2,
-            relief='solid',
-            bd=1,
         )
         self.lbl_status_pill.pack(side='left', padx=(2, 0))
         self.lbl_status_val = self.lbl_status_pill
@@ -67,26 +66,8 @@ class StatusBar(ttk.Frame):
         raw_status = self.text_var_status.get()
         status_lower = raw_status.lower()
         if 'running' in status_lower:
-            self.lbl_status_pill.config(
-                text=f'● {raw_status}',
-                bg='#dbeafe',
-                fg='#1d4ed8',
-                relief='solid',
-                bd=1,
-            )
+            self.lbl_status_pill.set_variant('primary', text=f'● {raw_status}')
         elif 'stopping' in status_lower:
-            self.lbl_status_pill.config(
-                text=f'● {raw_status}',
-                bg='#fef3c7',
-                fg='#b45309',
-                relief='solid',
-                bd=1,
-            )
+            self.lbl_status_pill.set_variant('warning', text=f'● {raw_status}')
         else:  # Standby or other
-            self.lbl_status_pill.config(
-                text=f'● {raw_status}',
-                bg='#dcfce7',
-                fg='#15803d',
-                relief='solid',
-                bd=1,
-            )
+            self.lbl_status_pill.set_variant('success', text=f'● {raw_status}')

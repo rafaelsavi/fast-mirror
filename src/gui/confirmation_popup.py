@@ -10,7 +10,7 @@ import ttkwidgets
 
 from core.file import CstmPath
 from gui.icons import apply_icon, apply_window_icon
-from gui.widgets import Action, add_tooltip
+from gui.widgets import Action, BadgeLabel, add_tooltip
 from utils.logger import logger
 from utils.utils import format_size
 
@@ -659,7 +659,14 @@ class ActionSelection:
             winsound.PlaySound('SystemQuestion', winsound.SND_ALIAS)
 
     def _create_summary_banner(self):
-        banner_frame = tk.Frame(self.popup, bg='SystemButtonFace', bd=1, relief='groove', padx=12, pady=8)
+        banner_frame = tk.Frame(
+            self.popup,
+            bg='SystemButtonFace',
+            highlightthickness=1,
+            highlightbackground='#e2e8f0',
+            padx=12,
+            pady=8,
+        )
         banner_frame.grid(row=0, column=0, sticky='ew', padx=8, pady=(8, 4))
         banner_frame.grid_columnconfigure(3, weight=1)
 
@@ -689,39 +696,33 @@ class ActionSelection:
         badge_frame = tk.Frame(banner_frame, bg='SystemButtonFace')
         badge_frame.grid(row=1, column=0, columnspan=4, sticky='w')
 
-        self.lbl_stat_copy = tk.Label(
+        self.lbl_stat_copy = BadgeLabel(
             badge_frame,
             text='🟢 Copy: 0 files (0 B)',
+            variant='success',
             font=('Segoe UI', 9),
-            bg='#dcfce7',
-            fg='#15803d',
             padx=8,
-            pady=3,
-            relief='groove',
+            pady=2,
         )
         self.lbl_stat_copy.pack(side='left', padx=(0, 6))
 
-        self.lbl_stat_move = tk.Label(
+        self.lbl_stat_move = BadgeLabel(
             badge_frame,
             text='🔵 Move: 0 files (0 B)',
+            variant='primary',
             font=('Segoe UI', 9),
-            bg='#dbeafe',
-            fg='#1d4ed8',
             padx=8,
-            pady=3,
-            relief='groove',
+            pady=2,
         )
         self.lbl_stat_move.pack(side='left', padx=(0, 6))
 
-        self.lbl_stat_delete = tk.Label(
+        self.lbl_stat_delete = BadgeLabel(
             badge_frame,
             text='🔴 Delete: 0 files (0 B)',
+            variant='error',
             font=('Segoe UI', 9),
-            bg='#fee2e2',
-            fg='#b91c1c',
             padx=8,
-            pady=3,
-            relief='groove',
+            pady=2,
         )
         self.lbl_stat_delete.pack(side='left', padx=(0, 6))
 
