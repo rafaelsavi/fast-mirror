@@ -119,7 +119,7 @@ class MirrorDatabase:
                 if not row:
                     return False
                 saved_hash, file_count = row
-                return saved_hash == self.exclusions_hash and file_count > 0
+                return saved_hash == self.exclusions_hash and file_count >= 0
         except Exception as e:
             logger.warning(f'Could not check if table exists. Exception: {e}')
             return False
@@ -211,6 +211,16 @@ class MirrorDatabase:
         items = list(path) if isinstance(path, Iterable) and not isinstance(path, str | bytes | PathLike) else [path]
 
         if not items:
+            try:
+                with self._get_connection() as conn:
+                    conn.execute(
+                        'INSERT OR REPLACE INTO mirror_metadata (root_dir, exclusions_hash, file_count, last_scanned) '
+                        'VALUES (?, ?, ?, ?);',
+                        (root_str, self.exclusions_hash, 0, time.time()),
+                    )
+                    conn.commit()
+            except Exception as e:
+                logger.critical(f"Could not open DB to record mirror metadata for '{root_dir}': {e}")
             return
 
         start_time = time.time()
@@ -253,6 +263,8 @@ class MirrorDatabase:
                     (root_str, self.exclusions_hash, count, time.time()),
                 )
                 conn.commit()
+                with contextlib.suppress(Exception):
+                    conn.execute('PRAGMA wal_checkpoint(PASSIVE);')
         except Exception as e:
             logger.critical(f'Could not open DB to add file(s): {path} Exception: {e}')
 

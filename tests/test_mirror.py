@@ -158,3 +158,65 @@ def test_size_and_metadata_sync(tmp_path, test_data_dir):
     assert mirror.size(root_dir) == 1
     mirror.reset(root_dir)
     assert mirror.size(root_dir) == 0
+
+
+def test_empty_target_mirror_saved(tmp_path):
+    db_path = str(tmp_path / 'empty_target_test.db')
+    mirror = MirrorDatabase(path=db_path)
+    root_dir = str(tmp_path / 'empty_dir')
+    os.makedirs(root_dir, exist_ok=True)
+
+    assert mirror.exists_table(root_dir) is False
+    mirror.add_path(root_dir, [])
+    assert mirror.exists_table(root_dir) is True
+    assert mirror.size(root_dir) == 0
+    assert mirror.get_paths(root_dir) == set()
+
+
+def test_mirror_saved_when_sync_popup_cancelled(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from core.backend import CompareDirs, SyncDirs
+    from utils.utils import DirectoryPair
+
+    monkeypatch.setattr(SyncDirs, 'open_confirmation_popup', lambda self: False)
+
+    db_path = str(tmp_path / 'cancel_sync_test.db')
+    mirror = MirrorDatabase(path=db_path)
+
+    src = tmp_path / 'source'
+    tgt = tmp_path / 'target'
+    src.mkdir()
+    tgt.mkdir()
+    (src / 'new_file.txt').write_text('content')
+    (tgt / 'existing.txt').write_text('existing')
+
+    dir_pair = DirectoryPair(source=str(src), target=str(tgt))
+
+    # Initial compare with rebuild_mirror=True
+    compare = CompareDirs(
+        mirror=mirror,
+        dirs=[dir_pair],
+        exclusions=[],
+        use_mirror=False,
+        increment_mirror=False,
+        rebuild_mirror=True,
+    )
+    assert mirror.exists_table(str(tgt)) is True
+    assert mirror.size(str(tgt)) == 1
+
+    # Simulate SyncDirs with mock root_gui where confirmation popup is cancelled
+    SyncDirs(
+        files_to_copy=compare.files_to_copy,
+        files_to_move=compare.files_to_move,
+        files_to_delete=compare.files_to_delete,
+        mirror=mirror,
+        root_gui=MagicMock(),
+        dirs=[dir_pair],
+        confirm_sync=True,
+    )
+    # Target mirror database must still exist and retain the scanned records
+    assert mirror.exists_table(str(tgt)) is True
+    assert mirror.size(str(tgt)) == 1
+    paths = {str(p) for p in mirror.get_paths(str(tgt))}
+    assert str(tgt / 'existing.txt') in paths

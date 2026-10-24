@@ -157,6 +157,8 @@ class CompareDirs:
             if increment_mirror or rebuild_mirror:
                 logger.info(f'Adding {len(self.files_in_target[dir_pair.target]):,} files to mirror')
                 self.mirror.add_path(dir_pair.target, self.files_in_target[dir_pair.target])
+                size = self.mirror.size(dir_pair.target)
+                logger.info(f'Mirror cache updated and saved for <{dir_pair.target}> ({size:,} entries)')
 
         num_files = sum(len(files) for files in self.files_in_target.values())
         logger.info(
@@ -427,7 +429,7 @@ class SyncDirs:
             if self.root_gui is None:
                 raise ValueError('Cannot confirm sync without a valid root_gui')
             if not self.open_confirmation_popup():
-                logger.info('Synchronization canceled by user')
+                logger.info('Synchronization canceled by user. Mirror cache for target directories remains up-to-date.')
                 return
         else:
             if Action.COPY in self.default_actions:
