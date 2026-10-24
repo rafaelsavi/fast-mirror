@@ -140,6 +140,9 @@ def test_full_gui_visual_rendering_and_layout(monkeypatch, tmp_path):
         # Verify non-blank image (contains varied pixel values)
         extrema = img.getextrema()
         assert extrema is not None
+        scratch_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scratch'))
+        os.makedirs(scratch_dir, exist_ok=True)
+        img.save(os.path.join(scratch_dir, 'gui_modernized.png'))
 
     gui.root.destroy()
 
@@ -377,6 +380,9 @@ def test_confirmation_popup_visual_and_action_clicks(tmp_path):
     img = capture_window_bitmap(top_hwnd)
     if img is not None and img.width > 10:
         assert img.width >= 800
+        scratch_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scratch'))
+        os.makedirs(scratch_dir, exist_ok=True)
+        img.save(os.path.join(scratch_dir, 'popup_modernized.png'))
 
     # Test "Uncheck All Deletions" safety click
     popup.tree.uncheck_action(Action.DELETE)
