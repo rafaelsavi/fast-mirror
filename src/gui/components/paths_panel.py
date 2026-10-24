@@ -49,11 +49,11 @@ class PathsPanel(ttk.LabelFrame):
             toolbar,
             text='0 configured',
             font=('Segoe UI', 8, 'bold'),
-            bg='#e2e8f0',
-            fg='#1e293b',
+            bg='#e5e7eb',
+            fg='#374151',
             padx=6,
             pady=1,
-            relief='solid',
+            relief='groove',
             bd=1,
         )
         self.lbl_pair_count.pack(side='left', padx=(0, 8))
@@ -115,11 +115,11 @@ class PathsPanel(ttk.LabelFrame):
             excl_header,
             text='0 patterns',
             font=('Segoe UI', 8, 'bold'),
-            bg='#e2e8f0',
-            fg='#1e293b',
+            bg='#e5e7eb',
+            fg='#374151',
             padx=6,
             pady=1,
-            relief='solid',
+            relief='groove',
             bd=1,
         )
         self.lbl_excl_count.pack(side='left', padx=(0, 8))

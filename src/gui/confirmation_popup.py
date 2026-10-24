@@ -554,6 +554,8 @@ class ActionSelection:
         self.popup = tk.Toplevel(self.root_gui)
         self.popup.withdraw()
         self.popup.title('FastMirror - Confirm Actions')
+        with contextlib.suppress(Exception):
+            self.popup.configure(bg='SystemButtonFace')
         apply_window_icon(self.popup)
         self.popup.minsize(940, 600)
         self.popup.protocol('WM_DELETE_WINDOW', self.on_window_close)
@@ -616,20 +618,20 @@ class ActionSelection:
             winsound.PlaySound('SystemQuestion', winsound.SND_ALIAS)
 
     def _create_summary_banner(self):
-        banner_frame = tk.Frame(self.popup, bg='#f8f9fa', bd=1, relief='solid', padx=12, pady=8)
+        banner_frame = tk.Frame(self.popup, bg='SystemButtonFace', bd=1, relief='groove', padx=12, pady=8)
         banner_frame.grid(row=0, column=0, sticky='ew', padx=8, pady=(8, 4))
         banner_frame.grid_columnconfigure(3, weight=1)
 
         # Title & Subtitle
-        title_box = tk.Frame(banner_frame, bg='#f8f9fa')
+        title_box = tk.Frame(banner_frame, bg='SystemButtonFace')
         title_box.grid(row=0, column=0, columnspan=4, sticky='w', pady=(0, 6))
 
         lbl_title = tk.Label(
             title_box,
             text='Review Synchronization Actions',
             font=('Segoe UI', 11, 'bold'),
-            bg='#f8f9fa',
-            fg='#212529',
+            bg='SystemButtonFace',
+            fg='#111827',
         )
         lbl_title.pack(anchor='w')
 
@@ -637,21 +639,21 @@ class ActionSelection:
             title_box,
             text='Inspect planned filesystem changes. Check or uncheck items to customize what will be executed.',
             font=('Segoe UI', 9),
-            bg='#f8f9fa',
-            fg='#6c757d',
+            bg='SystemButtonFace',
+            fg='#4b5563',
         )
         lbl_desc.pack(anchor='w')
 
         # Category Stat Badges
-        badge_frame = tk.Frame(banner_frame, bg='#f8f9fa')
+        badge_frame = tk.Frame(banner_frame, bg='SystemButtonFace')
         badge_frame.grid(row=1, column=0, columnspan=4, sticky='w')
 
         self.lbl_stat_copy = tk.Label(
             badge_frame,
             text='🟢 Copy: 0 files (0 B)',
             font=('Segoe UI', 9),
-            bg='#e8f5e9',
-            fg='#2e7d32',
+            bg='#dcfce7',
+            fg='#15803d',
             padx=8,
             pady=3,
             relief='groove',
@@ -662,8 +664,8 @@ class ActionSelection:
             badge_frame,
             text='🔵 Move: 0 files (0 B)',
             font=('Segoe UI', 9),
-            bg='#e3f2fd',
-            fg='#1565c0',
+            bg='#dbeafe',
+            fg='#1d4ed8',
             padx=8,
             pady=3,
             relief='groove',
@@ -674,8 +676,8 @@ class ActionSelection:
             badge_frame,
             text='🔴 Delete: 0 files (0 B)',
             font=('Segoe UI', 9),
-            bg='#ffebee',
-            fg='#c62828',
+            bg='#fee2e2',
+            fg='#b91c1c',
             padx=8,
             pady=3,
             relief='groove',

@@ -339,6 +339,9 @@ class Gui:
                 break
 
         # Modern crisp Segoe UI typography and visual tokens
+        with contextlib.suppress(Exception):
+            self.root.configure(bg='SystemButtonFace')
+
         style.configure('.', font=('Segoe UI', 9))
         style.configure('TLabelframe', relief='groove', borderwidth=1)
         style.configure('TLabelframe.Label', font=('Segoe UI', 9, 'bold'), foreground='#003366')

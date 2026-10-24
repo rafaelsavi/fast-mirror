@@ -157,11 +157,11 @@ class LogPanel(ttk.LabelFrame):
             self.stats_frame,
             text='Info: 0',
             font=('Segoe UI', 8),
-            bg='#f1f5f9',
-            fg='#475569',
+            bg='#e5e7eb',
+            fg='#6b7280',
             padx=7,
             pady=2,
-            relief='solid',
+            relief='groove',
             bd=1,
         )
         self.lbl_stat_info.pack(side='left', padx=3)
@@ -170,11 +170,11 @@ class LogPanel(ttk.LabelFrame):
             self.stats_frame,
             text='Warnings: 0',
             font=('Segoe UI', 8),
-            bg='#f8fafc',
-            fg='#94a3b8',
+            bg='#e5e7eb',
+            fg='#6b7280',
             padx=7,
             pady=2,
-            relief='flat',
+            relief='groove',
             bd=1,
         )
         self.lbl_stat_warning.pack(side='left', padx=3)
@@ -183,11 +183,11 @@ class LogPanel(ttk.LabelFrame):
             self.stats_frame,
             text='Errors: 0',
             font=('Segoe UI', 8),
-            bg='#f8fafc',
-            fg='#94a3b8',
+            bg='#e5e7eb',
+            fg='#6b7280',
             padx=7,
             pady=2,
-            relief='flat',
+            relief='groove',
             bd=1,
         )
         self.lbl_stat_error.pack(side='left', padx=3)
@@ -338,9 +338,9 @@ class LogPanel(ttk.LabelFrame):
         self.lbl_stat_info.config(
             text=f'Info: {info_count:,}',
             font=('Segoe UI', 8, 'bold') if info_count > 0 else ('Segoe UI', 8),
-            bg='#e2e8f0' if info_count > 0 else '#f1f5f9',
-            fg='#0f172a' if info_count > 0 else '#475569',
-            relief='solid',
+            bg='#e0f2fe' if info_count > 0 else '#e5e7eb',
+            fg='#0369a1' if info_count > 0 else '#6b7280',
+            relief='groove',
             bd=1,
         )
 
@@ -351,16 +351,16 @@ class LogPanel(ttk.LabelFrame):
                 font=('Segoe UI', 8, 'bold'),
                 bg='#fef3c7',
                 fg='#b45309',
-                relief='solid',
+                relief='groove',
                 bd=1,
             )
         else:
             self.lbl_stat_warning.config(
                 text='Warnings: 0',
                 font=('Segoe UI', 8),
-                bg='#f8fafc',
-                fg='#94a3b8',
-                relief='flat',
+                bg='#e5e7eb',
+                fg='#6b7280',
+                relief='groove',
                 bd=1,
             )
 
@@ -371,16 +371,16 @@ class LogPanel(ttk.LabelFrame):
                 font=('Segoe UI', 8, 'bold'),
                 bg='#fee2e2',
                 fg='#b91c1c',
-                relief='solid',
+                relief='groove',
                 bd=1,
             )
         else:
             self.lbl_stat_error.config(
                 text='Errors: 0',
                 font=('Segoe UI', 8),
-                bg='#f8fafc',
-                fg='#94a3b8',
-                relief='flat',
+                bg='#e5e7eb',
+                fg='#6b7280',
+                relief='groove',
                 bd=1,
             )
 
