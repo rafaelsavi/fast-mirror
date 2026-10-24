@@ -4,7 +4,7 @@ from collections.abc import Callable
 from tkinter import messagebox, ttk
 
 from gui.enums import TkinterCfgRelief
-from gui.widgets import Action, DefaultActions
+from gui.widgets import Action, DefaultActions, add_tooltip
 
 
 class ModernButton(ttk.Button):
@@ -37,6 +37,9 @@ class ModernButton(ttk.Button):
             self.configure(style='TButton')
 
     def config(self, *args, **kwargs):
+        if 'default_style' in kwargs:
+            self._default_style = kwargs.pop('default_style')
+            self._apply_style()
         if 'relief' in kwargs:
             self._relief = kwargs.pop('relief')
             self._apply_style()
@@ -81,9 +84,6 @@ class ActionsPanel(ttk.LabelFrame):
         master: tk.Misc,
         checkbox_default_actions: DefaultActions,
         checkbox_var_save_report: tk.BooleanVar,
-        checkbox_var_build_mirror: tk.BooleanVar,
-        checkbox_var_use_mirror: tk.BooleanVar,
-        checkbox_var_metadata_comparison: tk.BooleanVar,
         checkbox_var_confirm_sync: tk.BooleanVar,
         on_reset_config: Callable[[], None],
         on_save_config: Callable[[], None],
@@ -91,6 +91,13 @@ class ActionsPanel(ttk.LabelFrame):
         on_open_report: Callable[[], None],
         on_sync_now: Callable[[], None],
         on_schedule_sync: Callable[[], None],
+        on_stop: Callable[[], None] | None = None,
+        radio_var_compare_method: tk.StringVar | None = None,
+        checkbox_var_reset_mirror: tk.BooleanVar | None = None,
+        # Backward compatibility parameters
+        checkbox_var_build_mirror: tk.BooleanVar | None = None,
+        checkbox_var_use_mirror: tk.BooleanVar | None = None,
+        checkbox_var_metadata_comparison: tk.BooleanVar | None = None,
         on_report_history: Callable[[], None] | None = None,
         on_rebuild_confirmation: Callable[[bool], None] | None = None,
         **kwargs,
@@ -99,9 +106,6 @@ class ActionsPanel(ttk.LabelFrame):
 
         self.checkbox_default_actions = checkbox_default_actions
         self.checkbox_var_save_report = checkbox_var_save_report
-        self.checkbox_var_build_mirror = checkbox_var_build_mirror
-        self.checkbox_var_use_mirror = checkbox_var_use_mirror
-        self.checkbox_var_metadata_comparison = checkbox_var_metadata_comparison
         self.checkbox_var_confirm_sync = checkbox_var_confirm_sync
 
         self.on_reset_config = on_reset_config
@@ -111,9 +115,83 @@ class ActionsPanel(ttk.LabelFrame):
         self.on_report_history = on_report_history
         self.on_sync_now = on_sync_now
         self.on_schedule_sync = on_schedule_sync
+        self.on_stop = on_stop
         self.on_rebuild_confirmation = on_rebuild_confirmation
 
+        # Comparison method setup with backward compatibility
+        if radio_var_compare_method is not None:
+            self.radio_var_compare_method = radio_var_compare_method
+        else:
+            init_val = (
+                'metadata'
+                if checkbox_var_metadata_comparison is None or checkbox_var_metadata_comparison.get()
+                else 'content'
+            )
+            self.radio_var_compare_method = tk.StringVar(master=master, value=init_val)
+
+        self.checkbox_var_metadata_comparison = checkbox_var_metadata_comparison or tk.BooleanVar(
+            master=master,
+            value=self.radio_var_compare_method.get() == 'metadata',
+        )
+
+        # Mirror reset setup with backward compatibility
+        if checkbox_var_reset_mirror is not None:
+            self.checkbox_var_reset_mirror = checkbox_var_reset_mirror
+        elif checkbox_var_build_mirror is not None:
+            self.checkbox_var_reset_mirror = checkbox_var_build_mirror
+        else:
+            self.checkbox_var_reset_mirror = tk.BooleanVar(master=master, value=False)
+
+        self.checkbox_var_build_mirror = checkbox_var_build_mirror or self.checkbox_var_reset_mirror
+        self.checkbox_var_use_mirror = checkbox_var_use_mirror or tk.BooleanVar(
+            master=master,
+            value=not self.checkbox_var_reset_mirror.get(),
+        )
+
+        self._bind_sync_traces()
         self._create_widgets()
+
+    def _bind_sync_traces(self):
+        """Bind trace listeners to synchronize new and legacy variables."""
+
+        def _sync_radio_to_cb(*_):
+            is_meta = self.radio_var_compare_method.get() == 'metadata'
+            if self.checkbox_var_metadata_comparison.get() != is_meta:
+                self.checkbox_var_metadata_comparison.set(is_meta)
+
+        def _sync_cb_to_radio(*_):
+            method = 'metadata' if self.checkbox_var_metadata_comparison.get() else 'content'
+            if self.radio_var_compare_method.get() != method:
+                self.radio_var_compare_method.set(method)
+
+        self.radio_var_compare_method.trace_add('write', _sync_radio_to_cb)
+        self.checkbox_var_metadata_comparison.trace_add('write', _sync_cb_to_radio)
+
+        def _sync_reset_to_legacy(*_):
+            reset = self.checkbox_var_reset_mirror.get()
+            if self.checkbox_var_build_mirror.get() != reset:
+                self.checkbox_var_build_mirror.set(reset)
+            if self.checkbox_var_use_mirror.get() == reset:
+                self.checkbox_var_use_mirror.set(not reset)
+
+        def _sync_legacy_build_to_reset(*_):
+            build = self.checkbox_var_build_mirror.get()
+            if self.checkbox_var_reset_mirror.get() != build:
+                self.checkbox_var_reset_mirror.set(build)
+            if build and self.checkbox_var_use_mirror.get():
+                self.checkbox_var_use_mirror.set(False)
+
+        def _sync_legacy_use_to_reset(*_):
+            use = self.checkbox_var_use_mirror.get()
+            if use:
+                if self.checkbox_var_build_mirror.get():
+                    self.checkbox_var_build_mirror.set(False)
+                if self.checkbox_var_reset_mirror.get():
+                    self.checkbox_var_reset_mirror.set(False)
+
+        self.checkbox_var_reset_mirror.trace_add('write', _sync_reset_to_legacy)
+        self.checkbox_var_build_mirror.trace_add('write', _sync_legacy_build_to_reset)
+        self.checkbox_var_use_mirror.trace_add('write', _sync_legacy_use_to_reset)
 
     def _create_widgets(self):
         # Section 1: Configuration Management
@@ -130,6 +208,7 @@ class ActionsPanel(ttk.LabelFrame):
             width=11,
         )
         self.button_new_config.pack(side='left', padx=3)
+        add_tooltip(self.button_new_config, 'Reset all configuration fields and options to default values.')
 
         self.button_save_config = ModernButton(
             cfg_frame,
@@ -138,6 +217,7 @@ class ActionsPanel(ttk.LabelFrame):
             width=11,
         )
         self.button_save_config.pack(side='left', padx=3)
+        add_tooltip(self.button_save_config, 'Save current settings and directory pairs to disk (config.json).')
 
         # Section 2: Comparison
         cmp_frame = ttk.Frame(self)
@@ -153,6 +233,7 @@ class ActionsPanel(ttk.LabelFrame):
             width=14,
         )
         self.button_quick_compare.pack(side='left', padx=3)
+        add_tooltip(self.button_quick_compare, 'Run dry-run comparison to analyze differences without altering files.')
 
         self.button_open_report = ModernButton(
             cmp_frame,
@@ -161,6 +242,7 @@ class ActionsPanel(ttk.LabelFrame):
             width=12,
         )
         self.button_open_report.pack(side='left', padx=3)
+        add_tooltip(self.button_open_report, 'Open the most recently generated Excel comparison report.')
 
         self.button_report_history = ModernButton(
             cmp_frame,
@@ -169,6 +251,7 @@ class ActionsPanel(ttk.LabelFrame):
             width=11,
         )
         self.button_report_history.pack(side='left', padx=3)
+        add_tooltip(self.button_report_history, 'Browse, open, or manage past Excel comparison reports.')
 
         # Section 3: Synchronization
         sync_frame = ttk.Frame(self)
@@ -185,6 +268,7 @@ class ActionsPanel(ttk.LabelFrame):
             default_style='Accent.TButton',
         )
         self.button_sync_now.pack(side='left', padx=3)
+        add_tooltip(self.button_sync_now, 'Start synchronization between source and target directories.')
 
         self.button_schedule_sync = ModernButton(
             sync_frame,
@@ -193,56 +277,72 @@ class ActionsPanel(ttk.LabelFrame):
             width=14,
         )
         self.button_schedule_sync.pack(side='left', padx=3)
+        add_tooltip(self.button_schedule_sync, 'Toggle automated background synchronization at scheduled times.')
 
         # Section 4: Behavior Options
         self.frame_options = ttk.Frame(self)
         self.frame_options.pack(fill='x', padx=8, pady=(4, 4))
 
-        def _on_rebuild_mirror_changed(*args):
-            if self.checkbox_var_build_mirror.get():
-                self.checkbox_var_use_mirror.set(False)
-
-        def _on_use_mirror_changed(*args):
-            if self.checkbox_var_use_mirror.get():
-                self.checkbox_var_build_mirror.set(False)
-
-        self.checkbox_var_build_mirror.trace_add('write', _on_rebuild_mirror_changed)
-        self.checkbox_var_use_mirror.trace_add('write', _on_use_mirror_changed)
-
-        # Performance & Scanning sub-group
-        lbl_perf = ttk.Label(
+        # 4a. Comparison Method (Radio group)
+        lbl_method = ttk.Label(
             self.frame_options,
-            text='Performance & Scanning:',
+            text='Comparison Method:',
             font=('Segoe UI', 8, 'bold'),
             foreground='#555555',
         )
-        lbl_perf.pack(anchor='w', pady=(0, 2))
+        lbl_method.pack(anchor='w', pady=(0, 2))
 
-        self.cb_mirror = ttk.Checkbutton(
+        self.rb_meta = ttk.Radiobutton(
             self.frame_options,
-            text='Use fast scan based on local mirror',
-            variable=self.checkbox_var_use_mirror,
+            text='Metadata (fast: size & mtime)',
+            value='metadata',
+            variable=self.radio_var_compare_method,
         )
-        self.cb_mirror.pack(anchor='w', padx=(4, 0), pady=1)
-
-        self.cb_meta = ttk.Checkbutton(
-            self.frame_options,
-            text='Use fast comparison based on metadata',
-            variable=self.checkbox_var_metadata_comparison,
+        self.rb_meta.pack(anchor='w', padx=(4, 0), pady=1)
+        add_tooltip(
+            self.rb_meta,
+            'Fast comparison using file size and modification timestamp (recommended for regular backups).',
         )
-        self.cb_meta.pack(anchor='w', padx=(4, 0), pady=1)
 
-        self.cb_rebuild = ttk.Checkbutton(
+        self.rb_content = ttk.Radiobutton(
             self.frame_options,
-            text='Rebuild local mirror database',
-            variable=self.checkbox_var_build_mirror,
+            text='Content (SHA-256 hash — thorough)',
+            value='content',
+            variable=self.radio_var_compare_method,
+        )
+        self.rb_content.pack(anchor='w', padx=(4, 0), pady=1)
+        add_tooltip(
+            self.rb_content,
+            'Thorough byte comparison calculating SHA-256 hashes (detects bit rot and content changes).',
+        )
+
+        # 4b. Local Mirror Database
+        lbl_mirror = ttk.Label(
+            self.frame_options,
+            text='Mirror Database:',
+            font=('Segoe UI', 8, 'bold'),
+            foreground='#555555',
+        )
+        lbl_mirror.pack(anchor='w', pady=(5, 2))
+
+        self.cb_reset_mirror = ttk.Checkbutton(
+            self.frame_options,
+            text='Reset local mirror database (one-time full rescan)',
+            variable=self.checkbox_var_reset_mirror,
             onvalue=True,
             offvalue=False,
-            command=self._on_rebuild_mirror_clicked,
+            command=self._on_reset_mirror_clicked,
         )
-        self.cb_rebuild.pack(anchor='w', padx=(4, 0), pady=1)
+        self.cb_reset_mirror.pack(anchor='w', padx=(4, 0), pady=1)
+        add_tooltip(
+            self.cb_reset_mirror,
+            'Wipe cached index and perform a complete rescan of target files on next run. '
+            'Automatically clears after run.',
+        )
+        # Compatibility alias for existing tests
+        self.cb_rebuild = self.cb_reset_mirror
 
-        # Safety & Reporting sub-group
+        # 4c. Safety & Reporting
         lbl_safe = ttk.Label(
             self.frame_options,
             text='Safety & Reporting:',
@@ -257,6 +357,10 @@ class ActionsPanel(ttk.LabelFrame):
             variable=self.checkbox_var_confirm_sync,
         )
         self.cb_confirm.pack(anchor='w', padx=(4, 0), pady=1)
+        add_tooltip(
+            self.cb_confirm,
+            'Display an interactive review dialog showing planned file actions before copying or deleting.',
+        )
 
         self.cb_report = ttk.Checkbutton(
             self.frame_options,
@@ -264,6 +368,10 @@ class ActionsPanel(ttk.LabelFrame):
             variable=self.checkbox_var_save_report,
         )
         self.cb_report.pack(anchor='w', padx=(4, 0), pady=1)
+        add_tooltip(
+            self.cb_report,
+            'Generate a comprehensive Excel (.xlsx) report containing detailed lists of all differences.',
+        )
 
         # Section 5: Default Actions
         actions_frame = ttk.Frame(self)
@@ -281,6 +389,7 @@ class ActionsPanel(ttk.LabelFrame):
             variable=self.checkbox_default_actions.get_var(Action.COPY),
         )
         cb_copy.pack(side='left', padx=(0, 8))
+        add_tooltip(cb_copy, 'Automatically copy new and modified files from source to target.')
 
         cb_move = ttk.Checkbutton(
             self.frame_default_actions,
@@ -288,6 +397,7 @@ class ActionsPanel(ttk.LabelFrame):
             variable=self.checkbox_default_actions.get_var(Action.MOVE),
         )
         cb_move.pack(side='left', padx=(0, 8))
+        add_tooltip(cb_move, 'Automatically move renamed or relocated files instead of re-copying.')
 
         cb_del = ttk.Checkbutton(
             self.frame_default_actions,
@@ -295,6 +405,7 @@ class ActionsPanel(ttk.LabelFrame):
             variable=self.checkbox_default_actions.get_var(Action.DELETE),
         )
         cb_del.pack(side='left')
+        add_tooltip(cb_del, 'Automatically delete files on target that no longer exist in source (mirror mode).')
 
     def _handle_report_history(self):
         if self.on_report_history:
@@ -304,8 +415,13 @@ class ActionsPanel(ttk.LabelFrame):
 
             ReportsWindow(self.winfo_toplevel())
 
+    def _on_reset_mirror_clicked(self):
+        """Handle mirror reset click, prompting confirmation if a confirmation callback is registered."""
+        if self.on_rebuild_confirmation is not None:
+            self._on_rebuild_mirror_clicked()
+
     def _on_rebuild_mirror_clicked(self):
-        if self.checkbox_var_build_mirror.get():
+        if self.checkbox_var_reset_mirror.get() or self.checkbox_var_build_mirror.get():
             confirm = messagebox.askyesno(
                 'Caution',
                 'Are you sure you want to rebuild the local mirror database?\n\n'
@@ -313,19 +429,60 @@ class ActionsPanel(ttk.LabelFrame):
                 parent=self.winfo_toplevel(),
             )
             if not confirm:
+                self.checkbox_var_reset_mirror.set(False)
                 self.checkbox_var_build_mirror.set(False)
                 with contextlib.suppress(Exception):
-                    self.cb_rebuild.state(['!selected'])
+                    self.cb_reset_mirror.state(['!selected'])
                 self.checkbox_var_use_mirror.set(True)
                 if self.on_rebuild_confirmation is not None:
                     self.on_rebuild_confirmation(False)
             else:
+                self.checkbox_var_reset_mirror.set(True)
+                self.checkbox_var_build_mirror.set(True)
                 self.checkbox_var_use_mirror.set(False)
                 if self.on_rebuild_confirmation is not None:
                     self.on_rebuild_confirmation(True)
         else:
             if self.on_rebuild_confirmation is not None:
                 self.on_rebuild_confirmation(False)
+
+    def set_running_state(self, running: bool, trigger: str | None = None, stopping: bool = False):
+        """Update button labels, styles, and command handlers to reflect operation running/idle state."""
+        stop_cmd = self.on_stop or (lambda: None)
+
+        if not running:
+            self.button_sync_now.configure(
+                text='Sync Now',
+                command=self.on_sync_now,
+                default_style='Accent.TButton',
+            )
+            self.button_quick_compare.configure(
+                text='Start Compare',
+                command=self.on_quick_compare,
+                default_style='',
+            )
+            return
+
+        if stopping:
+            if trigger == 'sync_now':
+                self.button_sync_now.configure(text='Stopping...', state='disabled')
+            elif trigger == 'quick_compare':
+                self.button_quick_compare.configure(text='Stopping...', state='disabled')
+        else:
+            if trigger == 'sync_now':
+                self.button_sync_now.configure(
+                    text='🛑 Stop Sync',
+                    command=stop_cmd,
+                    default_style='Stop.TButton',
+                    state='normal',
+                )
+            elif trigger == 'quick_compare':
+                self.button_quick_compare.configure(
+                    text='🛑 Stop Compare',
+                    command=stop_cmd,
+                    default_style='Stop.TButton',
+                    state='normal',
+                )
 
     def set_enabled(self, enabled: bool, leave_sunken_enabled: bool = False):
         """Enable or disable interactive controls in the actions panel."""

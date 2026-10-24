@@ -43,6 +43,8 @@
         "move",
         "delete"
     ],
+    "radio_var_compare_method": "metadata",
+    "checkbox_var_reset_mirror": false,
     "checkbox_var_use_mirror": true,
     "checkbox_var_build_mirror": false,
     "checkbox_var_metadata_comparison": true,

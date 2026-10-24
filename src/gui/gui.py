@@ -62,6 +62,8 @@ class Gui:
 
         # Tkinter control variables
         self.toggle_auto_scroll = tk.BooleanVar(value=True)
+        self.radio_var_compare_method = tk.StringVar(value='metadata')
+        self.checkbox_var_reset_mirror = tk.BooleanVar(value=False)
         self.checkbox_var_use_mirror = tk.BooleanVar(value=True)
         self.checkbox_var_build_mirror = tk.BooleanVar(value=False)
         self.checkbox_var_metadata_comparison = tk.BooleanVar(value=True)
@@ -69,6 +71,42 @@ class Gui:
         self.checkbox_var_save_report = tk.BooleanVar(value=False)
         self.text_var_status = tk.StringVar(value=BackendThreadStatus.STANDBY.value)
         self.text_var_next_appointment = tk.StringVar(value='Schedule is not activated')
+
+        # Backward compatibility bidirectional sync traces
+        def _sync_compare_to_meta(*_):
+            self.checkbox_var_metadata_comparison.set(self.radio_var_compare_method.get() == 'metadata')
+
+        def _sync_meta_to_compare(*_):
+            self.radio_var_compare_method.set('metadata' if self.checkbox_var_metadata_comparison.get() else 'content')
+
+        self.radio_var_compare_method.trace_add('write', _sync_compare_to_meta)
+        self.checkbox_var_metadata_comparison.trace_add('write', _sync_meta_to_compare)
+
+        def _sync_reset_to_build(*_):
+            reset = self.checkbox_var_reset_mirror.get()
+            if self.checkbox_var_build_mirror.get() != reset:
+                self.checkbox_var_build_mirror.set(reset)
+            if self.checkbox_var_use_mirror.get() == reset:
+                self.checkbox_var_use_mirror.set(not reset)
+
+        def _sync_build_to_reset(*_):
+            build = self.checkbox_var_build_mirror.get()
+            if self.checkbox_var_reset_mirror.get() != build:
+                self.checkbox_var_reset_mirror.set(build)
+            if build and self.checkbox_var_use_mirror.get():
+                self.checkbox_var_use_mirror.set(False)
+
+        def _sync_use_to_reset(*_):
+            use = self.checkbox_var_use_mirror.get()
+            if use:
+                if self.checkbox_var_build_mirror.get():
+                    self.checkbox_var_build_mirror.set(False)
+                if self.checkbox_var_reset_mirror.get():
+                    self.checkbox_var_reset_mirror.set(False)
+
+        self.checkbox_var_reset_mirror.trace_add('write', _sync_reset_to_build)
+        self.checkbox_var_build_mirror.trace_add('write', _sync_build_to_reset)
+        self.checkbox_var_use_mirror.trace_add('write', _sync_use_to_reset)
 
         # Model objects
         self.checkbox_default_actions = DefaultActions()
@@ -123,10 +161,16 @@ class Gui:
             self.toggle_state_quick_compare = False
             self.toggle_state_sync_now = False
             self._current_run_trigger = None
+            if hasattr(self, 'actions_panel'):
+                self.actions_panel.set_running_state(False)
         elif status == BackendThreadStatus.RUNNING:
             self.set_gui_enable_state(general_state=False, leave_sunken_enabled=True)
+            if hasattr(self, 'actions_panel'):
+                self.actions_panel.set_running_state(True, trigger=self._current_run_trigger)
         elif status == BackendThreadStatus.STOPPING:
             self.set_gui_enable_state(general_state=False, leave_sunken_enabled=False)
+            if hasattr(self, 'actions_panel'):
+                self.actions_panel.set_running_state(True, trigger=self._current_run_trigger, stopping=True)
 
         if self._gui_initialized:
             self.update_tray_status()
@@ -221,9 +265,6 @@ class Gui:
             left_container,
             checkbox_default_actions=self.checkbox_default_actions,
             checkbox_var_save_report=self.checkbox_var_save_report,
-            checkbox_var_build_mirror=self.checkbox_var_build_mirror,
-            checkbox_var_use_mirror=self.checkbox_var_use_mirror,
-            checkbox_var_metadata_comparison=self.checkbox_var_metadata_comparison,
             checkbox_var_confirm_sync=self.checkbox_var_confirm_sync,
             on_reset_config=self.button_action_reset_config,
             on_save_config=self.button_action_save_config,
@@ -232,6 +273,13 @@ class Gui:
             on_report_history=self.button_action_open_report_history,
             on_sync_now=self.button_action_sync_now,
             on_schedule_sync=self.button_action_schedule_sync,
+            on_stop=self.request_stop_operation,
+            radio_var_compare_method=self.radio_var_compare_method,
+            checkbox_var_reset_mirror=self.checkbox_var_reset_mirror,
+            # Backward compatibility fallbacks
+            checkbox_var_build_mirror=self.checkbox_var_build_mirror,
+            checkbox_var_use_mirror=self.checkbox_var_use_mirror,
+            checkbox_var_metadata_comparison=self.checkbox_var_metadata_comparison,
             on_rebuild_confirmation=self.on_rebuild_mirror_confirmation,
             padding=6,
         )
@@ -327,6 +375,8 @@ class Gui:
             self.checkbox_default_actions.reset()
             self.log_levels.reset()
             self.text_logger.set_log_levels(self.log_levels.get())
+            self.radio_var_compare_method.set('metadata')
+            self.checkbox_var_reset_mirror.set(False)
             self.checkbox_var_use_mirror.set(True)
             self.checkbox_var_build_mirror.set(False)
             self._build_mirror_confirmed = False
@@ -359,13 +409,21 @@ class Gui:
                 'entry_exclusions',
                 'log_levels',
                 'checkbox_default_actions',
+                'radio_var_compare_method',
+                'checkbox_var_reset_mirror',
                 'checkbox_var_use_mirror',
                 'checkbox_var_build_mirror',
                 'checkbox_var_metadata_comparison',
                 'checkbox_var_confirm_sync',
                 'checkbox_var_save_report',
             ]
-            config_vars = {name: getattr(self, name).get() for name in config_var_names}
+            config_vars = {}
+            for name in config_var_names:
+                if name == 'checkbox_var_reset_mirror':
+                    config_vars[name] = False  # Reset mirror is a one-shot option
+                elif hasattr(self, name):
+                    config_vars[name] = getattr(self, name).get()
+
             os.makedirs(os.path.dirname(os.path.abspath(self.config_path)), exist_ok=True)
             with open(self.config_path, 'w') as f:
                 json.dump(config_vars, f, indent=4)
@@ -380,9 +438,18 @@ class Gui:
                 with open(self.config_path) as f:
                     config_vars = json.load(f)
                 for name, value in config_vars.items():
-                    if hasattr(self, name):
+                    if name == 'radio_var_compare_method':
+                        self.radio_var_compare_method.set(value)
+                    elif name == 'checkbox_var_reset_mirror':
+                        self.checkbox_var_reset_mirror.set(False)
+                    elif hasattr(self, name):
                         gui_element = getattr(self, name)
                         gui_element.set(value)
+
+                if 'radio_var_compare_method' not in config_vars and 'checkbox_var_metadata_comparison' in config_vars:
+                    self.radio_var_compare_method.set(
+                        'metadata' if config_vars['checkbox_var_metadata_comparison'] else 'content'
+                    )
 
                 self.text_logger.set_log_levels(self.log_levels.get())
                 if show_success_msg:
@@ -554,17 +621,18 @@ class Gui:
 
         exclusions = self.entry_exclusions.get()
         comparison_method = (
-            CompareMethod.METADATA if self.checkbox_var_metadata_comparison.get() else CompareMethod.CONTENT
+            CompareMethod.METADATA if self.radio_var_compare_method.get() == 'metadata' else CompareMethod.CONTENT
         )
         save_report = self.checkbox_var_save_report.get()
-        use_mirror = self.checkbox_var_use_mirror.get()
-        build_mirror = self.checkbox_var_build_mirror.get()
+        reset_mirror = self.checkbox_var_reset_mirror.get() or self.checkbox_var_build_mirror.get()
+        use_mirror = not reset_mirror
+        build_mirror = reset_mirror
 
-        if build_mirror and not getattr(self, '_build_mirror_confirmed', False):
+        if reset_mirror and not getattr(self, '_build_mirror_confirmed', False):
             confirm = messagebox.askyesno(
                 'Caution',
-                'Rebuilding the mirror database will reset and wipe existing cached records for the target '
-                'directories.\n\nAre you sure you want to proceed with resetting the DB?',
+                'Resetting the local mirror database will wipe existing target file records and rebuild them '
+                'from disk.\n\nAre you sure you want to proceed with resetting the DB?',
                 parent=self.root,
             )
             if not confirm:
@@ -572,6 +640,7 @@ class Gui:
                 self.toggle_state_quick_compare = False
                 self.toggle_state_sync_now = False
                 self.toggle_state_schedule = False
+                self.checkbox_var_reset_mirror.set(False)
                 self.checkbox_var_build_mirror.set(False)
                 self.checkbox_var_use_mirror.set(True)
                 self.backend_thread_status = BackendThreadStatus.STANDBY
@@ -697,7 +766,8 @@ class Gui:
             self._active_sync = None
             if hasattr(self, 'telemetry_bar'):
                 self.root.after(0, lambda: self.telemetry_bar.reset('Ready'))
-            if build_mirror:
+            if build_mirror or self.checkbox_var_reset_mirror.get():
+                self.root.after(0, lambda: self.checkbox_var_reset_mirror.set(False))
                 self.root.after(0, lambda: self.checkbox_var_build_mirror.set(False))
                 self.root.after(0, lambda: self.checkbox_var_use_mirror.set(True))
                 self.root.after(0, lambda: setattr(self, '_build_mirror_confirmed', False))

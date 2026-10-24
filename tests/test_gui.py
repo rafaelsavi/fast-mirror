@@ -1453,3 +1453,96 @@ def test_taskbar_progress_lifecycle():
     tb.set_error()
     tb.clear()
     tb.set_hwnd(54321)
+
+
+def test_actions_panel_step5_modernization():
+    """Verify radio comparison method, reset mirror checkbox, dynamic stop buttons, and tooltips."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.actions_panel import ActionsPanel
+    from gui.widgets import DefaultActions
+
+    stopped = []
+    synced = []
+    compared = []
+
+    radio_cmp = tk.StringVar(master=root, value='metadata')
+    cb_reset = tk.BooleanVar(master=root, value=False)
+    cb_report = tk.BooleanVar(master=root, value=False)
+    cb_confirm = tk.BooleanVar(master=root, value=True)
+
+    panel = ActionsPanel(
+        root,
+        checkbox_default_actions=DefaultActions(),
+        checkbox_var_save_report=cb_report,
+        checkbox_var_confirm_sync=cb_confirm,
+        radio_var_compare_method=radio_cmp,
+        checkbox_var_reset_mirror=cb_reset,
+        on_reset_config=lambda: None,
+        on_save_config=lambda: None,
+        on_quick_compare=lambda: compared.append(True),
+        on_open_report=lambda: None,
+        on_sync_now=lambda: synced.append(True),
+        on_schedule_sync=lambda: None,
+        on_stop=lambda: stopped.append(True),
+    )
+    panel.pack()
+    root.update_idletasks()
+
+    # 1. Radio comparison method selection & legacy sync
+    assert panel.radio_var_compare_method.get() == 'metadata'
+    assert panel.checkbox_var_metadata_comparison.get() is True
+
+    panel.rb_content.invoke()
+    assert panel.radio_var_compare_method.get() == 'content'
+    assert panel.checkbox_var_metadata_comparison.get() is False
+
+    panel.rb_meta.invoke()
+    assert panel.radio_var_compare_method.get() == 'metadata'
+    assert panel.checkbox_var_metadata_comparison.get() is True
+
+    # 2. Reset mirror checkbox & mutual exclusion with use_mirror
+    assert panel.checkbox_var_reset_mirror.get() is False
+    assert panel.checkbox_var_use_mirror.get() is True
+    panel.cb_reset_mirror.invoke()
+    assert panel.checkbox_var_reset_mirror.get() is True
+    assert panel.checkbox_var_use_mirror.get() is False
+    panel.cb_reset_mirror.invoke()
+    assert panel.checkbox_var_reset_mirror.get() is False
+    assert panel.checkbox_var_use_mirror.get() is True
+
+    # 3. Dynamic Stop Button state for sync
+    panel.set_running_state(True, trigger='sync_now')
+    assert panel.button_sync_now.cget('text') == '🛑 Stop Sync'
+    panel.button_sync_now.invoke()
+    assert stopped == [True]
+
+    panel.set_running_state(True, trigger='sync_now', stopping=True)
+    assert panel.button_sync_now.cget('text') == 'Stopping...'
+
+    panel.set_running_state(False)
+    assert panel.button_sync_now.cget('text') == 'Sync Now'
+
+    # 4. Dynamic Stop Button state for compare
+    panel.set_running_state(True, trigger='quick_compare')
+    assert panel.button_quick_compare.cget('text') == '🛑 Stop Compare'
+    panel.button_quick_compare.invoke()
+    assert stopped == [True, True]
+
+    panel.set_running_state(False)
+    assert panel.button_quick_compare.cget('text') == 'Start Compare'
+
+    # 5. Tooltip existence on buttons and radios
+    assert hasattr(panel.button_sync_now, '_tooltip')
+    assert hasattr(panel.button_quick_compare, '_tooltip')
+    assert hasattr(panel.button_new_config, '_tooltip')
+    assert hasattr(panel.button_save_config, '_tooltip')
+    assert hasattr(panel.rb_meta, '_tooltip')
+    assert hasattr(panel.rb_content, '_tooltip')
+    assert hasattr(panel.cb_reset_mirror, '_tooltip')
+
+    root.destroy()
