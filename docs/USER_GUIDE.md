@@ -225,18 +225,29 @@ fast-mirror/
 
 ## Usage Guide
 
-### Launching the Application
+### Launching the Application & Windows Shortcuts
 
-You can launch the application in several ways:
+You can launch and integrate FastMirror into your Windows workflow in several ways:
 
-1. **Windowless Launcher (`launch.pyw`)**:
+1. **Automatic Desktop Shortcut Creation (Recommended)**:
+   - **From the GUI**: Click the **Shortcut** button in the **Configuration** panel of the main window. FastMirror will automatically generate a desktop shortcut with the application's native icon (`app_icon.ico`) and point it to the windowless launcher (`launch.pyw`).
+   - **From PowerShell / Command Line**:
+     ```powershell
+     python launch.pyw --shortcut
+     ```
+     or:
+     ```powershell
+     python launch.pyw --create-shortcut
+     ```
+
+2. **Windowless Launcher (`launch.pyw`)**:
    Double-click `launch.pyw` in Windows Explorer or run from PowerShell:
    ```powershell
    pythonw launch.pyw
    ```
    *`launch.pyw` automatically detects and invokes the Python executable inside `.venv` without opening an unwanted command-prompt console.*
 
-2. **Standard Module Execution**:
+3. **Standard Module Execution**:
    ```powershell
    uv run python -m gui.gui
    ```
@@ -244,6 +255,21 @@ You can launch the application in several ways:
    ```powershell
    python -m gui.gui
    ```
+
+4. **Windows Start Menu & Startup Folder (Run in Tray on Boot)**:
+   - To have FastMirror start automatically in the system tray when Windows boots:
+     1. Press <kbd>Win</kbd> + <kbd>R</kbd>, type `shell:startup`, and press <kbd>Enter</kbd>.
+     2. Copy your `FastMirror.lnk` desktop shortcut into the opened Startup folder (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`).
+   - To pin FastMirror to your Windows Start Menu:
+     1. Press <kbd>Win</kbd> + <kbd>R</kbd>, type `shell:programs`, and press <kbd>Enter</kbd>.
+     2. Copy the `FastMirror.lnk` shortcut into this folder (`%APPDATA%\Microsoft\Windows\Start Menu\Programs`).
+
+5. **Manual Windows Shortcut Setup**:
+   If configuring a custom shortcut manually in Windows Explorer:
+   - **Target**: `D:\Path\To\fast-mirror\.venv\Scripts\pythonw.exe "D:\Path\To\fast-mirror\launch.pyw"`
+   - **Start in (Working Directory)**: `D:\Path\To\fast-mirror`
+   - **Icon**: Click **Change Icon...** -> Browse to `D:\Path\To\fast-mirror\src\gui\app_icon.ico`
+   - **Run**: `Normal window` (the launcher uses `pythonw.exe` and never displays a console prompt)
 
 ---
 

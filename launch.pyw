@@ -12,6 +12,29 @@ if hasattr(ctypes, 'windll'):
         elif hasattr(ctypes.windll, 'shcore') and hasattr(ctypes.windll.shcore, 'SetProcessDpiAwareness'):
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
 
+# Handle CLI flags before GUI single-instance mutex
+if any(arg in sys.argv for arg in ('--create-shortcut', '--shortcut')):
+    src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+    from utils.shortcut import create_windows_shortcut  # noqa: E402
+
+    try:
+        path = create_windows_shortcut()
+        print(f'Desktop shortcut created successfully:\n  {path}')
+    except Exception as e:
+        print(f'Error creating shortcut: {e}', file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+
+if any(arg in sys.argv for arg in ('--help', '-h')):
+    print('FastMirror Launcher')
+    print('Usage:')
+    print('  pythonw launch.pyw                Launch FastMirror GUI (silent, no console)')
+    print('  python launch.pyw --shortcut      Create a desktop shortcut with icon and launcher')
+    print('  python launch.pyw --help          Show this help message')
+    sys.exit(0)
+
 # Windows Single-Instance Guard: prevent duplicate concurrent GUI instances
 MUTEX_NAME = 'Local\\FastMirror_SingleInstance'
 kernel32 = getattr(ctypes, 'windll', None) and getattr(ctypes.windll, 'kernel32', None)

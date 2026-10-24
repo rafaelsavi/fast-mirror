@@ -14,7 +14,7 @@
 
 # Launcher
 
-- [ ] Explain ways of changing the app to easily create a Windows shortcut with the existing launcher and icon.
+- [x] Explain ways of changing the app to easily create a Windows shortcut with the existing launcher and icon.
 
 ## Sync and confirmation behavior
 

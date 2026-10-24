@@ -166,6 +166,13 @@ def test_actions_panel_all_clicks_and_corner_cases(monkeypatch, tmp_path):
     gui.actions_panel.button_save_config.invoke()
     assert os.path.exists(gui.config_path)
 
+    # 2b. Create Shortcut Click
+    info_called = []
+    monkeypatch.setattr('tkinter.messagebox.showinfo', lambda *args, **kwargs: info_called.append(args))
+    monkeypatch.setattr('utils.shortcut.create_windows_shortcut', lambda: str(tmp_path / 'FastMirror.lnk'))
+    gui.actions_panel.button_create_shortcut.invoke()
+    assert len(info_called) == 1
+
     # 3. Corner Case: Start Compare with empty paths
     gui.entry_paths.set([])
     gui.actions_panel.button_quick_compare.invoke()
