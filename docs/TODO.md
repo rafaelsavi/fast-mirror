@@ -23,6 +23,8 @@
 
 ## Performance and responsiveness
 
+- [ ] Prevent the confirmation-action filter from freezing with 10,000 files.
+
 ## Completed
 
 - [x] Remove drag-and-drop functionality completely to eliminate interface delays and simplify path management.
