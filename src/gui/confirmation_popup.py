@@ -99,13 +99,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             if not all(isinstance(size, int | float) for size in size_list):
                 raise TypeError('All elements in size_list must be numbers')
 
-            # If all selected items have unknown sizes ('-'), display '-' instead of misleading '0.00KB'
-            size_key = 'size (target)' if action_enum == Action.DELETE else 'size (source)'
-            has_known = any(action_data[x].get(size_key) != '-' for x in selected_lines if x in action_data)
-            selected_size = (
-                '-' if (not has_known and selected_number > 0) else format_size(sum(size_list))  # type: ignore[arg-type]
-            )
-
+            selected_size = format_size(sum(size_list))  # type: ignore[arg-type]
             # Maintain exact substring format expected by existing tests: '<action> <size> (<X> of <Y>)'
             if self.exists(action_str):
                 self.item(action_str, text=f'{action_str} {selected_size} ({selected_number} of {n_children})')
