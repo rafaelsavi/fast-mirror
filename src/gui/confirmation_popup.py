@@ -5,6 +5,7 @@ import tkinter as tk
 import winsound
 from collections.abc import Callable
 from tkinter import messagebox, ttk
+from typing import Any
 
 import ttkwidgets
 
@@ -556,6 +557,373 @@ def get_file_type_badge(path: str) -> tuple[str, str]:
     return ('📄', 'File')
 
 
+class FileDetailsDialog:
+    """Detailed file properties and diff comparison dialog for a selected sync action."""
+
+    def __init__(
+        self,
+        parent: tk.Tk | tk.Toplevel,
+        action: Action | str,
+        source_path: str,
+        target_path: str,
+        row_data: dict[str, Any] | None = None,
+        is_checked: bool = True,
+    ):
+        self.parent = parent
+        self.action_enum = Action(action) if isinstance(action, str) else action
+        self.source_path = source_path if source_path and source_path not in ('-', '(none)') else ''
+        self.target_path = target_path if target_path and target_path not in ('-', '(none)') else ''
+        self.row_data = row_data or {}
+        self.is_checked = is_checked
+
+        primary_path = self.source_path or self.target_path
+        self.filename = os.path.basename(primary_path) or primary_path
+
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.withdraw()
+        self.dialog.title(f'FastMirror - File Information - {self.filename}')
+        with contextlib.suppress(Exception):
+            self.dialog.configure(bg='SystemButtonFace')
+        apply_window_icon(self.dialog)
+        self.dialog.minsize(680, 520)
+        self.dialog.transient(parent)
+
+        self._center_dialog(width=720, height=580)
+        self._create_widgets()
+
+        self.dialog.bind('<Escape>', lambda e: self.dialog.destroy())
+        self.dialog.bind('<Return>', lambda e: self.dialog.destroy())
+
+        with contextlib.suppress(Exception):
+            self.dialog.grab_set()
+        self.dialog.deiconify()
+
+    def _center_dialog(self, width: int, height: int):
+        try:
+            self.dialog.update_idletasks()
+            px = self.parent.winfo_rootx()
+            py = self.parent.winfo_rooty()
+            pw = self.parent.winfo_width()
+            ph = self.parent.winfo_height()
+            if pw > 100 and ph > 100:
+                x = px + max(0, (pw - width) // 2)
+                y = py + max(0, (ph - height) // 2)
+            else:
+                x = max(0, (self.dialog.winfo_screenwidth() - width) // 2)
+                y = max(0, (self.dialog.winfo_screenheight() - height) // 2)
+            self.dialog.geometry(f'{width}x{height}+{x}+{y}')
+        except Exception:
+            self.dialog.geometry(f'{width}x{height}')
+
+    def _create_widgets(self):
+        container = ttk.Frame(self.dialog, padding=(14, 12))
+        container.pack(fill='both', expand=True)
+
+        # 1. Header Card
+        header_frame = tk.Frame(container, bg='SystemButtonFace')
+        header_frame.pack(fill='x', pady=(0, 10))
+
+        icon, cat_label = get_file_type_badge(self.source_path or self.target_path)
+
+        lbl_fname = tk.Label(
+            header_frame,
+            text=f'{icon}  {self.filename}',
+            font=('Segoe UI', 12, 'bold'),
+            bg='SystemButtonFace',
+            fg='#111827',
+            anchor='w',
+        )
+        lbl_fname.pack(fill='x', pady=(0, 4))
+
+        # Badges row
+        badges_row = tk.Frame(header_frame, bg='SystemButtonFace')
+        badges_row.pack(fill='x')
+
+        act_variant = (
+            'success'
+            if self.action_enum == Action.COPY
+            else ('primary' if self.action_enum == Action.MOVE else 'error')
+        )
+        act_text = f'{self.action_enum.value.upper()}'
+        badge_act = BadgeLabel(
+            badges_row,
+            text=act_text,
+            variant=act_variant,
+            font=('Segoe UI', 9, 'bold'),
+            padx=8,
+            pady=2,
+        )
+        badge_act.pack(side='left', padx=(0, 6))
+
+        badge_cat = BadgeLabel(
+            badges_row,
+            text=cat_label,
+            variant='neutral',
+            font=('Segoe UI', 9),
+            padx=8,
+            pady=2,
+        )
+        badge_cat.pack(side='left', padx=(0, 6))
+
+        chk_text = '✓ Selected for synchronization' if self.is_checked else '○ Excluded from synchronization'
+        chk_variant = 'success' if self.is_checked else 'neutral'
+        badge_chk = BadgeLabel(
+            badges_row,
+            text=chk_text,
+            variant=chk_variant,
+            font=('Segoe UI', 9),
+            padx=8,
+            pady=2,
+        )
+        badge_chk.pack(side='left')
+
+        # 2. Diff / Operation Summary Box
+        diff_text = self._compute_diff_summary()
+        diff_box = tk.LabelFrame(
+            container,
+            text=' Operation & Difference ',
+            font=('Segoe UI', 9, 'bold'),
+            padx=10,
+            pady=8,
+        )
+        diff_box.pack(fill='x', pady=(0, 10))
+
+        lbl_diff_info = ttk.Label(diff_box, text=diff_text, font=('Segoe UI', 9))
+        lbl_diff_info.pack(fill='x')
+
+        # 3. Source File Details Frame
+        src_frame = ttk.LabelFrame(container, text=' Source File (Origin) ', padding=(10, 8))
+        src_frame.pack(fill='x', pady=(0, 10))
+        self._populate_location_frame(src_frame, self.source_path, 'source')
+
+        # 4. Target File Details Frame
+        tgt_frame = ttk.LabelFrame(container, text=' Target File (Destination) ', padding=(10, 8))
+        tgt_frame.pack(fill='x', pady=(0, 12))
+        self._populate_location_frame(tgt_frame, self.target_path, 'target')
+
+        # 5. Bottom Action Buttons
+        btn_bar = ttk.Frame(container)
+        btn_bar.pack(fill='x', side='bottom')
+
+        self.btn_copy_all = ttk.Button(
+            btn_bar,
+            text='Copy All Information',
+            command=self._copy_all_info,
+            width=22,
+        )
+        apply_icon(self.btn_copy_all, 'copy')
+        self.btn_copy_all.pack(side='left')
+
+        btn_close = ttk.Button(
+            btn_bar,
+            text='Close',
+            command=self.dialog.destroy,
+            style='Accent.TButton',
+            width=12,
+        )
+        btn_close.pack(side='right')
+
+        if self.target_path:
+            btn_open_tgt = ttk.Button(
+                btn_bar,
+                text='Open Target Folder',
+                command=lambda: self._open_in_explorer(self.target_path),
+                width=18,
+            )
+            apply_icon(btn_open_tgt, 'folder')
+            btn_open_tgt.pack(side='right', padx=(0, 6))
+
+        if self.source_path:
+            btn_open_src = ttk.Button(
+                btn_bar,
+                text='Open Source Folder',
+                command=lambda: self._open_in_explorer(self.source_path),
+                width=18,
+            )
+            apply_icon(btn_open_src, 'folder')
+            btn_open_src.pack(side='right', padx=(0, 6))
+
+    def _populate_location_frame(self, parent: ttk.LabelFrame, path: str, side: str):
+        parent.grid_columnconfigure(1, weight=1)
+
+        # Path row
+        lbl_path = ttk.Label(parent, text='Full Path:', font=('Segoe UI', 9, 'bold'))
+        lbl_path.grid(row=0, column=0, sticky='w', pady=2)
+
+        path_display = path if path else '(none)'
+        entry_path = ttk.Entry(parent, font=('Segoe UI', 9))
+        entry_path.insert(0, path_display)
+        entry_path.configure(state='readonly')
+        entry_path.grid(row=0, column=1, sticky='ew', padx=(6, 6), pady=2)
+
+        btn_box = ttk.Frame(parent)
+        btn_box.grid(row=0, column=2, sticky='e', pady=2)
+
+        btn_copy = ttk.Button(
+            btn_box,
+            text='Copy',
+            command=lambda: self._copy_text(path_display, f'{side} path'),
+            width=7,
+        )
+        apply_icon(btn_copy, 'copy')
+        btn_copy.pack(side='left', padx=(0, 4))
+
+        btn_open = ttk.Button(
+            btn_box,
+            text='Explore',
+            command=lambda: self._open_in_explorer(path),
+            width=9,
+            state='normal' if path else 'disabled',
+        )
+        apply_icon(btn_open, 'folder')
+        btn_open.pack(side='left')
+
+        # Folder row
+        parent_dir = os.path.dirname(path) if path else ''
+        lbl_dir = ttk.Label(parent, text='Directory:', font=('Segoe UI', 9))
+        lbl_dir.grid(row=1, column=0, sticky='w', pady=2)
+
+        entry_dir = ttk.Entry(parent, font=('Segoe UI', 9))
+        entry_dir.insert(0, parent_dir if parent_dir else '(none)')
+        entry_dir.configure(state='readonly')
+        entry_dir.grid(row=1, column=1, sticky='ew', padx=(6, 6), pady=2)
+
+        btn_copy_dir = ttk.Button(
+            parent,
+            text='Copy',
+            command=lambda: self._copy_text(parent_dir, f'{side} directory'),
+            width=7,
+            state='normal' if parent_dir else 'disabled',
+        )
+        apply_icon(btn_copy_dir, 'copy')
+        btn_copy_dir.grid(row=1, column=2, sticky='e', pady=2)
+
+        # Metadata row: Size & Modified Date
+        sz_key = f'size ({side})'
+        dt_key = f'modification date ({side})'
+        bytes_key = f'bytes ({side})'
+
+        sz_str = str(self.row_data.get(sz_key, '')) or '-'
+        dt_str = str(self.row_data.get(dt_key, '')) or '-'
+        bytes_val = self.row_data.get(bytes_key)
+
+        bytes_desc = f' ({bytes_val:,} bytes)' if isinstance(bytes_val, int | float) and bytes_val > 0 else ''
+        full_sz = f'{sz_str}{bytes_desc}' if sz_str != '-' else '-'
+
+        meta_frame = ttk.Frame(parent)
+        meta_frame.grid(row=2, column=0, columnspan=3, sticky='ew', pady=(4, 0))
+
+        ttk.Label(meta_frame, text='Size:', font=('Segoe UI', 9, 'bold')).pack(side='left', padx=(0, 4))
+        ttk.Label(meta_frame, text=full_sz, font=('Segoe UI', 9)).pack(side='left', padx=(0, 16))
+
+        ttk.Label(meta_frame, text='Modified:', font=('Segoe UI', 9, 'bold')).pack(side='left', padx=(0, 4))
+        ttk.Label(meta_frame, text=dt_str, font=('Segoe UI', 9)).pack(side='left', padx=(0, 16))
+
+        # Status indicator
+        status_text = self._get_status_text(path, side)
+        ttk.Label(meta_frame, text='Status:', font=('Segoe UI', 9, 'bold')).pack(side='left', padx=(0, 4))
+        ttk.Label(meta_frame, text=status_text, font=('Segoe UI', 9)).pack(side='left')
+
+    def _get_status_text(self, path: str, side: str) -> str:
+        if not path:
+            return 'Not applicable'
+        if side == 'source':
+            if os.path.exists(path):
+                return 'Exists locally'
+            return 'File not found'
+        else:
+            tgt_dt = self.row_data.get('modification date (target)')
+            tgt_sz = self.row_data.get('size (target)')
+            if self.action_enum == Action.DELETE:
+                return 'Marked for deletion'
+            if not tgt_dt or tgt_sz in ('0', '0 B', '', '-'):
+                return 'New file (will be created)'
+            return 'Target file exists (will be overwritten)'
+
+    def _compute_diff_summary(self) -> str:
+        if self.action_enum == Action.DELETE:
+            tgt_sz = self.row_data.get('size (target)', '')
+            return f'⚠️ Action: DELETE\nFile will be permanently deleted from target ({tgt_sz or "unknown size"}).'
+        if self.action_enum == Action.MOVE:
+            return '🔄 Action: MOVE / RENAME\nFile will be relocated or renamed at target destination.'
+
+        src_sz = self.row_data.get('size (source)', '')
+        tgt_sz = self.row_data.get('size (target)', '')
+        src_dt = self.row_data.get('modification date (source)', '')
+        tgt_dt = self.row_data.get('modification date (target)', '')
+        src_bytes = float(self.row_data.get('bytes (source)', 0) or 0)
+        tgt_bytes = float(self.row_data.get('bytes (target)', 0) or 0)
+
+        lines = [f'🟢 Action: COPY ({"Synchronizing" if self.is_checked else "Excluded"})']
+        if not tgt_dt or tgt_sz in ('0', '0 B', '', '-'):
+            lines.append(f'✨ New file on target • Source size: {src_sz}')
+        else:
+            if src_bytes != tgt_bytes:
+                diff_bytes = src_bytes - tgt_bytes
+                sign = '+' if diff_bytes > 0 else ''
+                lines.append(
+                    f'📊 Size difference: {sign}{format_size(diff_bytes)} (Source: {src_sz} vs Target: {tgt_sz})'
+                )
+            else:
+                lines.append(f'📊 Size: Identical ({src_sz})')
+
+            if src_dt and tgt_dt:
+                if src_dt == tgt_dt:
+                    lines.append('🕒 Timestamps: Identical')
+                else:
+                    lines.append(f'🕒 Timestamps: Source ({src_dt}) vs Target ({tgt_dt})')
+
+        return '\n'.join(lines)
+
+    def _copy_text(self, text: str, desc: str):
+        if not text or text == '(none)':
+            return
+        with contextlib.suppress(Exception):
+            self.dialog.clipboard_clear()
+            self.dialog.clipboard_append(text)
+            self.dialog.update_idletasks()
+            logger.info(f"Copied {desc} to clipboard: '{text}'")
+
+    def _open_in_explorer(self, path: str):
+        if not path or path in ('-', '(none)'):
+            return
+        norm_path = os.path.normpath(path)
+        try:
+            if os.path.isfile(norm_path):
+                subprocess.Popen(['explorer.exe', f'/select,{norm_path}'])
+            elif os.path.isdir(norm_path):
+                os.startfile(norm_path)
+            else:
+                pdir = os.path.dirname(norm_path)
+                if os.path.isdir(pdir):
+                    os.startfile(pdir)
+        except Exception as e:
+            logger.warning(f"Could not open explorer for '{norm_path}': {e}")
+
+    def _copy_all_info(self):
+        diff_summary = self._compute_diff_summary()
+        summary = (
+            f'Action: {self.action_enum.value.upper()}\n'
+            f'File: {self.filename}\n'
+            f'Status: {"Selected" if self.is_checked else "Excluded"}\n'
+            f'----------------------------------------\n'
+            f'Source Path: {self.source_path or "(none)"}\n'
+            f'Source Directory: {os.path.dirname(self.source_path) if self.source_path else "(none)"}\n'
+            f'Source Size: {self.row_data.get("size (source)", "-")}\n'
+            f'Source Modified: {self.row_data.get("modification date (source)", "-")}\n'
+            f'----------------------------------------\n'
+            f'Target Path: {self.target_path or "(none)"}\n'
+            f'Target Directory: {os.path.dirname(self.target_path) if self.target_path else "(none)"}\n'
+            f'Target Size: {self.row_data.get("size (target)", "-")}\n'
+            f'Target Modified: {self.row_data.get("modification date (target)", "-")}\n'
+            f'----------------------------------------\n'
+            f'{diff_summary}\n'
+        )
+        self._copy_text(summary, 'all details')
+        self.btn_copy_all.config(text='✓ Copied!')
+        self.dialog.after(1500, lambda: self.btn_copy_all.config(text='Copy All Information'))
+
+
 class ActionSelection:
     """Modern interactive confirmation popup for reviewing and selectively executing file sync operations."""
 
@@ -607,10 +975,10 @@ class ActionSelection:
             self.popup.grab_set()
 
         # Pause taskbar progress while awaiting user action review
-        root_gui = getattr(self, 'root_gui', None)
-        if root_gui is not None and getattr(root_gui, 'taskbar', None):
+        taskbar = getattr(getattr(self, 'root_gui', None), 'taskbar', None)
+        if taskbar is not None:
             with contextlib.suppress(Exception):
-                root_gui.after(0, root_gui.taskbar.set_paused)
+                self.root_gui.after(0, taskbar.set_paused)
 
         self.create_widgets()
         self.popup.deiconify()
@@ -878,6 +1246,9 @@ class ActionSelection:
 
         self.tree.bind('<<TreeviewSelect>>', self._on_item_selected)
         self.tree.bind('<Double-1>', self._on_item_double_click)
+        self.tree.bind('<Button-3>', self._on_tree_right_click)
+        self.tree.bind('<App>', self._on_context_key)
+        self.tree.bind('<Shift-F10>', self._on_context_key)
         self.tree.refresh_group_stats()
 
     def _create_bottom_bar(self):
@@ -922,7 +1293,18 @@ class ActionSelection:
             width=12,
         )
         apply_icon(self.btn_copy_path, 'copy')
+        add_tooltip(self.btn_copy_path, 'Copy path to clipboard. Right-click for more copy options.')
         self.btn_copy_path.pack(side='left')
+
+        self.btn_details = ttk.Button(
+            btn_action_box,
+            text='Details...',
+            command=self._show_selected_details_dialog,
+            width=11,
+        )
+        apply_icon(self.btn_details, 'document')
+        add_tooltip(self.btn_details, 'View full metadata, diff, and properties for selected file.')
+        self.btn_details.pack(side='left', padx=(4, 0))
 
         # Details: Source row and Target row
         details_frame = ttk.Frame(inspector_frame)
@@ -945,6 +1327,13 @@ class ActionSelection:
         self.lbl_inspector_tgt_meta = ttk.Label(details_frame, text='', font=('Segoe UI', 8), foreground='#555555')
         self.lbl_inspector_tgt_meta.grid(row=3, column=1, sticky='w', pady=(0, 2))
 
+        # Context menu bindings for inspector components
+        self.lbl_inspector_source.bind('<Button-3>', self._on_source_label_right_click)
+        self.lbl_inspector_target.bind('<Button-3>', self._on_target_label_right_click)
+        self.btn_copy_path.bind('<Button-3>', self._on_copy_btn_right_click)
+        self.lbl_inspector_diff.bind('<Button-3>', self._on_tree_right_click)
+        self.lbl_inspector_badge.bind('<Button-3>', self._on_tree_right_click)
+
         # Bottom Buttons
         btn_box = ttk.Frame(bottom_frame)
         btn_box.grid(row=1, column=1, sticky='e')
@@ -966,14 +1355,484 @@ class ActionSelection:
         )
         self.button_cancel.pack(side='right')
 
+    def _copy_to_clipboard(self, text: str, description: str = 'text'):
+        if not text:
+            return
+        try:
+            self.popup.clipboard_clear()
+            self.popup.clipboard_append(text)
+            self.popup.update_idletasks()
+            logger.info(f"Copied {description} to clipboard: '{text[:80]}{'...' if len(text) > 80 else ''}'")
+            if hasattr(self, 'lbl_inspector_diff'):
+                prev_text = self.lbl_inspector_diff.cget('text')
+                self.lbl_inspector_diff.config(text=f'📋 Copied {description} to clipboard!')
+                self.popup.after(2000, lambda: self._restore_diff_text(prev_text))
+        except Exception as e:
+            logger.warning(f'Could not copy {description} to clipboard: {e}')
+
+    def _restore_diff_text(self, prev_text: str):
+        if hasattr(self, 'lbl_inspector_diff'):
+            curr = self.lbl_inspector_diff.cget('text')
+            if curr.startswith('📋 Copied'):
+                self.lbl_inspector_diff.config(text=prev_text)
+
+    def _copy_source_path(self, path: str | None = None):
+        if path is None:
+            path = self.lbl_inspector_source.cget('text')
+        if path and path not in ('-', '(none)', '(select an item to view path)'):
+            self._copy_to_clipboard(path, 'source path')
+
+    def _copy_target_path(self, path: str | None = None):
+        if path is None:
+            path = self.lbl_inspector_target.cget('text')
+        if path and path not in ('-', '(none)', '(select an item to view path)'):
+            self._copy_to_clipboard(path, 'target path')
+
+    def _copy_both_paths(self, src: str | None = None, tgt: str | None = None):
+        if src is None:
+            src = self.lbl_inspector_source.cget('text')
+        if tgt is None:
+            tgt = self.lbl_inspector_target.cget('text')
+        lines = []
+        if src and src not in ('-', '(none)', '(select an item to view path)'):
+            lines.append(f'Source: {src}')
+        if tgt and tgt not in ('-', '(none)', '(select an item to view path)'):
+            lines.append(f'Target: {tgt}')
+        if lines:
+            self._copy_to_clipboard('\n'.join(lines), 'source and target paths')
+
+    def _copy_filename(self, path: str | None = None):
+        if path is None:
+            src = self.lbl_inspector_source.cget('text')
+            tgt = self.lbl_inspector_target.cget('text')
+            path = src if src not in ('-', '(none)', '(select an item to view path)') else tgt
+        if path and path not in ('-', '(none)', '(select an item to view path)'):
+            fname = os.path.basename(path) or path
+            self._copy_to_clipboard(fname, 'filename')
+
+    def _copy_row_details(self, item_id: str | None = None):
+        if item_id is None:
+            selected = self.tree.selection()
+            if not selected:
+                return
+            item_id = selected[0]
+        summary = self._format_item_summary(item_id)
+        if summary:
+            self._copy_to_clipboard(summary, 'item details')
+
+    def _copy_multi_paths(self, item_ids: list[str], side: str):
+        paths = []
+        item_actions = getattr(self.tree, '_item_actions', {})
+        for iid in item_ids:
+            item_info = item_actions.get(iid)
+            if item_info:
+                p = item_info[1] if side == 'source' else item_info[2]
+                if p and p not in ('-', '(none)'):
+                    paths.append(p)
+        if paths:
+            self._copy_to_clipboard('\n'.join(paths), f'{side} paths ({len(paths)})')
+
+    def _copy_multi_pairs(self, item_ids: list[str]):
+        pairs = []
+        item_actions = getattr(self.tree, '_item_actions', {})
+        for iid in item_ids:
+            item_info = item_actions.get(iid)
+            if item_info:
+                src = item_info[1] if item_info[1] not in ('-', '(none)') else ''
+                tgt = item_info[2] if item_info[2] not in ('-', '(none)') else ''
+                if src or tgt:
+                    pairs.append(f'{src} -> {tgt}')
+        if pairs:
+            self._copy_to_clipboard('\n'.join(pairs), f'path pairs ({len(pairs)})')
+
+    def _copy_multi_summary(self, item_ids: list[str]):
+        lines = [f'FastMirror Selection Summary ({len(item_ids)} files):']
+        item_actions = getattr(self.tree, '_item_actions', {})
+        for iid in item_ids:
+            item_info = item_actions.get(iid)
+            if item_info:
+                action, src, tgt = item_info
+                lines.append(f'[{action.value.upper()}] {src} -> {tgt}')
+        self._copy_to_clipboard('\n'.join(lines), 'selection summary')
+
+    def _copy_group_summary(self, group_id: str):
+        try:
+            action_enum = Action.from_str(group_id)
+            count, total_bytes = self.tree.get_action_stats(action_enum)
+            all_children = self.tree._all_group_children.get(group_id, [])
+            total_files = len(all_children)
+            summary = (
+                f'Action Group: {group_id.upper()}\n'
+                f'Checked: {count} of {total_files} files\n'
+                f'Total Size: {format_size(total_bytes)}\n'
+            )
+            self._copy_to_clipboard(summary, f'{group_id} group summary')
+        except Exception as e:
+            logger.warning(f'Could not copy group summary: {e}')
+
+    def _format_item_summary(self, item_id: str) -> str:
+        item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
+        if not item_info:
+            return ''
+        action, source_path, target_path = item_info
+        row_data = self.tree._data.get(action, {}).get(item_id, {})
+        primary_path = source_path if source_path and source_path != '(none)' else target_path
+        fname = os.path.basename(primary_path) or primary_path
+        is_chk = self.tree.tag_has('checked', item_id)
+
+        lines = [
+            f'Action: {action.value.upper()}',
+            f'File: {fname}',
+            f'Status: {"Selected for sync" if is_chk else "Excluded (unchecked)"}',
+            f'Source Path: {source_path or "(none)"}',
+            f'Source Size: {row_data.get("size (source)", "-")}',
+            f'Source Modified: {row_data.get("modification date (source)", "-")}',
+            f'Target Path: {target_path or "(none)"}',
+            f'Target Size: {row_data.get("size (target)", "-")}',
+            f'Target Modified: {row_data.get("modification date (target)", "-")}',
+        ]
+        return '\n'.join(lines)
+
     def _copy_selected_path_to_clipboard(self):
         target_path = self.lbl_inspector_target.cget('text')
         source_path = self.lbl_inspector_source.cget('text')
         path_to_copy = target_path if target_path not in ('-', '(none)') else source_path
         if path_to_copy and path_to_copy not in ('(none)', '(select an item to view path)'):
-            self.popup.clipboard_clear()
-            self.popup.clipboard_append(path_to_copy)
-            logger.info(f"Copied path to clipboard: '{path_to_copy}'")
+            self._copy_to_clipboard(path_to_copy, 'path')
+
+    def _open_path_in_explorer(self, path: str):
+        if not path or path in ('-', '(none)', '(select an item to view path)'):
+            return
+        norm_path = os.path.normpath(path)
+        try:
+            if os.path.isfile(norm_path):
+                subprocess.Popen(['explorer.exe', f'/select,{norm_path}'])
+            elif os.path.isdir(norm_path):
+                os.startfile(norm_path)
+            else:
+                parent_dir = os.path.dirname(norm_path)
+                if os.path.isdir(parent_dir):
+                    os.startfile(parent_dir)
+                else:
+                    logger.warning(f"Neither '{norm_path}' nor its directory exist on disk.")
+        except Exception as e:
+            logger.warning(f"Could not open folder for '{norm_path}': {e}")
+
+    def _show_selected_details_dialog(self, item_id: str | None = None):
+        if item_id is None:
+            selected = self.tree.selection()
+            if not selected:
+                return
+            item_id = selected[0]
+
+        if item_id in self.tree.get_children(''):
+            return
+
+        item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
+        if item_info is not None:
+            action, source_path, target_path = item_info
+            row_data = self.tree._data.get(action, {}).get(item_id)
+        elif '::' in item_id:
+            parts = item_id.split('::', 2)
+            with contextlib.suppress(Exception):
+                action = Action(parts[0])
+            source_path = parts[1] if len(parts) >= 2 else ''
+            target_path = parts[2] if len(parts) >= 3 else ''
+            row_data = self.tree._data.get(action, {}).get(item_id)
+        else:
+            return
+
+        is_checked = self.tree.tag_has('checked', item_id)
+        FileDetailsDialog(
+            parent=self.popup,
+            action=action,
+            source_path=source_path,
+            target_path=target_path,
+            row_data=row_data,
+            is_checked=is_checked,
+        )
+
+    def _on_tree_right_click(self, event):
+        row_id = self.tree.identify_row(event.y)
+        if not row_id:
+            self._show_empty_area_context_menu(event)
+            return
+
+        curr_selection = list(self.tree.selection())
+        if row_id not in curr_selection:
+            self.tree.selection_set(row_id)
+            self._on_item_selected(None)
+            curr_selection = [row_id]
+
+        if row_id in self.tree.get_children(''):
+            self._show_group_context_menu(event, row_id)
+        elif len(curr_selection) > 1:
+            self._show_multi_item_context_menu(event, curr_selection)
+        else:
+            self._show_single_item_context_menu(event, row_id)
+
+    def _on_context_key(self, event):
+        selected = self.tree.selection()
+        if not selected:
+            return
+        x = self.tree.winfo_rootx() + 50
+        y = self.tree.winfo_rooty() + 50
+        with contextlib.suppress(Exception):
+            bbox = self.tree.bbox(selected[0])
+            if bbox:
+                x = self.tree.winfo_rootx() + bbox[0] + 20
+                y = self.tree.winfo_rooty() + bbox[1] + 20
+        dummy_event = type('DummyEvent', (), {'x_root': x, 'y_root': y})()
+        if len(selected) > 1:
+            self._show_multi_item_context_menu(dummy_event, list(selected))
+        elif selected[0] in self.tree.get_children(''):
+            self._show_group_context_menu(dummy_event, selected[0])
+        else:
+            self._show_single_item_context_menu(dummy_event, selected[0])
+
+    def _show_single_item_context_menu(self, event, item_id: str):
+        item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
+        if item_info is not None:
+            action, source_path, target_path = item_info
+        elif '::' in item_id:
+            parts = item_id.split('::', 2)
+            source_path = parts[1] if len(parts) >= 2 else ''
+            target_path = parts[2] if len(parts) >= 3 else ''
+        else:
+            return
+
+        menu = tk.Menu(self.popup, tearoff=0)
+
+        has_src = bool(source_path and source_path not in ('-', '(none)'))
+        has_tgt = bool(target_path and target_path not in ('-', '(none)'))
+
+        menu.add_command(
+            label='📋 Copy Source Path',
+            command=lambda: self._copy_source_path(source_path),
+            state='normal' if has_src else 'disabled',
+        )
+        menu.add_command(
+            label='📋 Copy Target Path',
+            command=lambda: self._copy_target_path(target_path),
+            state='normal' if has_tgt else 'disabled',
+        )
+        menu.add_command(
+            label='📋 Copy Both Paths',
+            command=lambda: self._copy_both_paths(source_path, target_path),
+            state='normal' if (has_src or has_tgt) else 'disabled',
+        )
+        menu.add_command(
+            label='📋 Copy File Name',
+            command=lambda: self._copy_filename(source_path or target_path),
+        )
+        menu.add_command(
+            label='📋 Copy Row Details',
+            command=lambda: self._copy_row_details(item_id),
+        )
+
+        menu.add_separator()
+
+        menu.add_command(
+            label='📂 Open Source in Explorer',
+            command=lambda: self._open_path_in_explorer(source_path),
+            state='normal' if has_src else 'disabled',
+        )
+        menu.add_command(
+            label='📂 Open Target in Explorer',
+            command=lambda: self._open_path_in_explorer(target_path),
+            state='normal' if has_tgt else 'disabled',
+        )
+
+        menu.add_separator()
+
+        menu.add_command(
+            label='ℹ️ View File Details...',
+            command=lambda: self._show_selected_details_dialog(item_id),
+        )
+
+        menu.add_separator()
+
+        is_checked = self.tree.tag_has('checked', item_id)
+        if is_checked:
+            menu.add_command(
+                label='☐ Uncheck Item',
+                command=lambda: self._toggle_item_check(item_id, 'unchecked'),
+            )
+        else:
+            menu.add_command(
+                label='☑️ Check Item',
+                command=lambda: self._toggle_item_check(item_id, 'checked'),
+            )
+
+        with contextlib.suppress(Exception):
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def _show_multi_item_context_menu(self, event, item_ids: list[str]):
+        count = len(item_ids)
+        menu = tk.Menu(self.popup, tearoff=0)
+
+        menu.add_command(
+            label=f'📋 Copy Selected Source Paths ({count})',
+            command=lambda: self._copy_multi_paths(item_ids, 'source'),
+        )
+        menu.add_command(
+            label=f'📋 Copy Selected Target Paths ({count})',
+            command=lambda: self._copy_multi_paths(item_ids, 'target'),
+        )
+        menu.add_command(
+            label=f'📋 Copy Selected Path Pairs ({count})',
+            command=lambda: self._copy_multi_pairs(item_ids),
+        )
+        menu.add_command(
+            label=f'📋 Copy Summary ({count} items)',
+            command=lambda: self._copy_multi_summary(item_ids),
+        )
+
+        menu.add_separator()
+
+        menu.add_command(
+            label=f'☑️ Check Selected ({count})',
+            command=lambda: self._set_multi_check(item_ids, 'checked'),
+        )
+        menu.add_command(
+            label=f'☐ Uncheck Selected ({count})',
+            command=lambda: self._set_multi_check(item_ids, 'unchecked'),
+        )
+
+        menu.add_separator()
+
+        primary_id = item_ids[0]
+        menu.add_command(
+            label='ℹ️ View Details of Primary Item...',
+            command=lambda: self._show_selected_details_dialog(primary_id),
+        )
+
+        with contextlib.suppress(Exception):
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def _show_group_context_menu(self, event, group_id: str):
+        menu = tk.Menu(self.popup, tearoff=0)
+        group_name = group_id.upper()
+        children = self.tree._all_group_children.get(group_id, list(self.tree.get_children(group_id)))
+        count = len(children)
+
+        menu.add_command(
+            label=f'📋 Copy All Source Paths in {group_name} ({count})',
+            command=lambda: self._copy_multi_paths(children, 'source'),
+            state='normal' if count > 0 else 'disabled',
+        )
+        menu.add_command(
+            label=f'📋 Copy All Target Paths in {group_name} ({count})',
+            command=lambda: self._copy_multi_paths(children, 'target'),
+            state='normal' if count > 0 else 'disabled',
+        )
+        menu.add_command(
+            label=f'📋 Copy Group Summary ({group_name})',
+            command=lambda: self._copy_group_summary(group_id),
+        )
+
+        menu.add_separator()
+
+        menu.add_command(
+            label=f'☑️ Check All in {group_name}',
+            command=lambda: self._set_group_check(group_id, 'checked'),
+        )
+        menu.add_command(
+            label=f'☐ Uncheck All in {group_name}',
+            command=lambda: self._set_group_check(group_id, 'unchecked'),
+        )
+
+        menu.add_separator()
+
+        is_open = self.tree.item(group_id, 'open')
+        if is_open:
+            menu.add_command(
+                label=f'➖ Collapse {group_name}',
+                command=lambda: self.tree.item(group_id, open=False),
+            )
+        else:
+            menu.add_command(
+                label=f'➕ Expand {group_name}',
+                command=lambda: self.tree.item(group_id, open=True),
+            )
+
+        with contextlib.suppress(Exception):
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def _show_empty_area_context_menu(self, event):
+        menu = tk.Menu(self.popup, tearoff=0)
+        menu.add_command(label='Select All', command=self.tree.select_all)
+        menu.add_command(label='Deselect All', command=self.tree.deselect_all)
+        menu.add_separator()
+        menu.add_command(label='Expand All', command=self.tree.expand_all)
+        menu.add_command(label='Collapse All', command=self.tree.collapse_all)
+        with contextlib.suppress(Exception):
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def _on_source_label_right_click(self, event):
+        src_path = self.lbl_inspector_source.cget('text')
+        if not src_path or src_path in ('-', '(none)', '(select an item to view path)'):
+            return
+        menu = tk.Menu(self.popup, tearoff=0)
+        menu.add_command(
+            label='📋 Copy Source Path',
+            command=lambda: self._copy_source_path(src_path),
+        )
+        menu.add_command(
+            label='📂 Open Source in Explorer',
+            command=lambda: self._open_path_in_explorer(src_path),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label='ℹ️ View File Details...',
+            command=self._show_selected_details_dialog,
+        )
+        with contextlib.suppress(Exception):
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def _on_target_label_right_click(self, event):
+        tgt_path = self.lbl_inspector_target.cget('text')
+        if not tgt_path or tgt_path in ('-', '(none)', '(select an item to view path)'):
+            return
+        menu = tk.Menu(self.popup, tearoff=0)
+        menu.add_command(
+            label='📋 Copy Target Path',
+            command=lambda: self._copy_target_path(tgt_path),
+        )
+        menu.add_command(
+            label='📂 Open Target in Explorer',
+            command=lambda: self._open_path_in_explorer(tgt_path),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label='ℹ️ View File Details...',
+            command=self._show_selected_details_dialog,
+        )
+        with contextlib.suppress(Exception):
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def _on_copy_btn_right_click(self, event):
+        menu = tk.Menu(self.popup, tearoff=0)
+        menu.add_command(label='📋 Copy Target Path', command=self._copy_target_path)
+        menu.add_command(label='📋 Copy Source Path', command=self._copy_source_path)
+        menu.add_command(label='📋 Copy Both Paths', command=self._copy_both_paths)
+        with contextlib.suppress(Exception):
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def _toggle_item_check(self, item_id: str, state: str):
+        self.tree.change_state(item_id, state)
+        self.tree.refresh_group_stats()
+
+    def _set_multi_check(self, item_ids: list[str], state: str):
+        for item_id in item_ids:
+            if self.tree.exists(item_id):
+                self.tree.change_state(item_id, state)
+        self.tree.refresh_group_stats()
+
+    def _set_group_check(self, group_id: str, state: str):
+        if self.tree.exists(group_id):
+            self.tree.change_state(group_id, state)
+        self.tree.refresh_group_stats()
 
     def _open_selected_in_folder(self):
         """Reveal selected file in Windows Explorer, highlighting the file if it exists."""
@@ -1217,10 +2076,10 @@ class ActionSelection:
 
         with contextlib.suppress(Exception):
             self.popup.destroy()
-        root_gui = getattr(self, 'root_gui', None)
-        if root_gui is not None and getattr(root_gui, 'taskbar', None):
+        taskbar = getattr(getattr(self, 'root_gui', None), 'taskbar', None)
+        if taskbar is not None:
             with contextlib.suppress(Exception):
-                root_gui.after(0, root_gui.taskbar.clear)
+                self.root_gui.after(0, taskbar.clear)
         if self.on_close_callback:
             self.on_close_callback()
 
@@ -1235,10 +2094,10 @@ class ActionSelection:
         self.files_requested_to_delete = list()
         with contextlib.suppress(Exception):
             self.popup.destroy()
-        root_gui = getattr(self, 'root_gui', None)
-        if root_gui is not None and getattr(root_gui, 'taskbar', None):
+        taskbar = getattr(getattr(self, 'root_gui', None), 'taskbar', None)
+        if taskbar is not None:
             with contextlib.suppress(Exception):
-                root_gui.after(0, root_gui.taskbar.clear)
+                self.root_gui.after(0, taskbar.clear)
         if self.on_close_callback:
             self.on_close_callback()
 

@@ -11,7 +11,7 @@ import pytest
 from core.backend import SyncDirs
 from core.file import CstmPath
 from core.mirror import MirrorDatabase
-from gui.confirmation_popup import ActionSelection, CustomCheckboxTreeView
+from gui.confirmation_popup import ActionSelection, CustomCheckboxTreeView, FileDetailsDialog
 from gui.widgets import Action
 from utils.utils import DirectoryPair
 
@@ -1544,6 +1544,255 @@ def test_action_selection_keyboard_shortcuts(monkeypatch):
         assert res_esc3 == 'break'
         assert popup.finished is True
         assert popup.proceed is False
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_confirmation_popup_right_click_single_item(monkeypatch):
+    """Test right click context menu operations on a single leaf item."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        src = CstmPath('D:/test/photos/image.jpg')
+        tgt = CstmPath('//192.168.1.100/share/photos/image.jpg')
+        src._stats = type('Stats', (), {'st_size': 1024 * 500, 'st_mtime': 1700000000.0})()
+        tgt._stats = type('Stats', (), {'st_size': 1024 * 300, 'st_mtime': 1690000000.0})()
+
+        popup = ActionSelection(root, [(src, tgt)], [], [], [Action.COPY])
+        copy_children = popup.tree.get_children('copy')
+        assert len(copy_children) == 1
+        item_id = copy_children[0]
+
+        # Select item
+        popup.tree.selection_set(item_id)
+        popup._on_item_selected(None)
+
+        # 1. Test copy source path
+        popup._copy_source_path()
+        assert 'D:' in popup.popup.clipboard_get()
+
+        # 2. Test copy target path
+        popup._copy_target_path()
+        assert '192.168.1.100' in popup.popup.clipboard_get()
+
+        # 3. Test copy both paths
+        popup._copy_both_paths()
+        clip = popup.popup.clipboard_get()
+        assert 'Source:' in clip and 'Target:' in clip
+
+        # 4. Test copy filename
+        popup._copy_filename()
+        assert popup.popup.clipboard_get() == 'image.jpg'
+
+        # 5. Test copy row details
+        popup._copy_row_details(item_id)
+        details_clip = popup.popup.clipboard_get()
+        assert 'Action: COPY' in details_clip
+        assert 'image.jpg' in details_clip
+        assert 'Source Path:' in details_clip
+
+        # 6. Test toggle item check
+        assert popup.tree.tag_has('checked', item_id)
+        popup._toggle_item_check(item_id, 'unchecked')
+        assert popup.tree.tag_has('unchecked', item_id)
+        popup._toggle_item_check(item_id, 'checked')
+        assert popup.tree.tag_has('checked', item_id)
+
+        # 7. Test right-click dispatch event without raising
+        dummy_event = type('DummyEvent', (), {'x': 10, 'y': 10, 'x_root': 100, 'y_root': 100})()
+        monkeypatch.setattr(popup.tree, 'identify_row', lambda y: item_id)
+        monkeypatch.setattr('tkinter.Menu.tk_popup', lambda *a, **k: None)
+        popup._on_tree_right_click(dummy_event)
+
+        # 8. Test context key dispatch
+        popup._on_context_key(dummy_event)
+
+        popup.button_cancel_click()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_confirmation_popup_right_click_multi_item_and_group(monkeypatch):
+    """Test right click context menu operations on multiple selected items and group headers."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        src1 = CstmPath('D:/test/f1.txt')
+        tgt1 = CstmPath('//server/share/f1.txt')
+        src1._stats = type('Stats', (), {'st_size': 100, 'st_mtime': 1700000000.0})()
+        tgt1._stats = type('Stats', (), {'st_size': 100, 'st_mtime': 1700000000.0})()
+
+        src2 = CstmPath('D:/test/f2.txt')
+        tgt2 = CstmPath('//server/share/f2.txt')
+        src2._stats = type('Stats', (), {'st_size': 200, 'st_mtime': 1700000000.0})()
+        tgt2._stats = type('Stats', (), {'st_size': 200, 'st_mtime': 1700000000.0})()
+
+        popup = ActionSelection(root, [(src1, tgt1), (src2, tgt2)], [], [], [Action.COPY])
+        children = popup.tree.get_children('copy')
+        assert len(children) == 2
+
+        # 1. Multi-item copying
+        popup._copy_multi_paths(list(children), 'source')
+        clip = popup.popup.clipboard_get()
+        assert 'f1.txt' in clip and 'f2.txt' in clip
+
+        popup._copy_multi_pairs(list(children))
+        clip_pairs = popup.popup.clipboard_get()
+        assert ' -> ' in clip_pairs
+
+        popup._copy_multi_summary(list(children))
+        clip_summary = popup.popup.clipboard_get()
+        assert 'FastMirror Selection Summary' in clip_summary
+
+        # 2. Multi-item check state toggling
+        popup._set_multi_check(list(children), 'unchecked')
+        for c in children:
+            assert popup.tree.tag_has('unchecked', c)
+
+        popup._set_multi_check(list(children), 'checked')
+        for c in children:
+            assert popup.tree.tag_has('checked', c)
+
+        # 3. Group header operations
+        popup._copy_group_summary('copy')
+        group_clip = popup.popup.clipboard_get()
+        assert 'Action Group: COPY' in group_clip
+
+        popup._set_group_check('copy', 'unchecked')
+        assert popup.tree.tag_has('unchecked', 'copy')
+        popup._set_group_check('copy', 'checked')
+        assert popup.tree.tag_has('checked', 'copy')
+
+        # 4. Multi-item right click menu dispatch
+        monkeypatch.setattr('tkinter.Menu.tk_popup', lambda *a, **k: None)
+        dummy_event = type('DummyEvent', (), {'x': 10, 'y': 10, 'x_root': 100, 'y_root': 100})()
+        popup.tree.selection_set(children)
+        popup._show_multi_item_context_menu(dummy_event, list(children))
+
+        # 5. Group header right click menu dispatch
+        popup._show_group_context_menu(dummy_event, 'copy')
+
+        # 6. Empty area right click menu dispatch
+        popup._show_empty_area_context_menu(dummy_event)
+
+        popup.button_cancel_click()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_confirmation_popup_inspector_right_click_and_details_button(monkeypatch):
+    """Test inspector right-click handlers and details button."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        src = CstmPath('D:/test/doc.pdf')
+        tgt = CstmPath('//server/share/doc.pdf')
+        src._stats = type('Stats', (), {'st_size': 5000, 'st_mtime': 1700000000.0})()
+        tgt._stats = type('Stats', (), {'st_size': 5000, 'st_mtime': 1700000000.0})()
+
+        popup = ActionSelection(root, [(src, tgt)], [], [], [Action.COPY])
+        children = popup.tree.get_children('copy')
+        popup.tree.selection_set(children[0])
+        popup._on_item_selected(None)
+
+        # 1. Details button exists and has tooltip
+        assert popup.btn_details is not None
+        assert popup.btn_details.cget('text') == 'Details...'
+
+        # 2. Test right click on inspector elements
+        monkeypatch.setattr('tkinter.Menu.tk_popup', lambda *a, **k: None)
+        dummy_event = type('DummyEvent', (), {'x': 10, 'y': 10, 'x_root': 100, 'y_root': 100})()
+
+        popup._on_source_label_right_click(dummy_event)
+        popup._on_target_label_right_click(dummy_event)
+        popup._on_copy_btn_right_click(dummy_event)
+
+        # 3. Test transient diff text restore helper
+        popup.lbl_inspector_diff.config(text='📋 Copied source path to clipboard!')
+        popup._restore_diff_text('previous text')
+        assert popup.lbl_inspector_diff.cget('text') == 'previous text'
+
+        popup.button_cancel_click()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_file_details_dialog(monkeypatch):
+    """Test FileDetailsDialog initialization, diff summary, and copy details."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        row_data = {
+            'source': 'D:/test/photos/vacation.jpg',
+            'target': '//nas/backup/vacation.jpg',
+            'size (source)': '1.50MB',
+            'size (target)': '1.20MB',
+            'bytes (source)': 1572864,
+            'bytes (target)': 1258291,
+            'modification date (source)': '2026/10/20 14:00:00',
+            'modification date (target)': '2026/10/18 10:00:00',
+        }
+
+        dialog = FileDetailsDialog(
+            parent=root,
+            action=Action.COPY,
+            source_path='D:/test/photos/vacation.jpg',
+            target_path='//nas/backup/vacation.jpg',
+            row_data=row_data,
+            is_checked=True,
+        )
+
+        assert dialog.filename == 'vacation.jpg'
+        assert dialog.action_enum == Action.COPY
+
+        diff_summary = dialog._compute_diff_summary()
+        assert 'Action: COPY' in diff_summary
+        assert 'Size difference' in diff_summary
+
+        # Test copy all info
+        dialog._copy_all_info()
+        clip = dialog.dialog.clipboard_get()
+        assert 'vacation.jpg' in clip
+        assert 'D:/test/photos/vacation.jpg' in clip
+        assert '//nas/backup/vacation.jpg' in clip
+
+        # Test DELETE variant
+        del_dialog = FileDetailsDialog(
+            parent=root,
+            action=Action.DELETE,
+            source_path='',
+            target_path='//nas/backup/old.tmp',
+            row_data={'size (target)': '50.00KB'},
+            is_checked=False,
+        )
+        del_summary = del_dialog._compute_diff_summary()
+        assert 'DELETE' in del_summary
+
+        dialog.dialog.destroy()
+        del_dialog.dialog.destroy()
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
