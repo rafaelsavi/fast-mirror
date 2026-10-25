@@ -3,11 +3,11 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from gui.icons import apply_window_icon
+from gui.components.base_modal import BaseModalDialog
 from utils.profile_manager import sanitize_profile_name
 
 
-class NewProfileModal:
+class NewProfileModal(BaseModalDialog):
     """Modal dialog allowing the user to enter a profile name and choose an initial configuration template."""
 
     def __init__(
@@ -17,60 +17,36 @@ class NewProfileModal:
         existing_profiles: list[str] | None = None,
         wait: bool = True,
     ):
-        self.parent = parent
         self.active_profile_name = active_profile_name
         self.existing_profiles = [p.lower() for p in (existing_profiles or [])]
         self.result: tuple[str, str] | None = None
 
-        self.window = tk.Toplevel(parent)
-        self.window.title('New Configuration Profile')
-        apply_window_icon(self.window)
-        self.window.resizable(False, False)
-        if parent is not None:
-            self.window.transient(parent)
+        super().__init__(
+            parent=parent,
+            title='New Configuration Profile',
+            width=480,
+            height=330,
+            resizable=False,
+            modal=wait,
+        )
 
         self._create_widgets()
-        self._center_window(width=480, height=330)
+        self._center_and_reveal(modal=wait)
 
-        # Make dialog modal
-        self.window.protocol('WM_DELETE_WINDOW', self._on_cancel)
-        self.window.bind('<Escape>', lambda e: self._on_cancel())
-        self.window.bind('<Return>', lambda e: self._on_create())
-
-        # Give focus to entry field
+        self.bind('<Return>', lambda _e: self._on_create())
         self.entry_name.focus_set()
 
         if wait:
             try:
-                self.window.grab_set()
                 if parent is not None:
-                    parent.wait_window(self.window)
+                    parent.wait_window(self)
                 else:
-                    self.window.wait_window()
+                    self.wait_window()
             except Exception:
                 pass
 
-    def _center_window(self, width: int, height: int):
-        try:
-            self.window.update_idletasks()
-            screen_w = self.window.winfo_screenwidth()
-            screen_h = self.window.winfo_screenheight()
-            pos_x = max(0, (screen_w - width) // 2)
-            pos_y = max(0, (screen_h - height) // 2)
-            if self.parent is not None:
-                try:
-                    px = self.parent.winfo_rootx()
-                    py = self.parent.winfo_rooty()
-                    pw = self.parent.winfo_width()
-                    ph = self.parent.winfo_height()
-                    if pw > width and ph > height:
-                        pos_x = px + (pw - width) // 2
-                        pos_y = py + (ph - height) // 2
-                except Exception:
-                    pass
-            self.window.geometry(f'{width}x{height}+{pos_x}+{pos_y}')
-        except Exception:
-            self.window.geometry(f'{width}x{height}')
+    def on_close(self):
+        self._on_cancel()
 
     def _create_widgets(self):
         container = ttk.Frame(self.window, padding=(18, 16, 18, 16))

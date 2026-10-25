@@ -47,6 +47,8 @@ class Gui:
     def __init__(self, config_path: str | None = None, profile_name: str | None = None):
         # Initialize GUI window
         self.root = TrayableTk()
+        with contextlib.suppress(Exception):
+            self.root.attributes('-alpha', 0.0)
         apply_window_icon(self.root)
         self.root.title('FastMirror')
 
@@ -157,8 +159,29 @@ class Gui:
         self._snapshot_saved_config()
         self.load_config()
 
+        # Center main window on primary display and smoothly reveal
+        self._center_and_reveal_root()
+
         # Run GUI loop
         self.root.mainloop()
+
+    def _center_and_reveal_root(self):
+        """Center the main window on display and reveal it smoothly without top-left flicker."""
+        try:
+            self.root.update_idletasks()
+            w = max(self.root.winfo_reqwidth(), 1200)
+            h = max(self.root.winfo_reqheight(), 750)
+            sw = self.root.winfo_screenwidth()
+            sh = self.root.winfo_screenheight()
+            pos_x = max(0, (sw - w) // 2)
+            pos_y = max(0, (sh - h) // 2)
+            self.root.geometry(f'{w}x{h}+{pos_x}+{pos_y}')
+            self.root.update_idletasks()
+        except Exception:
+            pass
+        with contextlib.suppress(Exception):
+            self.root.attributes('-alpha', 1.0)
+            self.root.deiconify()
 
     @property
     def backend_thread_status(self) -> BackendThreadStatus:
@@ -1171,17 +1194,19 @@ class Gui:
                     if hasattr(self, 'telemetry_bar'):
                         self.root.after(
                             0,
-                            lambda: self.telemetry_bar.set_determinate(
-                                action=action,
-                                current=current,
-                                total=total,
-                                bytes_transferred=bytes_transferred,
-                                current_file=current_file,
-                                speed=speed,
+                            lambda a=action, c=current, t=total, bt=bytes_transferred, cf=current_file, s=speed: (
+                                self.telemetry_bar.set_determinate(
+                                    action=a,
+                                    current=c,
+                                    total=t,
+                                    bytes_transferred=bt,
+                                    current_file=cf,
+                                    speed=s,
+                                )
                             ),
                         )
                     if hasattr(self, 'taskbar'):
-                        self.root.after(0, lambda: self.taskbar.set_determinate(current, total))
+                        self.root.after(0, lambda c=current, t=total: self.taskbar.set_determinate(c, t))
 
                 self._active_sync = SyncDirs(
                     files_to_copy=compare.files_to_copy,
@@ -1254,8 +1279,8 @@ class Gui:
                     )
                     self.root.after(
                         0,
-                        lambda: self.root.notify(
-                            message=summary_msg,
+                        lambda m=summary_msg: self.root.notify(
+                            message=m,
                             title='FastMirror',
                         ),
                     )
@@ -1271,7 +1296,7 @@ class Gui:
                 self.root.after(0, lambda: self.telemetry_bar.reset('Ready'))
             if hasattr(self, 'taskbar') and not has_error:
                 self.root.after(0, self.taskbar.clear)
-            if build_mirror or self.checkbox_var_reset_mirror.get():
+            if build_mirror:
                 self.root.after(0, lambda: self.checkbox_var_reset_mirror.set(False))
                 self.root.after(0, lambda: self.checkbox_var_build_mirror.set(False))
                 self.root.after(0, lambda: self.checkbox_var_use_mirror.set(True))

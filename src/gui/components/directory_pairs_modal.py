@@ -5,13 +5,14 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import filedialog, messagebox, ttk
 
+from gui.components.base_modal import BaseModalDialog
 from gui.health_check import TargetHealth, probe_single_target
 from gui.icons import apply_icon, apply_window_icon
 from gui.widgets import BadgeLabel, DirectoryPair, EntryPaths, add_tooltip
 from utils.utils import sanitize_path
 
 
-class DirectoryPairsModal:
+class DirectoryPairsModal(BaseModalDialog):
     """Interactive management modal for reviewing, adding, editing, and validating directory backup pairs."""
 
     def __init__(
@@ -21,36 +22,29 @@ class DirectoryPairsModal:
         on_changed: Callable[[], None] | None = None,
         health_cache: dict[str, TargetHealth] | None = None,
     ):
-        self.parent = parent
         self.entry_paths = entry_paths
         self.on_changed = on_changed
         self._health_cache: dict[str, TargetHealth] = health_cache if health_cache is not None else {}
-
-        self.window = tk.Toplevel(parent)
-        self.window.title('Directory Backup Pairs Manager')
-        apply_window_icon(self.window)
-        self.window.minsize(840, 480)
-        if parent is not None:
-            self.window.transient(parent)
 
         if hasattr(self.entry_paths, 'get_configured_pairs'):
             self._pairs = list(self.entry_paths.get_configured_pairs())
         else:
             self._pairs = list(self.entry_paths.get())
-        self._center_window(width=880, height=520)
+
+        super().__init__(
+            parent=parent,
+            title='Directory Backup Pairs Manager',
+            width=880,
+            height=520,
+            min_width=840,
+            min_height=480,
+            modal=True,
+        )
+        apply_window_icon(self.window)
+
         self._create_widgets()
         self._populate_table()
-
-    def _center_window(self, width: int, height: int):
-        try:
-            self.window.update_idletasks()
-            screen_w = self.window.winfo_screenwidth()
-            screen_h = self.window.winfo_screenheight()
-            pos_x = max(0, (screen_w - width) // 2)
-            pos_y = max(0, (screen_h - height) // 2)
-            self.window.geometry(f'{width}x{height}+{pos_x}+{pos_y}')
-        except Exception:
-            self.window.geometry(f'{width}x{height}')
+        self._center_and_reveal()
 
     def _create_widgets(self):
         self.window.columnconfigure(0, weight=1)
@@ -447,6 +441,8 @@ class DirectoryPairsModal:
 
     def _open_pair_editor(self, default_src: str | None, default_tgt: str | None, edit_idx: int | None):
         dialog = tk.Toplevel(self.window)
+        with contextlib.suppress(Exception):
+            dialog.attributes('-alpha', 0.0)
         is_edit = edit_idx is not None
         dialog.title('Edit Directory Pair' if is_edit else 'Add New Directory Pair')
         apply_window_icon(dialog)
@@ -455,11 +451,6 @@ class DirectoryPairsModal:
 
         width, height = 620, 230
         dialog.minsize(width, height)
-        dialog.geometry(f'{width}x{height}')
-        with contextlib.suppress(Exception):
-            screen_w = dialog.winfo_screenwidth()
-            screen_h = dialog.winfo_screenheight()
-            dialog.geometry(f'{width}x{height}+{(screen_w - width) // 2}+{(screen_h - height) // 2}')
 
         dialog.columnconfigure(1, weight=1)
 
@@ -531,6 +522,30 @@ class DirectoryPairsModal:
 
         ttk.Button(btn_frame, text='Cancel', command=dialog.destroy, width=11).pack(side='right', padx=(6, 0))
         ttk.Button(btn_frame, text='OK', command=_save, width=11).pack(side='right')
+
+        # Center relative to parent window and smoothly reveal
+        try:
+            dialog.update_idletasks()
+            pw = self.window.winfo_width()
+            ph = self.window.winfo_height()
+            px = self.window.winfo_rootx()
+            py = self.window.winfo_rooty()
+            if pw > 100 and ph > 100:
+                pos_x = px + max(0, (pw - width) // 2)
+                pos_y = py + max(0, (ph - height) // 2)
+            else:
+                sw = dialog.winfo_screenwidth()
+                sh = dialog.winfo_screenheight()
+                pos_x = max(0, (sw - width) // 2)
+                pos_y = max(0, (sh - height) // 2)
+            dialog.geometry(f'{width}x{height}+{pos_x}+{pos_y}')
+        except Exception:
+            dialog.geometry(f'{width}x{height}')
+
+        with contextlib.suppress(Exception):
+            dialog.update_idletasks()
+            dialog.attributes('-alpha', 1.0)
+            dialog.grab_set()
 
         entry_src.focus_set()
 

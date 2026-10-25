@@ -280,7 +280,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         elif action == Action.MOVE:
             tgt_size_str = '-'
             tgt_mtime_str = '-'
-            size_bytes = src_bytes if src_bytes > 0 else tgt_bytes
+            size_bytes = src_bytes if source is not None else tgt_bytes
         else:
             # Action.COPY or default
             size_bytes = src_bytes if source is not None else tgt_bytes
@@ -601,7 +601,8 @@ class FileDetailsDialog:
         self.filename = os.path.basename(primary_path) or primary_path
 
         self.dialog = tk.Toplevel(parent)
-        self.dialog.withdraw()
+        with contextlib.suppress(Exception):
+            self.dialog.attributes('-alpha', 0.0)
         self.dialog.title(f'FastMirror - File Information - {self.filename}')
         with contextlib.suppress(Exception):
             self.dialog.configure(bg='SystemButtonFace')
@@ -616,8 +617,11 @@ class FileDetailsDialog:
         self.dialog.bind('<Return>', lambda e: self.dialog.destroy())
 
         with contextlib.suppress(Exception):
+            self.dialog.update_idletasks()
+            self.dialog.attributes('-alpha', 1.0)
+            self.dialog.deiconify()
             self.dialog.grab_set()
-        self.dialog.deiconify()
+        self.dialog.focus_set()
 
     def _center_dialog(self, width: int, height: int):
         try:
@@ -849,34 +853,38 @@ class FileDetailsDialog:
         if not path:
             return 'Not applicable'
         if side == 'source':
-            if os.path.exists(path):
-                return 'Exists locally'
+            try:
+                if os.path.exists(path):
+                    return 'Exists locally'
+            except Exception:
+                pass
             return 'File not found'
         else:
             tgt_dt = self.row_data.get('modification date (target)')
             tgt_sz = self.row_data.get('size (target)')
             if self.action_enum == Action.DELETE:
                 return 'Marked for deletion'
-            if not tgt_dt or tgt_sz in ('0', '0 B', '', '-'):
+            if tgt_sz == '-' or tgt_dt in ('-', '', None):
                 return 'New file (will be created)'
             return 'Target file exists (will be overwritten)'
 
     def _compute_diff_summary(self) -> str:
-        if self.action_enum == Action.DELETE:
-            tgt_sz = self.row_data.get('size (target)', '')
-            return f'⚠️ Action: DELETE\nFile will be permanently deleted from target ({tgt_sz or "unknown size"}).'
-        if self.action_enum == Action.MOVE:
-            return '🔄 Action: MOVE / RENAME\nFile will be relocated or renamed at target destination.'
-
         src_sz = self.row_data.get('size (source)', '')
         tgt_sz = self.row_data.get('size (target)', '')
+        if self.action_enum == Action.DELETE:
+            return f'⚠️ Action: DELETE\nFile will be permanently deleted from target ({tgt_sz or "unknown size"}).'
+        if self.action_enum == Action.MOVE:
+            return (
+                f'🔄 Action: MOVE / RENAME\nFile will be relocated or renamed at target destination '
+                f'({src_sz or "unknown size"}).'
+            )
         src_dt = self.row_data.get('modification date (source)', '')
         tgt_dt = self.row_data.get('modification date (target)', '')
         src_bytes = float(self.row_data.get('bytes (source)', 0) or 0)
         tgt_bytes = float(self.row_data.get('bytes (target)', 0) or 0)
 
         lines = [f'🟢 Action: COPY ({"Synchronizing" if self.is_checked else "Excluded"})']
-        if not tgt_dt or tgt_sz in ('0', '0 B', '', '-'):
+        if tgt_sz == '-' or tgt_dt in ('-', '', None):
             lines.append(f'✨ New file on target • Source size: {src_sz}')
         else:
             if src_bytes != tgt_bytes:
@@ -974,6 +982,8 @@ class ActionSelection:
 
         # Create window
         self.popup = tk.Toplevel(self.root_gui)
+        with contextlib.suppress(Exception):
+            self.popup.attributes('-alpha', 0.0)
         self.popup.withdraw()
         self.popup.title('FastMirror - Confirm Actions')
         with contextlib.suppress(Exception):
@@ -991,10 +1001,6 @@ class ActionSelection:
         self.popup.bind('<Control-f>', lambda e: self._focus_filter_entry())
         self.popup.bind('<Control-F>', lambda e: self._focus_filter_entry())
 
-        # Modal grab (safe fallback for headless / tests)
-        with contextlib.suppress(Exception):
-            self.popup.grab_set()
-
         # Pause taskbar progress while awaiting user action review
         taskbar = getattr(getattr(self, 'root_gui', None), 'taskbar', None)
         if taskbar is not None:
@@ -1002,7 +1008,17 @@ class ActionSelection:
                 self.root_gui.after(0, taskbar.set_paused)
 
         self.create_widgets()
+
+        # Smooth reveal after widgets and treeview are completely loaded
+        self.popup.update_idletasks()
+        with contextlib.suppress(Exception):
+            self.popup.attributes('-alpha', 1.0)
         self.popup.deiconify()
+
+        # Modal grab (safe fallback for headless / tests)
+        with contextlib.suppress(Exception):
+            self.popup.grab_set()
+        self.popup.focus_set()
 
     def _center_window(self, width: int, height: int):
         try:
@@ -1990,7 +2006,7 @@ class ActionSelection:
                 diff_text = f'⚠️ File will be removed from target ({tgt_sz})'
             elif action == Action.MOVE:
                 diff_text = f'🔄 File will be moved/renamed at destination ({src_sz})'
-            elif tgt_sz == '-' or tgt_dt == '-' or tgt_sz in ('0', '0 B', ''):
+            elif tgt_sz == '-' or tgt_dt in ('-', '', None):
                 diff_text = f'✨ New file on target • {src_sz}'
             else:
                 parts = []
@@ -2093,12 +2109,14 @@ class ActionSelection:
             elif '::' in id_:
                 parts = id_.split('::', 2)
                 group = parts[0]
+                raw_tgt = parts[2] if len(parts) > 2 else ''
+                tgt_clean = raw_tgt.split('#')[0]
                 if group == 'copy':
-                    self.files_requested_to_copy.append((parts[1], parts[2]))
+                    self.files_requested_to_copy.append((parts[1], tgt_clean))
                 elif group == 'move':
-                    self.files_requested_to_move.append((parts[1], parts[2]))
+                    self.files_requested_to_move.append((parts[1], tgt_clean))
                 elif group == 'delete':
-                    self.files_requested_to_delete.append(parts[2])
+                    self.files_requested_to_delete.append(tgt_clean)
 
         with contextlib.suppress(Exception):
             self.popup.destroy()

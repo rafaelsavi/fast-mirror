@@ -62,6 +62,10 @@ class MirrorDatabase:
                     conn.execute('ALTER TABLE mirror_cache ADD COLUMN size INTEGER;')
                 if 'mtime' not in columns:
                     conn.execute('ALTER TABLE mirror_cache ADD COLUMN mtime REAL;')
+                # Clean up legacy entries where size and mtime were artificially set to 0 by older migrations
+                conn.execute(
+                    'UPDATE mirror_cache SET size = NULL, mtime = NULL WHERE size = 0 AND (mtime = 0 OR mtime IS NULL);'
+                )
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS mirror_metadata (
                         root_dir TEXT PRIMARY KEY,
@@ -206,7 +210,7 @@ class MirrorDatabase:
                         self._to_full_path(root_str, rel_path),
                         root_dir=root_str,
                         stats_hash=StatsHash(stats_hash),
-                        stats=Stats(size, mtime) if (size is not None and mtime is not None) else None,
+                        stats=Stats(size, mtime) if (size is not None and mtime is not None and mtime > 0) else None,
                     )
                     for rel_path, stats_hash, size, mtime in cursor
                 }
@@ -244,6 +248,13 @@ class MirrorDatabase:
                 if not stats_hash:
                     stats_hash = get_stats_hash(p)
                 st = getattr(p, 'cached_stats', getattr(p, '_stats', None))
+                if st is None:
+                    with contextlib.suppress(Exception):
+                        st = getattr(p, 'stats', None)
+                if st is None:
+                    with contextlib.suppress(Exception):
+                        os_st = os.stat(str(p))
+                        st = Stats(os_st.st_size, os_st.st_mtime)
                 size_val = st.st_size if st is not None else None
                 mtime_val = st.st_mtime if st is not None else None
                 rows.append((root_str, rel, str(stats_hash), size_val, mtime_val))
@@ -328,6 +339,13 @@ class MirrorDatabase:
         if not new_hash:
             new_hash = get_stats_hash(new_path)
         new_st = getattr(new_path, 'cached_stats', getattr(new_path, '_stats', None))
+        if new_st is None:
+            with contextlib.suppress(Exception):
+                new_st = getattr(new_path, 'stats', None)
+        if new_st is None:
+            with contextlib.suppress(Exception):
+                os_st = os.stat(str(new_path))
+                new_st = Stats(os_st.st_size, os_st.st_mtime)
         new_size = new_st.st_size if new_st is not None else None
         new_mtime = new_st.st_mtime if new_st is not None else None
 

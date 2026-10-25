@@ -166,7 +166,7 @@ def robust_delete(
 ) -> None:
     """Delete file with permission recovery and exponential backoff retries."""
     path_str = str(path)
-    if not os.path.isfile(path_str):
+    if not os.path.lexists(path_str):
         return
 
     delay = initial_delay

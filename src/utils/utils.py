@@ -1,7 +1,7 @@
 import datetime
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from enum import Enum
 from os import PathLike
 
@@ -35,36 +35,39 @@ class DirectoryPair:
         return hash((self.source, self.target))
 
 
-def get_size(path: str | list[str]) -> float:
+def get_size(path: str | PathLike[str] | Iterable[str | PathLike[str]]) -> int:
     def get_single_size(path_) -> int:
         try:
-            return os.path.getsize(path_)
+            return os.path.getsize(str(path_))
         except FileNotFoundError:
             return 0
         except Exception as e:
             logger.warning(f"Could not get size of '{path_}'. Exception: {e}")
             return 0
 
-    size_bytes = 0
-    if isinstance(path, str):
-        size_bytes = get_single_size(path)
-    elif isinstance(path, list):
-        size_bytes = sum([get_single_size(x) for x in path])
+    if isinstance(path, str | PathLike):
+        return get_single_size(path)
+    if isinstance(path, Iterable):
+        return sum(get_single_size(x) for x in path)
 
-    return size_bytes
+    return 0
 
 
-def get_size_as_str(path: str | list[str]) -> str:
+def get_size_as_str(path: str | PathLike[str] | Iterable[str | PathLike[str]]) -> str:
     return format_size(get_size(path))
 
 
-def format_size(size_bytes: float) -> str:
-    if size_bytes < 1024**2:
-        msg = f'{size_bytes / (1024**1):.2f}KB'
-    elif 1024**2 <= size_bytes < 1024**3:
-        msg = f'{size_bytes / (1024**2):.2f}MB'
+def format_size(size_bytes: float | int | None) -> str:
+    if size_bytes is None:
+        return '-'
+    abs_size = abs(size_bytes)
+    prefix = '-' if size_bytes < 0 else ''
+    if abs_size < 1024**2:
+        msg = f'{prefix}{abs_size / (1024**1):.2f}KB'
+    elif 1024**2 <= abs_size < 1024**3:
+        msg = f'{prefix}{abs_size / (1024**2):.2f}MB'
     else:
-        msg = f'{size_bytes / (1024**3):.2f}GB'
+        msg = f'{prefix}{abs_size / (1024**3):.2f}GB'
 
     return msg
 

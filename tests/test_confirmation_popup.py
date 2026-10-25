@@ -1871,3 +1871,60 @@ def test_confirmation_popup_move_and_delete_sizes_and_dash_for_missing_paths(tmp
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_confirmation_popup_zero_byte_target_file_overwrite(tmp_path):
+    """Verify that overwriting an existing 0-byte target file is recognized as an overwrite, not a new file."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        from core.file import Stats
+        from gui.confirmation_popup import FileDetailsDialog
+
+        src = CstmPath(tmp_path / 'source.txt', stats=Stats(100, 1000.0))
+        # An existing target file that is 0 bytes
+        tgt = CstmPath(tmp_path / 'target_zero.txt', stats=Stats(0, 2000.0))
+
+        row_data = CustomCheckboxTreeView.get_row(src, tgt, action=Action.COPY)
+        assert row_data['size (target)'] == '0.00KB'
+        assert row_data['modification date (target)'] != '-'
+
+        dialog = FileDetailsDialog(root, 'copy', str(src), str(tgt), row_data=row_data, is_checked=True)
+        try:
+            status = dialog._get_status_text(str(tgt), 'target')
+            assert status == 'Target file exists (will be overwritten)'
+
+            diff = dialog._compute_diff_summary()
+            assert 'Size difference' in diff or 'Size:' in diff
+            assert 'New file on target' not in diff
+        finally:
+            dialog.dialog.destroy()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_format_size_and_get_size_robustness(tmp_path):
+    from pathlib import Path
+
+    from utils.utils import format_size, get_size
+
+    # format_size handles None, 0, positive, and negative values accurately
+    assert format_size(None) == '-'
+    assert format_size(0) == '0.00KB'
+    assert format_size(1024) == '1.00KB'
+    assert format_size(1024**2) == '1.00MB'
+    assert format_size(-1024) == '-1.00KB'
+    assert format_size(-(1024**2) * 2) == '-2.00MB'
+
+    # get_size accepts Path and CstmPath objects
+    f = tmp_path / 'test.bin'
+    f.write_bytes(b'x' * 512)
+    assert get_size(f) == 512
+    assert get_size(Path(f)) == 512
+    assert get_size(CstmPath(f)) == 512
+    assert get_size([f, Path(f)]) == 1024

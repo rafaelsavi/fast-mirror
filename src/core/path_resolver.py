@@ -12,14 +12,14 @@ def _to_path(p: CstmPathType) -> Path | PureWindowsPath:
     return Path(p)
 
 
-def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair]) -> DirectoryPair:
+def get_dirs_from_path(path: CstmPathType, dirs: list[DirectoryPair] | None) -> DirectoryPair:
     """Find the corresponding source and target directories for a given path."""
     p = _to_path(path)
 
     best_pair: DirectoryPair | None = None
     best_score = (-1, -1)
 
-    for dir_pair in dirs:
+    for dir_pair in dirs or []:
         for root_str in (dir_pair.source, dir_pair.target):
             root = _to_path(root_str)
             try:

@@ -4,36 +4,30 @@ import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from gui.components.base_modal import BaseModalDialog
 from gui.icons import apply_icon, apply_window_icon
 from utils.logger import logger
 from utils.utils import format_size
 
 
-class ReportsWindow:
+class ReportsWindow(BaseModalDialog):
     """Interactive report history browser displaying past comparison reports."""
 
     def __init__(self, parent: tk.Tk | tk.Toplevel | None):
-        self.parent = parent
-        self.window = tk.Toplevel(parent)
-        self.window.title('Backup Reports History')
+        super().__init__(
+            parent=parent,
+            title='Backup Reports History',
+            width=720,
+            height=480,
+            min_width=680,
+            min_height=420,
+            modal=False,
+        )
         apply_window_icon(self.window)
-        self.window.minsize(680, 420)
-        self.window.transient(parent)
 
-        self._center_window(width=720, height=480)
         self._create_widgets()
         self._load_reports()
-
-    def _center_window(self, width: int, height: int):
-        try:
-            self.window.update_idletasks()
-            screen_w = self.window.winfo_screenwidth()
-            screen_h = self.window.winfo_screenheight()
-            pos_x = max(0, (screen_w - width) // 2)
-            pos_y = max(0, (screen_h - height) // 2)
-            self.window.geometry(f'{width}x{height}+{pos_x}+{pos_y}')
-        except Exception:
-            self.window.geometry(f'{width}x{height}')
+        self._center_and_reveal()
 
     def _create_widgets(self):
         self.window.columnconfigure(0, weight=1)

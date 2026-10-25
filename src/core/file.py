@@ -60,7 +60,7 @@ class CstmPath(Path):
         self.root_dir = Path(root_dir) if root_dir else None
         self._rel_to_root = Path(self).relative_to(self.root_dir) if self.root_dir else None
 
-        if self.root_dir and self.root_dir not in self.parents:
+        if self.root_dir and self != self.root_dir and self.root_dir not in self.parents:
             raise CustomException(f'Root directory {self.root_dir} is not a parent of {self}')
         self._stats: Stats | None = stats  # Cached stats
         self._stats_hash: StatsHash | None = stats_hash  # Cached encoded stats
@@ -143,14 +143,16 @@ class CstmPath(Path):
             raise CustomException(f'Root directory {self.root_dir} is not in the list of directories.')
 
         target_root_dir = dirs_dict[self.root_dir]
-        return CstmPath(target_root_dir / self._rel_to_root)
+        return CstmPath(target_root_dir / self._rel_to_root, root_dir=target_root_dir)
 
     @staticmethod
-    def to_date_str(timestamp):
-        if timestamp == 0:
+    def to_date_str(timestamp: float | int | None) -> str:
+        if timestamp is None or timestamp <= 0:
             return ''
-        else:
+        try:
             return datetime.datetime.fromtimestamp(timestamp).strftime('%Y/%m/%d %H:%M:%S')
+        except (OSError, ValueError, TypeError):
+            return ''
 
     @staticmethod
     def get_from_dir(dir_path: CstmPathType, exclude: list[str]) -> set['CstmPath']:
@@ -337,6 +339,6 @@ def compare_files(
         success = True
     except Exception as e:
         error_msg = check_length(f1) + '  ' + check_length(f2)
-        error_msg = e if error_msg.strip() == '' else e
+        error_msg = e if error_msg.strip() == '' else f'{error_msg.strip()} ({e})'
         logger.warning(f"Could not compare files '{f1}' and '{f2}'. Exception: {error_msg}")
     return success, same

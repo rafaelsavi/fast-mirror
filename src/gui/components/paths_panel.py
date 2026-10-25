@@ -214,7 +214,8 @@ class PathsPanel(ttk.LabelFrame):
 
                 self.lbl_health_status.config(text=msg, foreground=color)
 
-            self.after(0, _update_ui)
+            with contextlib.suppress(Exception):
+                self.after(0, _update_ui)
 
         target_paths = [p.target for p in dirs]
         probe_targets_async(target_paths, _on_health_results)

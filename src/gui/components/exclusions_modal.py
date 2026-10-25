@@ -4,12 +4,13 @@ from tkinter import messagebox, simpledialog, ttk
 
 import pathspec
 
+from gui.components.base_modal import BaseModalDialog
 from gui.icons import apply_icon, apply_window_icon
 from gui.widgets import BadgeLabel, EntryExclusions
 from utils.utils import sanitize_path
 
 
-class ExclusionsModal:
+class ExclusionsModal(BaseModalDialog):
     """Interactive management modal for reviewing, adding, removing, editing, and testing ignore patterns."""
 
     def __init__(
@@ -18,32 +19,24 @@ class ExclusionsModal:
         entry_exclusions: EntryExclusions,
         on_changed: Callable[[], None] | None = None,
     ):
-        self.parent = parent
         self.entry_exclusions = entry_exclusions
         self.on_changed = on_changed
-
-        self.window = tk.Toplevel(parent)
-        self.window.title('Ignore & Exclusion Patterns Manager')
-        apply_window_icon(self.window)
-        self.window.minsize(840, 520)
-        if parent is not None:
-            self.window.transient(parent)
-
         self._patterns: list[str] = list(self.entry_exclusions.get())
-        self._center_window(width=900, height=560)
+
+        super().__init__(
+            parent=parent,
+            title='Ignore & Exclusion Patterns Manager',
+            width=900,
+            height=560,
+            min_width=840,
+            min_height=520,
+            modal=True,
+        )
+        apply_window_icon(self.window)
+
         self._create_widgets()
         self._populate_table()
-
-    def _center_window(self, width: int, height: int):
-        try:
-            self.window.update_idletasks()
-            screen_w = self.window.winfo_screenwidth()
-            screen_h = self.window.winfo_screenheight()
-            pos_x = max(0, (screen_w - width) // 2)
-            pos_y = max(0, (screen_h - height) // 2)
-            self.window.geometry(f'{width}x{height}+{pos_x}+{pos_y}')
-        except Exception:
-            self.window.geometry(f'{width}x{height}')
+        self._center_and_reveal()
 
     def _create_widgets(self):
         self.window.columnconfigure(0, weight=1)

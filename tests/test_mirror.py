@@ -291,3 +291,18 @@ def test_mirror_persists_size_and_mtime_and_migration(tmp_path):
     assert empty_cstm.cached_stats is not None
     assert empty_cstm.cached_stats.st_size == 0
     assert empty_cstm.cached_stats.st_mtime == 9999.0
+
+    # 5. Verify cleanup of legacy rows with artificial zero defaults
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        conn.execute(
+            'INSERT INTO mirror_cache (root_dir, rel_path, stats_hash, size, mtime) '
+            "VALUES (?, 'legacy_zero.txt', 'h', 0, 0);",
+            (root_dir,),
+        )
+        conn.commit()
+
+    # Re-initialize to trigger cleanup
+    mirror2 = MirrorDatabase(path=db_path)
+    retrieved2 = {p.rel_to_root: p for p in mirror2.get_paths(root_dir)}
+    assert 'legacy_zero.txt' in retrieved2
+    assert retrieved2['legacy_zero.txt'].cached_stats is None

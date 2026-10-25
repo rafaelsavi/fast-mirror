@@ -34,7 +34,6 @@ from utils.utils import (
     format_elapsed_time,
     format_size,
     get_size,
-    get_size_as_str,
     log_progress,
 )
 
@@ -350,16 +349,18 @@ class CompareDirs:
                     'only source': 'X' if file.only_source else '',
                     'only target': 'X' if file.only_target else '',
                     'size (source)': file.source.get_st_size(as_str=True)
-                    if file.source is not None and file.source.exists()
+                    if file.source is not None and (file.source.has_cached_stats or file.source.exists())
                     else '',
                     'size (target)': file.target.get_st_size(as_str=True)
-                    if file.target is not None and file.target.exists()
+                    if file.target is not None
+                    and (file.target.has_cached_stats or (not file.target.is_new_target and file.target.exists()))
                     else '',
                     'modified (source)': file.source.get_st_mtime(as_date_str=True)
-                    if file.source is not None and file.source.exists()
+                    if file.source is not None and (file.source.has_cached_stats or file.source.exists())
                     else '',
                     'modified (target)': file.target.get_st_mtime(as_date_str=True)
-                    if file.target is not None and file.target.exists()
+                    if file.target is not None
+                    and (file.target.has_cached_stats or (not file.target.is_new_target and file.target.exists()))
                     else '',
                     'compare error': file.compare_error,
                 }
@@ -674,8 +675,12 @@ class SyncDirs:
                     logger.debug(f'Could not remove phantom move source from mirror: {rm_err}')
                 return False, 0
 
-        size_str = get_size_as_str(str(source)) if os.path.isfile(source) else 'N/A'
-        logger.debug(f"Moving file {i:,} of {n_files:,}: '{source}' -> '{target}' ({size_str})")
+        size = (
+            source.cached_stats.st_size
+            if (isinstance(source, CstmPath) and source.has_cached_stats)
+            else get_size(source)
+        )
+        logger.debug(f"Moving file {i:,} of {n_files:,}: '{source}' -> '{target}' ({format_size(size)})")
         robust_move(
             source,
             target,
@@ -688,10 +693,11 @@ class SyncDirs:
                 target.refresh_stats()
         if self.increment_mirror:
             self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
-        return True, 0
+        return True, size
 
     def _delete_file(self, path: CstmPath | str, i: int, n_files: int) -> tuple[bool, int | float]:
-        logger.debug(f"Deleting file {i:,} of {n_files:,}: '{path}' ({get_size_as_str(str(path))})")
+        size = path.cached_stats.st_size if (isinstance(path, CstmPath) and path.has_cached_stats) else get_size(path)
+        logger.debug(f"Deleting file {i:,} of {n_files:,}: '{path}' ({format_size(size)})")
 
         try:
             dir_pair = get_dirs_from_path(path, self.dirs or [])
@@ -699,7 +705,7 @@ class SyncDirs:
             logger.error(f"Could not identify root directory for deletion target '{path}': {e}")
             return False, 0
 
-        if not os.path.isfile(path):
+        if not os.path.lexists(path):
             logger.warning(f"Skipping deletion of file because it is already missing: '{path}'")
             try:
                 if self.increment_mirror:
@@ -716,7 +722,7 @@ class SyncDirs:
         )
         if self.increment_mirror:
             self.mirror.remove_path(root_dir=dir_pair.target, path=path)
-        return True, 0
+        return True, size
 
     def copy_files(self):
         self.files_copied = []
@@ -740,8 +746,8 @@ class SyncDirs:
             return
 
         # Protected root folders that must never be removed
-        protected_roots = {_to_path(dir_pair.target) for dir_pair in self.dirs}
-        protected_roots.update({_to_path(dir_pair.source) for dir_pair in self.dirs})
+        protected_roots = {_to_path(dir_pair.target) for dir_pair in (self.dirs or [])}
+        protected_roots.update({_to_path(dir_pair.source) for dir_pair in (self.dirs or [])})
 
         relevant_dirs = set(os.path.dirname(f) for f in removed_files)
         # Sort by length to remove subdirectories first
@@ -749,7 +755,7 @@ class SyncDirs:
         logger.info('Deleting empty directories from folders where files were deleted or moved from')
 
         for dir_path in relevant_dirs:
-            if self.cancel_requested.is_set():
+            if self.cancel_requested and self.cancel_requested.is_set():
                 logger.info('Directory cleanup aborted due to user cancellation request')
                 break
             current = dir_path
