@@ -157,7 +157,12 @@ class PathsPanel(ttk.LabelFrame):
                 foreground='#1565c0',
             )
 
-        DirectoryPairsModal(self.winfo_toplevel(), self.entry_paths, on_changed=_on_pairs_changed)
+        DirectoryPairsModal(
+            self.winfo_toplevel(),
+            self.entry_paths,
+            on_changed=_on_pairs_changed,
+            health_cache=self._pair_health_cache,
+        )
 
     def run_target_health_check(self):
         """Asynchronously probe all configured paths, check source existence and target free disk space."""

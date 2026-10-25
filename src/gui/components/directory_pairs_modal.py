@@ -1,11 +1,13 @@
 import contextlib
 import os
+import threading
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import filedialog, messagebox, ttk
 
+from gui.health_check import TargetHealth, probe_single_target
 from gui.icons import apply_icon, apply_window_icon
-from gui.widgets import BadgeLabel, DirectoryPair, EntryPaths
+from gui.widgets import BadgeLabel, DirectoryPair, EntryPaths, add_tooltip
 from utils.utils import sanitize_path
 
 
@@ -17,10 +19,12 @@ class DirectoryPairsModal:
         parent: tk.Tk | tk.Toplevel | None,
         entry_paths: EntryPaths,
         on_changed: Callable[[], None] | None = None,
+        health_cache: dict[str, TargetHealth] | None = None,
     ):
         self.parent = parent
         self.entry_paths = entry_paths
         self.on_changed = on_changed
+        self._health_cache: dict[str, TargetHealth] = health_cache if health_cache is not None else {}
 
         self.window = tk.Toplevel(parent)
         self.window.title('Directory Backup Pairs Manager')
@@ -113,23 +117,42 @@ class DirectoryPairsModal:
         apply_icon(self.btn_remove, 'trash')
         self.btn_remove.pack(side='left', padx=4)
 
-        self.btn_explorer = ttk.Button(
+        self.btn_open_source = ttk.Button(
             toolbar,
-            text='Explorer',
-            command=self._handle_open_explorer,
-            width=12,
+            text='Open Source',
+            command=self._handle_open_source,
+            width=13,
         )
-        apply_icon(self.btn_explorer, 'folder')
-        self.btn_explorer.pack(side='left', padx=4)
+        apply_icon(self.btn_open_source, 'folder')
+        self.btn_open_source.pack(side='left', padx=4)
+        add_tooltip(self.btn_open_source, 'Open source directory in Windows File Explorer')
+
+        self.btn_open_target = ttk.Button(
+            toolbar,
+            text='Open Target',
+            command=self._handle_open_target,
+            width=13,
+        )
+        apply_icon(self.btn_open_target, 'folder')
+        self.btn_open_target.pack(side='left', padx=4)
+        add_tooltip(self.btn_open_target, 'Open target directory or network share in Windows File Explorer')
+
+        # Backward compatibility alias
+        self.btn_explorer = self.btn_open_source
 
         self.btn_probe = ttk.Button(
             toolbar,
-            text='Check Status',
-            command=self._handle_check_status,
-            width=14,
+            text='Health Check',
+            command=self._handle_health_check,
+            width=15,
         )
         apply_icon(self.btn_probe, 'pulse')
         self.btn_probe.pack(side='left', padx=4)
+        add_tooltip(self.btn_probe, 'Probe reachability and status for all directory pairs')
+
+        # Backward compatibility aliases
+        self.btn_health_check = self.btn_probe
+        self._handle_check_status = self._handle_health_check
 
         # 3. Treeview Table
         table_frame = ttk.Frame(self.window, padding=(12, 0, 12, 6))
@@ -152,15 +175,21 @@ class DirectoryPairsModal:
         self.tree.heading('status', text='Status')
 
         self.tree.column('idx', width=40, anchor='center', stretch=False)
-        self.tree.column('source', width=310, anchor='w', stretch=True)
-        self.tree.column('target', width=310, anchor='w', stretch=True)
-        self.tree.column('status', width=120, anchor='center', stretch=False)
+        self.tree.column('source', width=300, anchor='w', stretch=True)
+        self.tree.column('target', width=300, anchor='w', stretch=True)
+        self.tree.column('status', width=140, anchor='center', stretch=False)
+
+        # Row status styling tags
+        self.tree.tag_configure('status_online', foreground='#2e7d32')
+        self.tree.tag_configure('status_error', foreground='#c62828')
+        self.tree.tag_configure('status_warning', foreground='#e65100')
 
         vsb = ttk.Scrollbar(table_frame, orient='vertical', command=self.tree.yview)
         vsb.grid(row=0, column=1, sticky='ns')
         self.tree.configure(yscrollcommand=vsb.set)
 
         self.tree.bind('<Double-1>', lambda e: self._handle_edit_pair())
+        self.tree.bind('<Button-3>', self._show_context_menu)
 
         # 4. Bottom Footer & Apply
         footer = ttk.Frame(self.window, padding=(12, 8, 12, 12))
@@ -190,16 +219,28 @@ class DirectoryPairsModal:
         self.tree.delete(*self.tree.get_children())
         for idx, (src, tgt) in enumerate(self._pairs, start=1):
             status = '🟢 Online'
+            tag = 'status_online'
             if not os.path.exists(src):
                 status = '🔴 Missing Src'
+                tag = 'status_error'
             elif not os.path.isdir(src):
                 status = '⚠️ Src Not Dir'
+                tag = 'status_warning'
+            elif tgt in self._health_cache:
+                th = self._health_cache[tgt]
+                if not th.is_online:
+                    status = '🔴 Target Offline'
+                    tag = 'status_error'
+                elif th.warning:
+                    status = f'🟡 Low Space ({th.free_str})'
+                    tag = 'status_warning'
 
             self.tree.insert(
                 '',
                 'end',
                 iid=str(idx - 1),
                 values=(idx, src, tgt, status),
+                tags=(tag,),
             )
         self.lbl_stats.config(text=f'{len(self._pairs)} configured pairs')
 
@@ -232,16 +273,17 @@ class DirectoryPairsModal:
             self._populate_table()
             self.lbl_msg.config(text=f'Removed pair #{idx + 1}. Remember to click "Apply Changes".')
 
-    def _handle_open_explorer(self):
-        selected = self.tree.selection()
-        if not selected:
+    def _open_directory(self, target_to_open: str, side_label: str):
+        """Open the given path in Windows File Explorer with error handling."""
+        if not target_to_open or not target_to_open.strip():
             messagebox.showinfo(
-                'Selection Required', 'Please select a directory pair to open in Explorer.', parent=self.window
+                'Invalid Path',
+                f'No valid {side_label.lower()} directory path specified.',
+                parent=self.window,
             )
             return
-        idx = int(selected[0])
-        src, tgt = self._pairs[idx]
-        target_to_open = src if os.path.exists(src) else tgt
+
+        target_to_open = target_to_open.strip().strip('"\'')
         if os.path.exists(target_to_open):
             try:
                 if hasattr(os, 'startfile'):
@@ -251,15 +293,157 @@ class DirectoryPairsModal:
 
                     subprocess.Popen(['explorer', target_to_open])
             except Exception as e:
-                messagebox.showerror('Explorer Error', f'Could not open directory: {e}', parent=self.window)
+                messagebox.showerror(
+                    'Explorer Error',
+                    f'Could not open {side_label.lower()} directory: {e}',
+                    parent=self.window,
+                )
         else:
             messagebox.showerror(
-                'Not Found', f'Directory does not exist on disk:\n{target_to_open}', parent=self.window
+                'Not Found',
+                f'{side_label} directory does not exist or is unreachable:\n\n{target_to_open}',
+                parent=self.window,
             )
 
-    def _handle_check_status(self):
-        self._populate_table()
-        self.lbl_msg.config(text='Updated directory reachability and status.')
+    def _get_selected_pair(self) -> tuple[int, str, str] | None:
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showinfo('Selection Required', 'Please select a directory pair first.', parent=self.window)
+            return None
+        try:
+            idx = int(selected[0])
+            if 0 <= idx < len(self._pairs):
+                src, tgt = self._pairs[idx]
+                return idx, src, tgt
+        except (ValueError, IndexError):
+            pass
+        return None
+
+    def _handle_open_source(self):
+        pair = self._get_selected_pair()
+        if pair:
+            _, src, _ = pair
+            self._open_directory(src, 'Source')
+
+    def _handle_open_target(self):
+        pair = self._get_selected_pair()
+        if pair:
+            _, _, tgt = pair
+            self._open_directory(tgt, 'Target')
+
+    def _handle_open_explorer(self):
+        """Backwards compatibility: opens source directory."""
+        self._handle_open_source()
+
+    def _show_context_menu(self, event: tk.Event):
+        """Show right-click context menu for the clicked directory pair row."""
+        row_id = self.tree.identify_row(event.y)
+        if not row_id:
+            return
+
+        self.tree.selection_set(row_id)
+        selected = self.tree.selection()
+        if not selected:
+            return
+
+        try:
+            idx = int(selected[0])
+            if not (0 <= idx < len(self._pairs)):
+                return
+        except (ValueError, IndexError):
+            return
+
+        menu = tk.Menu(self.window, tearoff=0)
+        menu.add_command(label='📂 Open Source in Explorer', command=self._handle_open_source)
+        menu.add_command(label='📂 Open Target in Explorer', command=self._handle_open_target)
+        menu.add_separator()
+        menu.add_command(label='✏️ Edit Pair...', command=self._handle_edit_pair)
+        menu.add_command(label='🗑️ Remove Pair', command=self._handle_remove_pair)
+        menu.add_separator()
+        menu.add_command(label='🩺 Health Check (All Pairs)', command=self._handle_health_check)
+
+        with contextlib.suppress(Exception):
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def _handle_health_check(self):
+        """Asynchronously probe all directory pairs (sources and targets), not only selected ones."""
+        if not self._pairs:
+            self.lbl_msg.config(text='No directory pairs configured to check.', foreground='#e65100')
+            return
+
+        total_pairs = len(self._pairs)
+        self.lbl_msg.config(
+            text=f'⏳ Health Check: Scanning all {total_pairs} directory pairs...',
+            foreground='#1565c0',
+        )
+        self.btn_probe.config(state='disabled')
+
+        pairs_to_check = list(self._pairs)
+
+        def _worker(*_args):
+            results = []
+            for idx, (src, tgt) in enumerate(pairs_to_check, start=1):
+                src_exists = os.path.exists(src)
+                src_isdir = os.path.isdir(src) if src_exists else False
+                tgt_health = probe_single_target(tgt)
+                self._health_cache[tgt] = tgt_health
+
+                if not src_exists:
+                    status = '🔴 Missing Src'
+                    tag = 'status_error'
+                    is_online = False
+                elif not src_isdir:
+                    status = '⚠️ Src Not Dir'
+                    tag = 'status_warning'
+                    is_online = False
+                elif not tgt_health.is_online:
+                    status = '🔴 Target Offline'
+                    tag = 'status_error'
+                    is_online = False
+                elif tgt_health.warning:
+                    status = f'🟡 Low Space ({tgt_health.free_str})'
+                    tag = 'status_warning'
+                    is_online = True
+                else:
+                    status = '🟢 Online'
+                    tag = 'status_online'
+                    is_online = True
+
+                results.append((idx - 1, idx, src, tgt, status, tag, is_online))
+
+            def _update_ui():
+                try:
+                    if not self.window.winfo_exists():
+                        return
+                    self.btn_probe.config(state='normal')
+                    for iid_int, idx, src, tgt, status, tag, _ in results:
+                        iid = str(iid_int)
+                        if self.tree.exists(iid):
+                            self.tree.item(iid, values=(idx, src, tgt, status), tags=(tag,))
+
+                    online_count = sum(1 for r in results if r[6])
+                    if online_count == total_pairs:
+                        self.lbl_msg.config(
+                            text=f'🟢 Health Check: All {online_count} directory pairs online and healthy.',
+                            foreground='#2e7d32',
+                        )
+                    else:
+                        offline_count = total_pairs - online_count
+                        msg = (
+                            f'🔴 Health Check: {online_count}/{total_pairs} online '
+                            f'({offline_count} unreachable/missing).'
+                        )
+                        self.lbl_msg.config(
+                            text=msg,
+                            foreground='#c62828',
+                        )
+                except Exception:
+                    pass
+
+            with contextlib.suppress(Exception):
+                self.window.after(0, _update_ui)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _open_pair_editor(self, default_src: str | None, default_tgt: str | None, edit_idx: int | None):
         dialog = tk.Toplevel(self.window)

@@ -78,6 +78,7 @@ class LogPanel(ttk.LabelFrame):
             command=self.clear_log,
             width=8,
         )
+        add_tooltip(self.btn_clear, 'Clear all activity log messages')
         self.btn_clear.pack(side='right', padx=2)
 
         self.btn_copy = ttk.Button(
@@ -305,7 +306,18 @@ class LogPanel(ttk.LabelFrame):
         except Exception as e:
             messagebox.showerror('Log Folder Error', f'Could not open log folder: {e}')
 
-    def clear_log(self):
+    def clear_log(self, confirm: bool = True):
+        """Clear all messages from the log console, prompting for user confirmation if logs exist."""
+        if not self.text_logger.lines and not self.text_logger.get('1.0', tk.END).strip():
+            return
+
+        if confirm and not messagebox.askyesno(
+            'Clear Log',
+            'Are you sure you want to clear the activity log?',
+            parent=self.winfo_toplevel(),
+        ):
+            return
+
         self.text_logger.configure(state=TkinterCfgState.NORMAL.value)
         self.text_logger.delete('1.0', tk.END)
         self.text_logger.lines.clear()

@@ -348,7 +348,7 @@ def test_actions_panel_interactions():
     root.destroy()
 
 
-def test_log_panel_clear_and_styling():
+def test_log_panel_clear_and_styling(monkeypatch):
     try:
         root = tk.Tk()
         root.withdraw()
@@ -361,6 +361,7 @@ def test_log_panel_clear_and_styling():
     log_panel.text_logger.insert('info line', 'INFO')
     assert 'info line' in log_panel.text_logger.get('1.0', tk.END)
 
+    monkeypatch.setattr('tkinter.messagebox.askyesno', lambda *args, **kwargs: True)
     log_panel.clear_log()
     assert log_panel.text_logger.get('1.0', tk.END).strip() == ''
     assert len(log_panel.text_logger.lines) == 0
@@ -405,7 +406,7 @@ def test_log_panel_export_and_open_folder(tmp_path, monkeypatch):
     root.destroy()
 
 
-def test_log_panel_severity_counters():
+def test_log_panel_severity_counters(monkeypatch):
     try:
         root = tk.Tk()
         root.withdraw()
@@ -428,10 +429,65 @@ def test_log_panel_severity_counters():
     assert 'Errors: 1' in log_panel.lbl_stat_error.cget('text')
 
     # Test clear_log resets counts
+    monkeypatch.setattr('tkinter.messagebox.askyesno', lambda *args, **kwargs: True)
     log_panel.clear_log()
     assert 'Info: 0' in log_panel.lbl_stat_info.cget('text')
     assert 'Warnings: 0' in log_panel.lbl_stat_warning.cget('text')
     assert 'Errors: 0' in log_panel.lbl_stat_error.cget('text')
+
+    root.destroy()
+
+
+def test_log_panel_clear_confirmation(monkeypatch):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.log_panel import LogPanel
+
+    log_panel = LogPanel(root)
+
+    # 1. When empty, clearing does not prompt for confirmation
+    prompt_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        'tkinter.messagebox.askyesno',
+        lambda title, msg, **kwargs: prompt_calls.append((title, msg)) or True,
+    )
+    log_panel.clear_log()
+    assert len(prompt_calls) == 0
+
+    # 2. When logs exist, declining keeps logs
+    log_panel.text_logger.insert('Preserved log line', 'INFO')
+    monkeypatch.setattr('tkinter.messagebox.askyesno', lambda *args, **kwargs: False)
+    log_panel.clear_log()
+    assert 'Preserved log line' in log_panel.text_logger.get('1.0', tk.END)
+    assert len(log_panel.text_logger.lines) == 1
+
+    # 3. When logs exist, confirming clears logs
+    monkeypatch.setattr('tkinter.messagebox.askyesno', lambda *args, **kwargs: True)
+    log_panel.clear_log()
+    assert log_panel.text_logger.get('1.0', tk.END).strip() == ''
+    assert len(log_panel.text_logger.lines) == 0
+
+    # 4. Button click invokes confirmation
+    log_panel.text_logger.insert('Button click test', 'WARNING')
+    button_prompts: list[tuple[str, str]] = []
+
+    def mock_askyesno(title, msg, **kwargs):
+        button_prompts.append((title, msg))
+        return False
+
+    monkeypatch.setattr('tkinter.messagebox.askyesno', mock_askyesno)
+    log_panel.btn_clear.invoke()
+    assert len(button_prompts) == 1
+    assert 'Clear Log' in button_prompts[0][0]
+    assert 'Button click test' in log_panel.text_logger.get('1.0', tk.END)
+
+    # 5. Direct clear without confirm (confirm=False)
+    log_panel.clear_log(confirm=False)
+    assert log_panel.text_logger.get('1.0', tk.END).strip() == ''
 
     root.destroy()
 
@@ -960,7 +1016,7 @@ def test_text_logger_insert_batch_and_o1_line_check():
     root.destroy()
 
 
-def test_directory_pairs_modal_and_syntax_highlighting(tmp_path):
+def test_directory_pairs_modal_and_syntax_highlighting(tmp_path, monkeypatch):
     """Verify EntryPaths syntax tags and DirectoryPairsModal workflow."""
     try:
         root = tk.Tk()
@@ -991,6 +1047,17 @@ def test_directory_pairs_modal_and_syntax_highlighting(tmp_path):
     assert len(modal._pairs) == 1
     assert modal.tree.get_children()
 
+    # Health Check button verification
+    assert modal.btn_probe.cget('text') == 'Health Check'
+    assert modal.btn_health_check is modal.btn_probe
+    assert str(modal.tree.tag_configure('status_online', 'foreground')) == '#2e7d32'
+    assert str(modal.tree.tag_configure('status_error', 'foreground')) == '#c62828'
+    assert str(modal.tree.tag_configure('status_warning', 'foreground')) == '#e65100'
+
+    # Verify first item has green online status tag
+    first_item_tags = modal.tree.item('0', 'tags')
+    assert 'status_online' in first_item_tags
+
     # Add a second pair
     src_dir2 = tmp_path / 'source2'
     src_dir2.mkdir()
@@ -999,6 +1066,47 @@ def test_directory_pairs_modal_and_syntax_highlighting(tmp_path):
     modal._pairs.append((str(src_dir2), str(tgt_dir2)))
     modal._populate_table()
     assert len(modal.tree.get_children()) == 2
+    assert 'status_online' in modal.tree.item('1', 'tags')
+
+    # Test Open Source, Open Target, and context menu
+    opened_paths: list[str] = []
+    if hasattr(os, 'startfile'):
+        monkeypatch.setattr(os, 'startfile', lambda p: opened_paths.append(p))
+
+    modal.tree.selection_set('0')
+    modal._handle_open_source()
+    if hasattr(os, 'startfile'):
+        assert str(src_dir) in opened_paths
+
+    modal._handle_open_target()
+    if hasattr(os, 'startfile'):
+        assert str(tgt_dir) in opened_paths
+
+    # Test Health Check scanning all pairs (not only selected)
+    modal.tree.selection_set('0')  # Only row 0 is selected
+    # Mock threading.Thread to run synchronously for deterministic test
+    import threading
+
+    def _make_dummy_thread(target, **kw):
+        return type('DummyThread', (), {'start': lambda self: target()})()
+
+    monkeypatch.setattr(threading, 'Thread', _make_dummy_thread)
+    modal._handle_health_check()
+    root.update()
+
+    # Both row 0 and row 1 should be scanned and updated
+    assert 'status_online' in modal.tree.item('0', 'tags')
+    assert 'status_online' in modal.tree.item('1', 'tags')
+
+    monkeypatch.setattr(tk.Menu, 'tk_popup', lambda *args, **kwargs: None)
+
+    class DummyEvent:
+        x = 50
+        y = 10
+        x_root = 100
+        y_root = 100
+
+    modal._show_context_menu(DummyEvent())
 
     modal._apply_and_close()
     assert len(ep.get()) == 2
