@@ -174,4 +174,18 @@ def create_windows_shortcut(
                 with contextlib.suppress(OSError):
                     legacy_path.unlink()
 
+        # Remove legacy pre-rename 'Automatic Backup.lnk' if present on the active desktop
+        legacy_backup = target_dir / 'Automatic Backup.lnk'
+        if legacy_backup.is_file():
+            with contextlib.suppress(OSError):
+                legacy_backup.unlink()
+
+    # Notify Windows Shell to invalidate icon cache and refresh desktop / explorer display
+    with contextlib.suppress(Exception):
+        import ctypes
+
+        if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'shell32'):
+            # SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST = 0
+            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)
+
     return str(shortcut_path)
