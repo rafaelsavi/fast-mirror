@@ -1859,7 +1859,7 @@ def test_confirmation_popup_move_and_delete_sizes_and_dash_for_missing_paths(tmp
         # 4. Verify DELETE
         del_data = tree._data[Action.DELETE]
         del_row = list(del_data.values())[0]
-        assert del_row['source'] == '(none)'
+        assert del_row['source'] == '-'
         assert del_row['size (source)'] == '-'
         assert del_row['modification date (source)'] == '-'
         assert del_row['size (target)'] == '8.00KB'
@@ -1928,3 +1928,51 @@ def test_format_size_and_get_size_robustness(tmp_path):
     assert get_size(Path(f)) == 512
     assert get_size(CstmPath(f)) == 512
     assert get_size([f, Path(f)]) == 1024
+
+
+def test_deletion_unknown_sizes_and_dash_source_display(tmp_path):
+    """Verify that deletions with unknown sizes display '-' rather than false '0.00KB' and '-' for source."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        # Remote UNC paths without cached stats
+        unc_files = [
+            CstmPath(f'\\\\192.168.1.100\\Share\\file_{i}.txt', root_dir='\\\\192.168.1.100\\Share')
+            for i in range(3)
+        ]
+
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[],
+            files_available_to_move=[],
+            files_available_to_delete=unc_files,
+            default_actions=[Action.DELETE],
+        )
+        try:
+            tree = popup.tree
+            del_data = tree._data[Action.DELETE]
+            assert len(del_data) == 3
+
+            for row in del_data.values():
+                assert row['source'] == '-'
+                assert row['size (source)'] == '-'
+                assert row['size (target)'] == '-'
+                assert row['modification date (source)'] == '-'
+                assert row['size in bytes'] == 0
+
+            # Verify group text displays 'delete - (3 of 3)' instead of 'delete 0.00KB (3 of 3)'
+            group_text = tree.item(Action.DELETE.value, 'text')
+            assert 'delete - (3 of 3)' in group_text
+
+            # Verify banner badge displays '🔴 Delete: 3 files (-)' instead of '(0.00KB)'
+            banner_text = popup.lbl_stat_delete.cget('text')
+            assert banner_text == '🔴 Delete: 3 files (-)'
+        finally:
+            popup.popup.destroy()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

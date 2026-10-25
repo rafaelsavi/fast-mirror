@@ -99,7 +99,13 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             if not all(isinstance(size, int | float) for size in size_list):
                 raise TypeError('All elements in size_list must be numbers')
 
-            selected_size = format_size(sum(size_list))  # type: ignore[arg-type]
+            # If all selected items have unknown sizes ('-'), display '-' instead of misleading '0.00KB'
+            size_key = 'size (target)' if action_enum == Action.DELETE else 'size (source)'
+            has_known = any(action_data[x].get(size_key) != '-' for x in selected_lines if x in action_data)
+            selected_size = (
+                '-' if (not has_known and selected_number > 0) else format_size(sum(size_list))  # type: ignore[arg-type]
+            )
+
             # Maintain exact substring format expected by existing tests: '<action> <size> (<X> of <Y>)'
             if self.exists(action_str):
                 self.item(action_str, text=f'{action_str} {selected_size} ({selected_number} of {n_children})')
@@ -273,7 +279,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         # Context-aware adjustments based on action type
         if action == Action.DELETE:
-            src_str = '(none)'
+            src_str = '-'
             src_size_str = '-'
             src_mtime_str = '-'
             size_bytes = tgt_bytes
@@ -775,7 +781,7 @@ class FileDetailsDialog:
         lbl_path = ttk.Label(parent, text='Full Path:', font=('Segoe UI', 9, 'bold'))
         lbl_path.grid(row=0, column=0, sticky='w', pady=2)
 
-        path_display = path if path else '(none)'
+        path_display = path if (path and path not in ('-', '(none)')) else '-'
         entry_path = ttk.Entry(parent, font=('Segoe UI', 9))
         entry_path.insert(0, path_display)
         entry_path.configure(state='readonly')
@@ -809,7 +815,7 @@ class FileDetailsDialog:
         lbl_dir.grid(row=1, column=0, sticky='w', pady=2)
 
         entry_dir = ttk.Entry(parent, font=('Segoe UI', 9))
-        entry_dir.insert(0, parent_dir if parent_dir else '(none)')
+        entry_dir.insert(0, parent_dir if (parent_dir and parent_dir not in ('-', '(none)')) else '-')
         entry_dir.configure(state='readonly')
         entry_dir.grid(row=1, column=1, sticky='ew', padx=(6, 6), pady=2)
 
@@ -936,13 +942,13 @@ class FileDetailsDialog:
             f'File: {self.filename}\n'
             f'Status: {"Selected" if self.is_checked else "Excluded"}\n'
             f'----------------------------------------\n'
-            f'Source Path: {self.source_path or "(none)"}\n'
-            f'Source Directory: {os.path.dirname(self.source_path) if self.source_path else "(none)"}\n'
+            f'Source Path: {self.source_path or "-"}\n'
+            f'Source Directory: {os.path.dirname(self.source_path) if self.source_path else "-"}\n'
             f'Source Size: {self.row_data.get("size (source)", "-")}\n'
             f'Source Modified: {self.row_data.get("modification date (source)", "-")}\n'
             f'----------------------------------------\n'
-            f'Target Path: {self.target_path or "(none)"}\n'
-            f'Target Directory: {os.path.dirname(self.target_path) if self.target_path else "(none)"}\n'
+            f'Target Path: {self.target_path or "-"}\n'
+            f'Target Directory: {os.path.dirname(self.target_path) if self.target_path else "-"}\n'
             f'Target Size: {self.row_data.get("size (target)", "-")}\n'
             f'Target Modified: {self.row_data.get("modification date (target)", "-")}\n'
             f'----------------------------------------\n'
@@ -1521,10 +1527,10 @@ class ActionSelection:
             f'Action: {action.value.upper()}',
             f'File: {fname}',
             f'Status: {"Selected for sync" if is_chk else "Excluded (unchecked)"}',
-            f'Source Path: {source_path or "(none)"}',
+            f'Source Path: {source_path or "-"}',
             f'Source Size: {row_data.get("size (source)", "-")}',
             f'Source Modified: {row_data.get("modification date (source)", "-")}',
-            f'Target Path: {target_path or "(none)"}',
+            f'Target Path: {target_path or "-"}',
             f'Target Size: {row_data.get("size (target)", "-")}',
             f'Target Modified: {row_data.get("modification date (target)", "-")}',
         ]
@@ -1957,8 +1963,8 @@ class ActionSelection:
         elif '::' in item_id:
             parts = item_id.split('::', 2)
             if len(parts) >= 3:
-                source_path = parts[1] if parts[1] else '(none)'
-                target_path = parts[2] if parts[2] else '(none)'
+                source_path = parts[1] if (parts[1] and parts[1] not in ('-', '(none)')) else ''
+                target_path = parts[2] if (parts[2] and parts[2] not in ('-', '(none)')) else ''
                 with contextlib.suppress(Exception):
                     action = Action(parts[0])
         else:
@@ -1970,11 +1976,13 @@ class ActionSelection:
             self.lbl_inspector_tgt_meta.config(text='')
             return
 
-        self.lbl_inspector_source.config(text=source_path if source_path else '(none)')
-        self.lbl_inspector_target.config(text=target_path if target_path else '(none)')
+        display_src = source_path if (source_path and source_path not in ('-', '(none)')) else '-'
+        display_tgt = target_path if (target_path and target_path not in ('-', '(none)')) else '-'
+        self.lbl_inspector_source.config(text=display_src)
+        self.lbl_inspector_target.config(text=display_tgt)
 
         # Determine file type badge
-        inspect_path = source_path if (source_path and source_path != '(none)') else target_path
+        inspect_path = source_path if (source_path and source_path not in ('-', '(none)')) else target_path
         icon, cat = get_file_type_badge(inspect_path)
         self.lbl_inspector_badge.config(text=f'{icon} {cat}')
 
@@ -1989,12 +1997,12 @@ class ActionSelection:
             tgt_sz = str(row_data.get('size (target)', ''))
             tgt_dt = str(row_data.get('modification date (target)', ''))
 
-            if source_path in ('(none)', '', None):
+            if source_path in ('-', '(none)', '', None):
                 src_meta = 'Size: -  •  Modified: -'
             elif src_sz or src_dt:
                 src_meta = f'Size: {src_sz or "-"}  •  Modified: {src_dt or "-"}'
 
-            if target_path in ('(none)', '', None):
+            if target_path in ('-', '(none)', '', None):
                 tgt_meta = 'Size: -  •  Modified: -'
             elif tgt_sz or tgt_dt:
                 tgt_meta = f'Size: {tgt_sz or "-"}  •  Modified: {tgt_dt or "-"}'
@@ -2003,7 +2011,11 @@ class ActionSelection:
             tgt_bytes = float(row_data.get('bytes (target)', 0) or 0)
 
             if action == Action.DELETE:
-                diff_text = f'⚠️ File will be removed from target ({tgt_sz})'
+                diff_text = (
+                    f'⚠️ File will be removed from target ({tgt_sz})'
+                    if tgt_sz != '-'
+                    else '⚠️ File will be removed from target'
+                )
             elif action == Action.MOVE:
                 diff_text = f'🔄 File will be moved/renamed at destination ({src_sz})'
             elif tgt_sz == '-' or tgt_dt in ('-', '', None):
@@ -2031,9 +2043,20 @@ class ActionSelection:
         move_count, move_bytes = self.tree.get_action_stats(Action.MOVE)
         del_count, del_bytes = self.tree.get_action_stats(Action.DELETE)
 
-        self.lbl_stat_copy.config(text=f'🟢 Copy: {copy_count} files ({format_size(copy_bytes)})')
-        self.lbl_stat_move.config(text=f'🔵 Move: {move_count} files ({format_size(move_bytes)})')
-        self.lbl_stat_delete.config(text=f'🔴 Delete: {del_count} files ({format_size(del_bytes)})')
+        def _format_badge(action: Action, count: int, bytes_val: int | float, icon: str) -> str:
+            name = action.value.capitalize()
+            if count == 0:
+                return f'{icon} {name}: 0 files (0 B)'
+            action_data = self.tree._data.get(action, {})
+            checked = getattr(self.tree, '_cached_checked_by_action', {}).get(action.value, [])
+            size_key = 'size (target)' if action == Action.DELETE else 'size (source)'
+            has_known = any(action_data[x].get(size_key) != '-' for x in checked if x in action_data)
+            size_str = format_size(bytes_val) if has_known else '-'
+            return f'{icon} {name}: {count} files ({size_str})'
+
+        self.lbl_stat_copy.config(text=_format_badge(Action.COPY, copy_count, copy_bytes, '🟢'))
+        self.lbl_stat_move.config(text=_format_badge(Action.MOVE, move_count, move_bytes, '🔵'))
+        self.lbl_stat_delete.config(text=_format_badge(Action.DELETE, del_count, del_bytes, '🔴'))
 
     def _on_category_chip_clicked(self, cat: str):
         self.active_category = cat

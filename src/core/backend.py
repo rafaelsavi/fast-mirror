@@ -327,6 +327,13 @@ class CompareDirs:
         These are files that only exist in target
         """
         self.files_to_delete = list(sorted([f.target for f in self.linked_files if f.only_target]))
+        # Lightweight stat enrichment on the background thread for small deletion sets (<= 50 files)
+        # to ensure metadata is visible in confirmation dialog without heavy network query overhead.
+        if len(self.files_to_delete) <= 50:
+            for tgt in self.files_to_delete:
+                if isinstance(tgt, CstmPath) and not tgt.has_cached_stats:
+                    with contextlib.suppress(Exception):
+                        tgt.refresh_stats()
 
     def _save_report(self):
         logger.info('Loading data to create comparison report (ignoring files in both that are the same)')
