@@ -241,6 +241,8 @@ class CompareDirs:
                     target_file = target_filenames[source_file.name]
                     success, same = compare_files(source_file, target_file, comparison_method=self.comparison_method)
                     if success and same:
+                        if not target_file.has_cached_stats and source_file.has_cached_stats:
+                            target_file.copy_stats_from(source_file)
                         linked_files.append(
                             File(source=source_file, target=target_file, compare_success=success, same=same)
                         )

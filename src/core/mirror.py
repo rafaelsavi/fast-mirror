@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from os import PathLike
 from pathlib import Path
 
-from core.file import CstmPath, CstmPathType, StatsHash, get_stats_hash
+from core.file import CstmPath, CstmPathType, Stats, StatsHash, get_stats_hash
 from utils.constants import LOCAL_MIRROR_PATH
 from utils.logger import logger
 from utils.utils import log_progress, sanitize_path
@@ -50,10 +50,18 @@ class MirrorDatabase:
                         root_dir TEXT NOT NULL,
                         rel_path TEXT NOT NULL,
                         stats_hash TEXT NOT NULL,
+                        size INTEGER,
+                        mtime REAL,
                         PRIMARY KEY (root_dir, rel_path)
                     );
                 """)
                 conn.execute('CREATE INDEX IF NOT EXISTS idx_mirror_root ON mirror_cache(root_dir);')
+                # Automatic column migration for existing databases
+                columns = [col[1] for col in conn.execute('PRAGMA table_info(mirror_cache);').fetchall()]
+                if 'size' not in columns:
+                    conn.execute('ALTER TABLE mirror_cache ADD COLUMN size INTEGER;')
+                if 'mtime' not in columns:
+                    conn.execute('ALTER TABLE mirror_cache ADD COLUMN mtime REAL;')
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS mirror_metadata (
                         root_dir TEXT PRIMARY KEY,
@@ -190,7 +198,7 @@ class MirrorDatabase:
         try:
             with self._get_connection() as conn:
                 cursor = conn.execute(
-                    'SELECT rel_path, stats_hash FROM mirror_cache WHERE root_dir = ?;',
+                    'SELECT rel_path, stats_hash, size, mtime FROM mirror_cache WHERE root_dir = ?;',
                     (root_str,),
                 )
                 return {
@@ -198,8 +206,9 @@ class MirrorDatabase:
                         self._to_full_path(root_str, rel_path),
                         root_dir=root_str,
                         stats_hash=StatsHash(stats_hash),
+                        stats=Stats(size, mtime) if (size is not None and mtime is not None) else None,
                     )
-                    for rel_path, stats_hash in cursor
+                    for rel_path, stats_hash, size, mtime in cursor
                 }
         except Exception as e:
             logger.warning(f'Could not open DB to get keys. Exception: {e}')
@@ -225,7 +234,7 @@ class MirrorDatabase:
 
         start_time = time.time()
         number_files = len(items)
-        rows: list[tuple[str, str, str]] = []
+        rows: list[tuple[str, str, str, int | None, float | None]] = []
 
         for i, p in enumerate(items):
             try:
@@ -234,7 +243,10 @@ class MirrorDatabase:
                 stats_hash = getattr(p, '_stats_hash', None) or getattr(p, 'stats_hash', None)
                 if not stats_hash:
                     stats_hash = get_stats_hash(p)
-                rows.append((root_str, rel, str(stats_hash)))
+                st = getattr(p, 'cached_stats', getattr(p, '_stats', None))
+                size_val = st.st_size if st is not None else None
+                mtime_val = st.st_mtime if st is not None else None
+                rows.append((root_str, rel, str(stats_hash), size_val, mtime_val))
                 if number_files > 10_000:
                     log_progress('Prepared', i, number_files, start_time, interval=10_000)
             except Exception as e:
@@ -245,12 +257,14 @@ class MirrorDatabase:
                 saved_hash = conn.execute(
                     'SELECT exclusions_hash FROM mirror_metadata WHERE root_dir = ?;',
                     (root_str,),
-                ).fetchone()
-                if saved_hash and saved_hash[0] != self.exclusions_hash:
+                )
+                saved_hash_row = saved_hash.fetchone() if saved_hash else None
+                if saved_hash_row and saved_hash_row[0] != self.exclusions_hash:
                     conn.execute('DELETE FROM mirror_cache WHERE root_dir = ?;', (root_str,))
 
                 conn.executemany(
-                    'INSERT OR REPLACE INTO mirror_cache (root_dir, rel_path, stats_hash) VALUES (?, ?, ?);',
+                    'INSERT OR REPLACE INTO mirror_cache '
+                    '(root_dir, rel_path, stats_hash, size, mtime) VALUES (?, ?, ?, ?, ?);',
                     rows,
                 )
                 count = conn.execute(
@@ -313,16 +327,28 @@ class MirrorDatabase:
         new_hash = getattr(new_path, '_stats_hash', None) or getattr(new_path, 'stats_hash', None)
         if not new_hash:
             new_hash = get_stats_hash(new_path)
+        new_st = getattr(new_path, 'cached_stats', getattr(new_path, '_stats', None))
+        new_size = new_st.st_size if new_st is not None else None
+        new_mtime = new_st.st_mtime if new_st is not None else None
 
         try:
             with self._get_connection() as conn:
+                if new_size is None and new_mtime is None:
+                    old_row = conn.execute(
+                        'SELECT size, mtime FROM mirror_cache WHERE root_dir = ? AND rel_path = ?;',
+                        (root_str, old_rel),
+                    ).fetchone()
+                    if old_row:
+                        new_size, new_mtime = old_row[0], old_row[1]
+
                 conn.execute(
                     'DELETE FROM mirror_cache WHERE root_dir = ? AND rel_path = ?;',
                     (root_str, old_rel),
                 )
                 conn.execute(
-                    'INSERT OR REPLACE INTO mirror_cache (root_dir, rel_path, stats_hash) VALUES (?, ?, ?);',
-                    (root_str, new_rel, str(new_hash)),
+                    'INSERT OR REPLACE INTO mirror_cache '
+                    '(root_dir, rel_path, stats_hash, size, mtime) VALUES (?, ?, ?, ?, ?);',
+                    (root_str, new_rel, str(new_hash), new_size, new_mtime),
                 )
                 conn.commit()
         except Exception as e:

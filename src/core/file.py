@@ -75,9 +75,36 @@ class CstmPath(Path):
         return str(self._rel_to_root)
 
     @property
+    def has_cached_stats(self) -> bool:
+        """Check if file stats are already cached in memory."""
+        return self._stats is not None
+
+    @property
+    def cached_stats(self) -> Stats | None:
+        """Return cached stats if available without triggering syscalls or network I/O."""
+        return self._stats
+
+    @property
+    def is_new_target(self) -> bool:
+        """Whether this path represents a pending target file that does not exist yet."""
+        return self._is_new_target
+
+    @property
+    def stat_failed(self) -> bool:
+        """Whether stat previously failed or file is known not to exist."""
+        return self._stat_failed
+
+    def copy_stats_from(self, other: 'CstmPath') -> None:
+        """Copy cached stats and stats_hash from another identical CstmPath object."""
+        if getattr(other, '_stats', None) is not None:
+            self._stats = other._stats
+        if getattr(other, '_stats_hash', None) is not None:
+            self._stats_hash = other._stats_hash
+
+    @property
     def stats(self) -> Stats:
         if self._stats is None:
-            if getattr(self, '_stat_failed', False) or getattr(self, '_is_new_target', False):
+            if self._stat_failed or self._is_new_target:
                 raise FileNotFoundError(f'Stats not available for non-existent path: {self}')
             try:
                 self._stats = _get_stats(self)

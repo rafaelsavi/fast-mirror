@@ -229,3 +229,30 @@ def test_cstmpath_refresh_stats_after_overwrite(tmp_path):
     new_stats = cstm_target.refresh_stats()
     assert new_stats.st_size == len('longer content for updated file')
     assert cstm_target.get_st_size() == len('longer content for updated file')
+
+
+def test_cstmpath_stats_encapsulation_and_copy(tmp_path):
+    from core.file import CstmPath, Stats
+
+    file1 = tmp_path / 'file1.txt'
+    file1.write_text('content1')
+
+    # Path with explicit cached stats
+    st = Stats(8, 1000.0)
+    p1 = CstmPath(file1, stats=st)
+    assert p1.has_cached_stats is True
+    assert p1.cached_stats == st
+    assert p1.is_new_target is False
+    assert p1.stat_failed is False
+
+    # New target path
+    p2 = CstmPath('//nas/share/new.txt', is_new_target=True)
+    assert p2.has_cached_stats is False
+    assert p2.cached_stats is None
+    assert p2.is_new_target is True
+    assert p2.stat_failed is True
+
+    # Clean copy_stats_from
+    p2.copy_stats_from(p1)
+    assert p2.has_cached_stats is True
+    assert p2.cached_stats == st

@@ -220,3 +220,74 @@ def test_mirror_saved_when_sync_popup_cancelled(tmp_path, monkeypatch):
     assert mirror.size(str(tgt)) == 1
     paths = {str(p) for p in mirror.get_paths(str(tgt))}
     assert str(tgt / 'existing.txt') in paths
+
+
+def test_mirror_persists_size_and_mtime_and_migration(tmp_path):
+    """Verify that mirror_cache stores and returns size and mtime, and safely migrates legacy databases."""
+    import contextlib
+    import sqlite3
+
+    from core.file import Stats
+
+    db_path = str(tmp_path / 'legacy.db')
+    root_dir = str(tmp_path / 'target')
+    os.makedirs(root_dir, exist_ok=True)
+
+    # 1. Create a legacy table without size and mtime columns
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        conn.execute("""
+            CREATE TABLE mirror_cache (
+                root_dir TEXT NOT NULL,
+                rel_path TEXT NOT NULL,
+                stats_hash TEXT NOT NULL,
+                PRIMARY KEY (root_dir, rel_path)
+            );
+        """)
+        conn.execute(
+            """
+            INSERT INTO mirror_cache (root_dir, rel_path, stats_hash)
+            VALUES (?, ?, ?);
+        """,
+            (root_dir, 'legacy.txt', 'hash123'),
+        )
+        conn.commit()
+
+    # 2. Open with MirrorDatabase - should auto-migrate
+    mirror = MirrorDatabase(path=db_path)
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        cols = [c[1] for c in conn.execute('PRAGMA table_info(mirror_cache);').fetchall()]
+        assert 'size' in cols
+        assert 'mtime' in cols
+
+    # 3. Verify legacy row has NULL stats and cached_stats is None
+    retrieved_legacy = {p.rel_to_root: p for p in mirror.get_paths(root_dir)}
+    assert 'legacy.txt' in retrieved_legacy
+    assert retrieved_legacy['legacy.txt'].cached_stats is None
+
+    # 4. Add path with stats and verify get_paths retrieves size and mtime
+    file_path = os.path.join(root_dir, 'new_file.txt')
+    with open(file_path, 'w') as f:
+        f.write('Hello World')
+
+    cstm_p = CstmPath(file_path, root_dir=root_dir, stats=Stats(1234, 5678.0))
+    # Also test an empty file (0 bytes) with a valid modification timestamp
+    empty_path = os.path.join(root_dir, 'empty.txt')
+    with open(empty_path, 'w') as f:
+        pass
+    cstm_empty = CstmPath(empty_path, root_dir=root_dir, stats=Stats(0, 9999.0))
+
+    mirror.add_path(root_dir, [cstm_p, cstm_empty])
+
+    retrieved = {p.rel_to_root: p for p in mirror.get_paths(root_dir)}
+    assert 'new_file.txt' in retrieved
+    new_cstm = retrieved['new_file.txt']
+    assert new_cstm.cached_stats is not None
+    assert new_cstm.cached_stats.st_size == 1234
+    assert new_cstm.cached_stats.st_mtime == 5678.0
+
+    # Ensure empty file (0 bytes) has its stats preserved and not treated as missing
+    assert 'empty.txt' in retrieved
+    empty_cstm = retrieved['empty.txt']
+    assert empty_cstm.cached_stats is not None
+    assert empty_cstm.cached_stats.st_size == 0
+    assert empty_cstm.cached_stats.st_mtime == 9999.0

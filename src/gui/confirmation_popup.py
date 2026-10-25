@@ -150,7 +150,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             self._data[action] = {}
             for file_entry in file_list:
                 args = (None, file_entry) if isinstance(file_entry, CstmPath) else file_entry
-                values = self.get_row(*args)
+                values = self.get_row(*args, action=action)
                 src_val = str(values['source'])
                 tgt_val = str(values['target'])
                 base_key = f'{action.value}::{src_val}::{tgt_val}'
@@ -232,18 +232,22 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         return checked
 
     @staticmethod
-    def get_row(source: CstmPath | None, target: CstmPath | None) -> dict[str, float | str]:
+    def get_row(
+        source: CstmPath | None, target: CstmPath | None, action: Action | None = None
+    ) -> dict[str, float | str]:
         def _extract_meta(p: CstmPath | None) -> tuple[str, str, int | float, str]:
             if p is None:
-                return ('', '0', 0, '')
+                return ('', '-', 0, '-')
             p_str = str(p)
 
             # Fast-path 1: Known new target that does not exist yet on disk/network
-            if getattr(p, '_is_new_target', False) or getattr(p, '_stat_failed', False):
-                return (p_str, '0', 0, '')
+            is_new = getattr(p, 'is_new_target', getattr(p, '_is_new_target', False))
+            failed = getattr(p, 'stat_failed', getattr(p, '_stat_failed', False))
+            if is_new or failed:
+                return (p_str, '-', 0, '-')
 
             # Fast-path 2: Pre-cached stats in memory (0 syscalls, 0 network calls)
-            cached_st = getattr(p, '_stats', None)
+            cached_st = getattr(p, 'cached_stats', getattr(p, '_stats', None))
             if cached_st is not None:
                 bytes_val = cached_st.st_size
                 size_str = format_size(bytes_val)
@@ -252,7 +256,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
             # Never query remote network UNC paths synchronously on the GUI thread
             if p_str.startswith(r'\\') or p_str.startswith('//'):
-                return (p_str, '0', 0, '')
+                return (p_str, '-', 0, '-')
 
             # Safe local-only query
             try:
@@ -262,11 +266,28 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                 mtime_str = p.to_date_str(st.st_mtime) if hasattr(p, 'to_date_str') else str(st.st_mtime)
                 return (p_str, size_str, bytes_val, mtime_str)
             except Exception:
-                return (p_str, '0', 0, '')
+                return (p_str, '-', 0, '-')
 
         src_str, src_size_str, src_bytes, src_mtime_str = _extract_meta(source)
         tgt_str, tgt_size_str, tgt_bytes, tgt_mtime_str = _extract_meta(target)
-        size_bytes = src_bytes if source is not None else tgt_bytes
+
+        # Context-aware adjustments based on action type
+        if action == Action.DELETE:
+            src_str = '(none)'
+            src_size_str = '-'
+            src_mtime_str = '-'
+            size_bytes = tgt_bytes
+        elif action == Action.MOVE:
+            tgt_size_str = '-'
+            tgt_mtime_str = '-'
+            size_bytes = src_bytes if src_bytes > 0 else tgt_bytes
+        else:
+            # Action.COPY or default
+            size_bytes = src_bytes if source is not None else tgt_bytes
+            target_is_new = getattr(target, 'is_new_target', getattr(target, '_is_new_target', False))
+            if target is not None and target_is_new:
+                tgt_size_str = '-'
+                tgt_mtime_str = '-'
 
         return {
             'source': src_str,
@@ -1952,9 +1973,14 @@ class ActionSelection:
             tgt_sz = str(row_data.get('size (target)', ''))
             tgt_dt = str(row_data.get('modification date (target)', ''))
 
-            if src_sz or src_dt:
+            if source_path in ('(none)', '', None):
+                src_meta = 'Size: -  •  Modified: -'
+            elif src_sz or src_dt:
                 src_meta = f'Size: {src_sz or "-"}  •  Modified: {src_dt or "-"}'
-            if tgt_sz or tgt_dt:
+
+            if target_path in ('(none)', '', None):
+                tgt_meta = 'Size: -  •  Modified: -'
+            elif tgt_sz or tgt_dt:
                 tgt_meta = f'Size: {tgt_sz or "-"}  •  Modified: {tgt_dt or "-"}'
 
             src_bytes = float(row_data.get('bytes (source)', 0) or 0)
@@ -1963,8 +1989,8 @@ class ActionSelection:
             if action == Action.DELETE:
                 diff_text = f'⚠️ File will be removed from target ({tgt_sz})'
             elif action == Action.MOVE:
-                diff_text = '🔄 File will be moved/renamed at destination'
-            elif not tgt_dt or tgt_sz in ('0', '0 B', ''):
+                diff_text = f'🔄 File will be moved/renamed at destination ({src_sz})'
+            elif tgt_sz == '-' or tgt_dt == '-' or tgt_sz in ('0', '0 B', ''):
                 diff_text = f'✨ New file on target • {src_sz}'
             else:
                 parts = []
@@ -1974,7 +2000,7 @@ class ActionSelection:
                     parts.append(f'Size diff: {sign}{format_size(diff_bytes)}')
                 else:
                     parts.append('Identical size')
-                if src_dt and tgt_dt:
+                if src_dt and tgt_dt and src_dt != '-' and tgt_dt != '-':
                     parts.append('Same timestamp' if src_dt == tgt_dt else f'Source: {src_dt}')
                 diff_text = ' • '.join(parts)
         elif action:

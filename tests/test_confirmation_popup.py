@@ -952,8 +952,8 @@ def test_confirmation_popup_no_network_stat_for_new_targets(tmp_path, monkeypatc
         action_data = tree._data[Action.COPY]
         assert len(action_data) == 200
         first_row = list(action_data.values())[0]
-        assert first_row['size (source)'] != '0'
-        assert first_row['size (target)'] == '0'
+        assert first_row['size (source)'] != '-'
+        assert first_row['size (target)'] == '-'
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
@@ -1793,6 +1793,81 @@ def test_file_details_dialog(monkeypatch):
 
         dialog.dialog.destroy()
         del_dialog.dialog.destroy()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_confirmation_popup_move_and_delete_sizes_and_dash_for_missing_paths(tmp_path):
+    """Verify that MOVE and DELETE display correct sizes, and non-existent paths display '-' instead of '0'."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        from core.file import Stats
+
+        # Setup test paths with cached stats
+        copy_src = CstmPath(tmp_path / 'new.txt', stats=Stats(1024, 1000.0))
+        copy_tgt_new = CstmPath('//nas/share/new.txt', is_new_target=True)
+
+        overwrite_src = CstmPath(tmp_path / 'overwrite.txt', stats=Stats(2048, 2000.0))
+        overwrite_tgt = CstmPath('//nas/share/overwrite.txt', stats=Stats(1536, 1500.0))
+
+        move_src = CstmPath('//nas/share/old_loc.txt', stats=Stats(4096, 3000.0))
+        move_tgt = CstmPath('//nas/share/new_loc.txt', is_new_target=True)
+
+        delete_tgt = CstmPath('//nas/share/orphan.txt', stats=Stats(8192, 4000.0))
+
+        tree = CustomCheckboxTreeView(root)
+        tree.add_file_lists(
+            {
+                Action.COPY: [(copy_src, copy_tgt_new), (overwrite_src, overwrite_tgt)],
+                Action.MOVE: [(move_src, move_tgt)],
+                Action.DELETE: [delete_tgt],
+            },
+            default_active=[Action.COPY, Action.MOVE, Action.DELETE],
+        )
+        tree.refresh_group_stats()
+
+        # 1. Verify COPY (first time)
+        copy_data = tree._data[Action.COPY]
+        new_row = [r for r in copy_data.values() if 'new.txt' in str(r['source'])][0]
+        assert new_row['size (source)'] == '1.00KB'
+        assert new_row['size (target)'] == '-'
+        assert new_row['modification date (target)'] == '-'
+
+        # 2. Verify COPY (overwrite)
+        over_row = [r for r in copy_data.values() if 'overwrite.txt' in str(r['source'])][0]
+        assert over_row['size (source)'] == '2.00KB'
+        assert over_row['size (target)'] == '1.50KB'
+        assert over_row['modification date (target)'] != '-'
+
+        # 3. Verify MOVE
+        move_data = tree._data[Action.MOVE]
+        move_row = list(move_data.values())[0]
+        assert move_row['size (source)'] == '4.00KB'
+        assert move_row['size (target)'] == '-'
+        assert move_row['size in bytes'] == 4096
+        move_count, move_bytes = tree.get_action_stats(Action.MOVE)
+        assert move_count == 1
+        assert move_bytes == 4096
+        assert '4.00KB' in tree.item(Action.MOVE.value, 'text')
+
+        # 4. Verify DELETE
+        del_data = tree._data[Action.DELETE]
+        del_row = list(del_data.values())[0]
+        assert del_row['source'] == '(none)'
+        assert del_row['size (source)'] == '-'
+        assert del_row['modification date (source)'] == '-'
+        assert del_row['size (target)'] == '8.00KB'
+        assert del_row['size in bytes'] == 8192
+        del_count, del_bytes = tree.get_action_stats(Action.DELETE)
+        assert del_count == 1
+        assert del_bytes == 8192
+        assert '8.00KB' in tree.item(Action.DELETE.value, 'text')
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
