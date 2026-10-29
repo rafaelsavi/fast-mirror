@@ -1244,7 +1244,6 @@ class FileDetailsDialog:
 FILTER_BTN_PALETTES: dict[str, dict[str, str]] = {
     'all': {
         'inactive_text': 'All',
-        'active_text': '✓ All',
         'inactive_bg': '#ffffff',
         'inactive_fg': '#1e293b',
         'hover_bg': '#e2e8f0',
@@ -1252,8 +1251,7 @@ FILTER_BTN_PALETTES: dict[str, dict[str, str]] = {
         'active_fg': '#ffffff',
     },
     'copy': {
-        'inactive_text': '🟢 Copies',
-        'active_text': '✓ Copies',
+        'inactive_text': '🟢 Copy: 0 files (0 B)',
         'inactive_bg': '#ffffff',
         'inactive_fg': '#15803d',
         'hover_bg': '#dcfce7',
@@ -1261,8 +1259,7 @@ FILTER_BTN_PALETTES: dict[str, dict[str, str]] = {
         'active_fg': '#ffffff',
     },
     'move': {
-        'inactive_text': '🔵 Moves',
-        'active_text': '✓ Moves',
+        'inactive_text': '🔵 Move: 0 files (0 B)',
         'inactive_bg': '#ffffff',
         'inactive_fg': '#1d4ed8',
         'hover_bg': '#dbeafe',
@@ -1270,8 +1267,7 @@ FILTER_BTN_PALETTES: dict[str, dict[str, str]] = {
         'active_fg': '#ffffff',
     },
     'delete': {
-        'inactive_text': '🔴 Deletions',
-        'active_text': '✓ Deletions',
+        'inactive_text': '🔴 Delete: 0 files (0 B)',
         'inactive_bg': '#ffffff',
         'inactive_fg': '#b91c1c',
         'hover_bg': '#fee2e2',
@@ -1282,7 +1278,7 @@ FILTER_BTN_PALETTES: dict[str, dict[str, str]] = {
 
 
 class FilterToggleButton(tk.Button):
-    """Toggleable filter button with high-contrast pressed/active visual feedback."""
+    """Toggleable filter button with live stats and high-contrast pressed/active visual feedback."""
 
     def __init__(
         self,
@@ -1296,13 +1292,14 @@ class FilterToggleButton(tk.Button):
         self.is_active = active
         self._style = 'Accent.TButton' if active else 'TButton'
         palette = FILTER_BTN_PALETTES.get(action_key, FILTER_BTN_PALETTES['all'])
+        self._base_text: str = str(kwargs.pop('text', palette['inactive_text']))
 
         kwargs.pop('style', None)
         super().__init__(
             master,
             command=command,
             cursor='hand2',
-            padx=12,
+            padx=10,
             pady=2,
             **kwargs,
         )
@@ -1313,13 +1310,16 @@ class FilterToggleButton(tk.Button):
         # Keep reference to palette for hover
         self._palette = palette
 
+    def _display_text(self) -> str:
+        return f'✓ {self._base_text}' if self.is_active else self._base_text
+
     def set_active(self, active: bool):
         self.is_active = active
         self._style = 'Accent.TButton' if active else 'TButton'
         p = FILTER_BTN_PALETTES.get(self.action_key, FILTER_BTN_PALETTES['all'])
         if active:
             super().configure(
-                text=p['active_text'],
+                text=self._display_text(),
                 bg=p['active_bg'],
                 fg=p['active_fg'],
                 activebackground=p['active_bg'],
@@ -1330,7 +1330,7 @@ class FilterToggleButton(tk.Button):
             )
         else:
             super().configure(
-                text=p['inactive_text'],
+                text=self._display_text(),
                 bg=p['inactive_bg'],
                 fg=p['inactive_fg'],
                 activebackground=p['hover_bg'],
@@ -1356,6 +1356,9 @@ class FilterToggleButton(tk.Button):
         return super().cget(key)
 
     def configure(self, cnf=None, **kwargs):
+        if 'text' in kwargs:
+            self._base_text = str(kwargs.pop('text'))
+            kwargs['text'] = self._display_text()
         if 'style' in kwargs:
             st = kwargs.pop('style')
             self.set_active(st == 'Accent.TButton')
@@ -1484,14 +1487,14 @@ class ActionSelection:
             highlightthickness=1,
             highlightbackground='#e2e8f0',
             padx=12,
-            pady=8,
+            pady=6,
         )
         banner_frame.grid(row=0, column=0, sticky='ew', padx=8, pady=(8, 4))
-        banner_frame.grid_columnconfigure(3, weight=1)
+        banner_frame.grid_columnconfigure(0, weight=1)
 
         # Title & Subtitle
         title_box = tk.Frame(banner_frame, bg='SystemButtonFace')
-        title_box.grid(row=0, column=0, columnspan=4, sticky='w', pady=(0, 6))
+        title_box.grid(row=0, column=0, sticky='w')
 
         lbl_title = tk.Label(
             title_box,
@@ -1510,49 +1513,6 @@ class ActionSelection:
             fg='#4b5563',
         )
         lbl_desc.pack(anchor='w')
-
-        # Category Stat Badges
-        badge_frame = tk.Frame(banner_frame, bg='SystemButtonFace')
-        badge_frame.grid(row=1, column=0, columnspan=4, sticky='w')
-
-        self.lbl_stat_copy = BadgeLabel(
-            badge_frame,
-            text='🟢 Copy: 0 files (0 B)',
-            variant='success',
-            font=('Segoe UI', 9),
-            padx=8,
-            pady=2,
-            cursor='hand2',
-        )
-        self.lbl_stat_copy.pack(side='left', padx=(0, 6))
-        self.lbl_stat_copy.bind('<Button-1>', lambda e: self._on_action_filter_clicked('copy'))
-        add_tooltip(self.lbl_stat_copy, 'Click to filter tree by Copy operations.')
-
-        self.lbl_stat_move = BadgeLabel(
-            badge_frame,
-            text='🔵 Move: 0 files (0 B)',
-            variant='primary',
-            font=('Segoe UI', 9),
-            padx=8,
-            pady=2,
-            cursor='hand2',
-        )
-        self.lbl_stat_move.pack(side='left', padx=(0, 6))
-        self.lbl_stat_move.bind('<Button-1>', lambda e: self._on_action_filter_clicked('move'))
-        add_tooltip(self.lbl_stat_move, 'Click to filter tree by Move operations.')
-
-        self.lbl_stat_delete = BadgeLabel(
-            badge_frame,
-            text='🔴 Delete: 0 files (0 B)',
-            variant='error',
-            font=('Segoe UI', 9),
-            padx=8,
-            pady=2,
-            cursor='hand2',
-        )
-        self.lbl_stat_delete.pack(side='left', padx=(0, 6))
-        self.lbl_stat_delete.bind('<Button-1>', lambda e: self._on_action_filter_clicked('delete'))
-        add_tooltip(self.lbl_stat_delete, 'Click to filter tree by Delete operations.')
 
     def _create_toolbar(self):
         toolbar_frame = ttk.Frame(self.popup, padding=(8, 4))
@@ -1671,6 +1631,9 @@ class ActionSelection:
             self.action_buttons[act_id] = btn
 
         self.category_buttons = self.action_buttons  # Backwards compatibility alias
+        self.lbl_stat_copy = self.action_buttons['copy']
+        self.lbl_stat_move = self.action_buttons['move']
+        self.lbl_stat_delete = self.action_buttons['delete']
 
         self.lbl_filter_count = ttk.Label(row_filter, text='', font=('Segoe UI', 9))
         self.lbl_filter_count.pack(side='left', padx=(8, 0))
@@ -2524,19 +2487,6 @@ class ActionSelection:
     def _update_action_filter_visuals(self, act_id: str):
         for a_key, btn in getattr(self, 'action_buttons', {}).items():
             btn.configure(style='Accent.TButton' if a_key == act_id else 'TButton')
-
-        badge_map = {
-            'copy': (getattr(self, 'lbl_stat_copy', None), '#15803d', '#bbf7d0'),
-            'move': (getattr(self, 'lbl_stat_move', None), '#1d4ed8', '#bfdbfe'),
-            'delete': (getattr(self, 'lbl_stat_delete', None), '#b91c1c', '#fecaca'),
-        }
-        for b_key, (badge, active_border, normal_border) in badge_map.items():
-            if badge is not None:
-                with contextlib.suppress(Exception):
-                    if act_id == b_key:
-                        badge.configure(highlightthickness=2, highlightbackground=active_border)
-                    else:
-                        badge.configure(highlightthickness=1, highlightbackground=normal_border)
 
     def _on_action_filter_clicked(self, act_id: str):
         if getattr(self, 'active_action_filter', 'all') == act_id and act_id != 'all':

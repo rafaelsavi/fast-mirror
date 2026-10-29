@@ -2086,3 +2086,64 @@ def test_full_root_paths_prevent_loose_folders(monkeypatch):
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_smart_diff_move_origin_formatting():
+    """Verify Option 1 smart diff-based relative path formatting for Move actions."""
+    from gui.confirmation_popup import _format_move_origin
+
+    share = r'\\192.168.1.100\Media-Family'
+
+    # 1. Same folder, file renamed
+    assert (
+        _format_move_origin(f'{share}\\2018\\IMG_001.jpg', f'{share}\\2018\\Beach.jpg') == 'Renamed from: IMG_001.jpg'
+    )
+
+    # 2. Same folder, file case-only rename
+    assert (
+        _format_move_origin(f'{share}\\2018\\img_001.jpg', f'{share}\\2018\\IMG_001.JPG')
+        == 'Case rename: img_001.jpg → IMG_001.JPG'
+    )
+
+    # 3. Folder case-only rename (even when nested inside a subfolder like RAW)
+    assert (
+        _format_move_origin(
+            f'{share}\\2013\\12 - Trip Video\\video.mp4',
+            f'{share}\\2013\\12 - Trip Video\\video.mp4',
+        )
+        == 'Case rename: 12 - Trip Video → 12 - Trip Video'
+    )
+    assert (
+        _format_move_origin(
+            f'{share}\\2016\\04 - Event Location\\RAW\\photo.JPG',
+            f'{share}\\2016\\04 - Event Location\\RAW\\photo.JPG',
+        )
+        == 'Case rename: 04 - Event Location → 04 - Event Location'
+    )
+
+    # 4. Moved UP from a subfolder
+    assert (
+        _format_move_origin(
+            f'{share}\\Vacation\\Trip\\FOTOS\\IMG_0311.JPG',
+            f'{share}\\Vacation\\Trip\\IMG_0311.JPG',
+        )
+        == r'Moved up from: .\FOTOS\\'[:-1]
+    )
+
+    # 5. Moved DOWN into a subfolder
+    assert (
+        _format_move_origin(
+            f'{share}\\2016\\Event\\IMG_001.JPG',
+            f'{share}\\2016\\Event\\RAW\\IMG_001.JPG',
+        )
+        == 'Moved down from: .\\ (in Event\\)'
+    )
+
+    # 6. Parent/ancestor folder renamed or moved (shows diverging branch from common parent)
+    assert (
+        _format_move_origin(
+            f'{share}\\2016\\04 - Encontro Old\\RAW\\photo.JPG',
+            f'{share}\\2016\\04 - Event Location Renamed\\RAW\\photo.JPG',
+        )
+        == 'from: 2016\\04 - Encontro Old\\RAW\\'
+    )
