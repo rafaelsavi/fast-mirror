@@ -1964,3 +1964,125 @@ def test_deletion_unknown_sizes_and_dash_source_display(tmp_path):
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_cancel_button_shows_confirmation_dialog(monkeypatch):
+    """Verify clicking Cancel button shows confirmation dialog before canceling."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+        prompts = []
+        # 1. User clicks 'No' on confirmation -> popup stays open
+        monkeypatch.setattr(
+            'gui.confirmation_popup.messagebox.askyesno',
+            lambda *args, **kwargs: prompts.append(args) and False,
+        )
+        popup.button_cancel.invoke()
+        assert len(prompts) == 1
+        assert popup.finished is False
+
+        # 2. User clicks 'Yes' on confirmation -> popup cancels and closes
+        monkeypatch.setattr(
+            'gui.confirmation_popup.messagebox.askyesno',
+            lambda *args, **kwargs: prompts.append(args) or True,
+        )
+        popup.button_cancel.invoke()
+        assert len(prompts) == 2
+        assert popup.finished is True
+        assert popup.proceed is False
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_filter_toggle_buttons_pressed_visual_state(monkeypatch):
+    """Verify action filter buttons clearly indicate pressed/active vs inactive state."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+        try:
+            # Initially 'all' is active (sunken, ✓ All) and others are raised
+            assert popup.action_buttons['all'].is_active is True
+            assert popup.action_buttons['all'].cget('relief') == 'sunken'
+            assert '✓' in popup.action_buttons['all'].cget('text')
+            assert popup.action_buttons['copy'].is_active is False
+            assert popup.action_buttons['copy'].cget('relief') == 'raised'
+
+            # Click 'copy' filter button -> 'copy' becomes sunken with ✓, 'all' becomes raised
+            popup.action_buttons['copy'].invoke()
+            assert popup.action_buttons['copy'].is_active is True
+            assert popup.action_buttons['copy'].cget('relief') == 'sunken'
+            assert '✓' in popup.action_buttons['copy'].cget('text')
+            assert popup.action_buttons['all'].is_active is False
+            assert popup.action_buttons['all'].cget('relief') == 'raised'
+        finally:
+            popup.button_cancel_click()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_full_root_paths_prevent_loose_folders(monkeypatch):
+    """Verify UNC and local paths retain their full root share/drive so subfolders like '2018' are never loose."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        share_root = r'\\192.168.1.100\Photos-Archive'
+        f_root = CstmPath(f'{share_root}\\.albumprops', root_dir=share_root)
+        f_2018 = CstmPath(f'{share_root}\\2018\\IMG_001.jpg', root_dir=share_root)
+
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[
+                (CstmPath(r'E:\Photos\.albumprops', root_dir=r'E:\Photos'), f_root),
+                (CstmPath(r'E:\Photos\2018\IMG_001.jpg', root_dir=r'E:\Photos'), f_2018),
+            ],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+        try:
+            top_nodes = popup.tree.get_children('')
+            # Only the UNC share root should be a top-level folder, NOT a loose '2018' folder
+            assert len(top_nodes) == 1
+            top_text = popup.tree.item(top_nodes[0], 'text')
+            assert 'Photos-Archive' in top_text
+            # '2018' should be nested inside the UNC share root
+            nested_children = popup.tree.get_children(top_nodes[0])
+            nested_texts = [popup.tree.item(ch, 'text') for ch in nested_children]
+            assert any('2018' in t for t in nested_texts)
+            assert any('.albumprops' in t for t in nested_texts)
+        finally:
+            popup.button_cancel_click()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

@@ -32,37 +32,87 @@ def _extract_relative_folder_parts(
     root_dir: str | None = None,
     common_prefix_parts: list[str] | None = None,
 ) -> tuple[list[str], str]:
-    """Extract relative directory parts and filename without blocking network I/O or os.path.commonpath."""
+    """Extract full directory parts from root and filename without blocking network I/O."""
     if not target_path or target_path in ('-', '(none)'):
         return [], ''
 
     p = Path(target_path)
     filename = p.name or target_path
 
-    if root_dir:
-        try:
-            rel = p.relative_to(root_dir)
-            return list(rel.parent.parts), filename
-        except ValueError:
-            pass
+    raw_parts = list(p.parent.parts)
+    parts: list[str] = []
+    for part in raw_parts:
+        cleaned = part.rstrip('\\/')
+        if cleaned:
+            parts.append(cleaned)
+    return parts, filename
 
-    if common_prefix_parts and len(common_prefix_parts) > 0:
-        p_parts = list(p.parent.parts)
-        if len(p_parts) >= len(common_prefix_parts):
-            matches = True
-            for i, prefix_part in enumerate(common_prefix_parts):
-                if p_parts[i].lower() != prefix_part.lower():
-                    matches = False
-                    break
-            if matches:
-                return p_parts[len(common_prefix_parts) :], filename
 
-    p_parts = list(p.parent.parts)
-    if len(p_parts) > 1:
-        return p_parts[1:], filename
-    elif len(p_parts) == 1:
-        return p_parts, filename
-    return [], filename
+def _format_move_origin(src_val: str, tgt_val: str) -> str:
+    """Format a smart diff-based relative origin string for Move operations."""
+    src_parts, src_name = _extract_relative_folder_parts(src_val)
+    tgt_parts, tgt_name = _extract_relative_folder_parts(tgt_val)
+
+    name_changed = src_name != tgt_name
+    name_case_only = name_changed and (src_name.lower() == tgt_name.lower())
+
+    # 1. Exact same folder path (including case): file-only rename
+    if src_parts == tgt_parts:
+        if name_case_only:
+            return f'Case rename: {src_name} → {tgt_name}'
+        if name_changed:
+            return f'Renamed from: {src_name}'
+        return f'from: {src_val}'
+
+    # 2. Same folder hierarchy, only folder casing changed
+    if len(src_parts) == len(tgt_parts) and [pt.lower() for pt in src_parts] == [pt.lower() for pt in tgt_parts]:
+        diff_pairs = [(s, t) for s, t in zip(src_parts, tgt_parts, strict=False) if s != t]
+        old_seg = '\\'.join(s for s, _ in diff_pairs)
+        new_seg = '\\'.join(t for _, t in diff_pairs)
+        if name_changed:
+            return f'Case rename: {old_seg}\\{src_name} → {new_seg}\\{tgt_name}'
+        return f'Case rename: {old_seg} → {new_seg}'
+
+    # Find longest common case-insensitive prefix between src_parts and tgt_parts
+    common_len = 0
+    for s_part, t_part in zip(src_parts, tgt_parts, strict=False):
+        if s_part.lower() == t_part.lower():
+            common_len += 1
+        else:
+            break
+
+    # 3. Moved UP from a subfolder inside the target directory
+    if common_len == len(tgt_parts) and len(src_parts) > len(tgt_parts):
+        sub_rel = '\\'.join(src_parts[common_len:])
+        if name_changed:
+            return f'Moved up from: .\\{sub_rel}\\{src_name}'
+        return f'Moved up from: .\\{sub_rel}\\'
+
+    # 4. Moved DOWN into a subfolder from an ancestor directory
+    if common_len == len(src_parts) and len(tgt_parts) > len(src_parts):
+        parent_name = src_parts[-1] if src_parts else ''
+        if name_changed:
+            return (
+                f'Moved down from: .\\{src_name} (in {parent_name}\\)'
+                if parent_name
+                else f'Moved down from: .\\{src_name}'
+            )
+        return f'Moved down from: .\\ (in {parent_name}\\)' if parent_name else 'Moved down from: .\\ (parent folder)'
+
+    # 5. Divergent folder branches: show path from 1 folder above the divergence point (or share-relative)
+    if common_len >= 1:
+        start_idx = max(1, common_len - 1)
+        rel_branch = '\\'.join(src_parts[start_idx:])
+        prefix = '...\\' if start_idx > 1 else ''
+        if name_changed:
+            return f'from: {prefix}{rel_branch}\\{src_name}'
+        return f'from: {prefix}{rel_branch}\\'
+
+    # Fallback: completely different roots
+    full_src_dir = '\\'.join(src_parts)
+    if name_changed:
+        return f'from: {full_src_dir}\\{src_name}' if full_src_dir else f'Renamed from: {src_name}'
+    return f'from: {full_src_dir}\\' if full_src_dir else f'from: {src_val}'
 
 
 def _compact_trie(node: FolderNode, is_root: bool = False) -> FolderNode:
@@ -109,7 +159,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         # Configure Treeview columns and headers
         self['columns'] = self.custom_headers[1:]
-        self.column('#0', width=340, minwidth=240)
+        self.column('#0', width=380, minwidth=260)
         self.heading('#0', text='Item / File Name', command=lambda: self.sort_by_column('#0'))
 
         col_configs = {
@@ -277,33 +327,21 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                     if parent_parts:
                         all_parent_parts.append(parent_parts)
 
-        # 2. Determine common root prefix lexically without blocking calls
-        common_prefix_parts: list[str] = []
-        if all_parent_parts:
-            first = all_parent_parts[0]
-            for i, part in enumerate(first):
-                if all(len(p) > i and p[i].lower() == part.lower() for p in all_parent_parts):
-                    common_prefix_parts.append(part)
-                else:
-                    break
-            # If all files share the exact same folder, keep the final directory name
-            if len(common_prefix_parts) == len(first) and len(common_prefix_parts) > 1:
-                common_prefix_parts = common_prefix_parts[:-1]
-
-        # 3. Construct folder Trie
+        # 2. Construct folder Trie using full paths from root so no folders are loose
         root_trie = FolderNode(name='', path_key='')
         for item_key, action, src_val, tgt_val, row in all_entries:
             primary_tgt = tgt_val if (tgt_val and tgt_val != '-') else src_val
-            folder_parts, _ = _extract_relative_folder_parts(primary_tgt, common_prefix_parts=common_prefix_parts)
+            folder_parts, _ = _extract_relative_folder_parts(primary_tgt)
 
             curr = root_trie
             accum_parts: list[str] = []
             for part in folder_parts:
-                accum_parts.append(part)
+                part_key = part.lower()
+                accum_parts.append(part_key)
                 path_key = '/'.join(accum_parts)
-                if part not in curr.children:
-                    curr.children[part] = FolderNode(name=part, path_key=path_key)
-                curr = curr.children[part]
+                if part_key not in curr.children:
+                    curr.children[part_key] = FolderNode(name=part, path_key=path_key)
+                curr = curr.children[part_key]
             curr.files.append((item_key, action, src_val, tgt_val, row))
 
         # 4. Compact single-child folder chains
@@ -371,18 +409,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
             # Determine Origin / Transition details
             if action == Action.MOVE:
-                src_dir = os.path.dirname(src_val)
-                tgt_dir = os.path.dirname(tgt_val)
-                src_name = os.path.basename(src_val)
-                tgt_name = os.path.basename(tgt_val)
-                if src_dir == tgt_dir and src_name != tgt_name:
-                    origin_str = f'was: {src_name}'
-                elif src_name == tgt_name:
-                    rel_dir = os.path.basename(src_dir) or src_dir
-                    origin_str = f'from: ...\\{rel_dir}\\'
-                else:
-                    rel_dir = os.path.basename(src_dir) or src_dir
-                    origin_str = f'from: ...\\{rel_dir}\\{src_name}'
+                origin_str = _format_move_origin(src_val, tgt_val)
                 action_badge = '🔵 Move'
                 sz_str = str(row.get('size (source)', '')) or '-'
                 dt_str = str(row.get('modification date (source)', '')) or '-'
@@ -1214,6 +1241,132 @@ class FileDetailsDialog:
         self.dialog.after(1500, lambda: self.btn_copy_all.config(text='Copy All Information'))
 
 
+FILTER_BTN_PALETTES: dict[str, dict[str, str]] = {
+    'all': {
+        'inactive_text': 'All',
+        'active_text': '✓ All',
+        'inactive_bg': '#ffffff',
+        'inactive_fg': '#1e293b',
+        'hover_bg': '#e2e8f0',
+        'active_bg': '#0078d7',
+        'active_fg': '#ffffff',
+    },
+    'copy': {
+        'inactive_text': '🟢 Copies',
+        'active_text': '✓ Copies',
+        'inactive_bg': '#ffffff',
+        'inactive_fg': '#15803d',
+        'hover_bg': '#dcfce7',
+        'active_bg': '#15803d',
+        'active_fg': '#ffffff',
+    },
+    'move': {
+        'inactive_text': '🔵 Moves',
+        'active_text': '✓ Moves',
+        'inactive_bg': '#ffffff',
+        'inactive_fg': '#1d4ed8',
+        'hover_bg': '#dbeafe',
+        'active_bg': '#1d4ed8',
+        'active_fg': '#ffffff',
+    },
+    'delete': {
+        'inactive_text': '🔴 Deletions',
+        'active_text': '✓ Deletions',
+        'inactive_bg': '#ffffff',
+        'inactive_fg': '#b91c1c',
+        'hover_bg': '#fee2e2',
+        'active_bg': '#b91c1c',
+        'active_fg': '#ffffff',
+    },
+}
+
+
+class FilterToggleButton(tk.Button):
+    """Toggleable filter button with high-contrast pressed/active visual feedback."""
+
+    def __init__(
+        self,
+        master: tk.Misc,
+        action_key: str,
+        command: Callable[[], None],
+        active: bool = False,
+        **kwargs,
+    ):
+        self.action_key = action_key
+        self.is_active = active
+        self._style = 'Accent.TButton' if active else 'TButton'
+        palette = FILTER_BTN_PALETTES.get(action_key, FILTER_BTN_PALETTES['all'])
+
+        kwargs.pop('style', None)
+        super().__init__(
+            master,
+            command=command,
+            cursor='hand2',
+            padx=12,
+            pady=2,
+            **kwargs,
+        )
+        self.set_active(active)
+        self.bind('<Enter>', self._on_enter, add='+')
+        self.bind('<Leave>', self._on_leave, add='+')
+
+        # Keep reference to palette for hover
+        self._palette = palette
+
+    def set_active(self, active: bool):
+        self.is_active = active
+        self._style = 'Accent.TButton' if active else 'TButton'
+        p = FILTER_BTN_PALETTES.get(self.action_key, FILTER_BTN_PALETTES['all'])
+        if active:
+            super().configure(
+                text=p['active_text'],
+                bg=p['active_bg'],
+                fg=p['active_fg'],
+                activebackground=p['active_bg'],
+                activeforeground=p['active_fg'],
+                relief='sunken',
+                bd=2,
+                font=('Segoe UI', 9, 'bold'),
+            )
+        else:
+            super().configure(
+                text=p['inactive_text'],
+                bg=p['inactive_bg'],
+                fg=p['inactive_fg'],
+                activebackground=p['hover_bg'],
+                activeforeground=p['inactive_fg'],
+                relief='raised',
+                bd=1,
+                font=('Segoe UI', 9),
+            )
+
+    def _on_enter(self, _event=None):
+        if not self.is_active:
+            p = FILTER_BTN_PALETTES.get(self.action_key, FILTER_BTN_PALETTES['all'])
+            super().configure(bg=p['hover_bg'])
+
+    def _on_leave(self, _event=None):
+        if not self.is_active:
+            p = FILTER_BTN_PALETTES.get(self.action_key, FILTER_BTN_PALETTES['all'])
+            super().configure(bg=p['inactive_bg'])
+
+    def cget(self, key: str):
+        if key == 'style':
+            return self._style
+        return super().cget(key)
+
+    def configure(self, cnf=None, **kwargs):
+        if 'style' in kwargs:
+            st = kwargs.pop('style')
+            self.set_active(st == 'Accent.TButton')
+        if cnf or kwargs:
+            return super().configure(cnf, **kwargs)
+        return None
+
+    def config(self, cnf=None, **kwargs):
+        return self.configure(cnf, **kwargs)
+
+
 class ActionSelection:
     """Modern interactive confirmation popup for reviewing and selectively executing file sync operations."""
 
@@ -1498,25 +1651,23 @@ class ActionSelection:
 
         self.active_category: str = 'all'
         self.active_action_filter: str = 'all'
-        self.action_buttons: dict[str, ttk.Button] = {}
+        self.action_buttons: dict[str, FilterToggleButton] = {}
         action_defs = [
-            ('all', 'All', None),
-            ('copy', 'Copies', 'copy'),
-            ('move', 'Moves', 'move'),
-            ('delete', 'Deletions', 'delete'),
+            ('all', 'All'),
+            ('copy', 'Copies'),
+            ('move', 'Moves'),
+            ('delete', 'Deletions'),
         ]
 
-        for act_id, act_label, icon_name in action_defs:
-            btn = ttk.Button(
+        for act_id, act_label in action_defs:
+            btn = FilterToggleButton(
                 row_filter,
-                text=act_label,
+                action_key=act_id,
                 command=lambda a=act_id: self._on_action_filter_clicked(a),
-                style='Accent.TButton' if act_id == 'all' else 'TButton',
+                active=(act_id == 'all'),
             )
-            if icon_name:
-                apply_icon(btn, icon_name)
-            add_tooltip(btn, f'Filter list to show only {act_label.lower()}.')
-            btn.pack(side='left', padx=2)
+            add_tooltip(btn, f'Toggle filter to show {act_label.lower()}.')
+            btn.pack(side='left', padx=3)
             self.action_buttons[act_id] = btn
 
         self.category_buttons = self.action_buttons  # Backwards compatibility alias
@@ -1658,7 +1809,7 @@ class ActionSelection:
         self.button_cancel = ttk.Button(
             btn_box,
             text='Cancel',
-            command=self.button_cancel_click,
+            command=self.on_window_close,
             width=12,
         )
         self.button_cancel.pack(side='right')
@@ -2370,13 +2521,29 @@ class ActionSelection:
         self.lbl_stat_move.config(text=_format_badge(Action.MOVE, move_count, move_bytes, '🔵'))
         self.lbl_stat_delete.config(text=_format_badge(Action.DELETE, del_count, del_bytes, '🔴'))
 
+    def _update_action_filter_visuals(self, act_id: str):
+        for a_key, btn in getattr(self, 'action_buttons', {}).items():
+            btn.configure(style='Accent.TButton' if a_key == act_id else 'TButton')
+
+        badge_map = {
+            'copy': (getattr(self, 'lbl_stat_copy', None), '#15803d', '#bbf7d0'),
+            'move': (getattr(self, 'lbl_stat_move', None), '#1d4ed8', '#bfdbfe'),
+            'delete': (getattr(self, 'lbl_stat_delete', None), '#b91c1c', '#fecaca'),
+        }
+        for b_key, (badge, active_border, normal_border) in badge_map.items():
+            if badge is not None:
+                with contextlib.suppress(Exception):
+                    if act_id == b_key:
+                        badge.configure(highlightthickness=2, highlightbackground=active_border)
+                    else:
+                        badge.configure(highlightthickness=1, highlightbackground=normal_border)
+
     def _on_action_filter_clicked(self, act_id: str):
         if getattr(self, 'active_action_filter', 'all') == act_id and act_id != 'all':
             act_id = 'all'
         self.active_action_filter = act_id
         self.active_category = act_id
-        for a_key, btn in getattr(self, 'action_buttons', {}).items():
-            btn.configure(style='Accent.TButton' if a_key == act_id else 'TButton')
+        self._update_action_filter_visuals(act_id)
         self._on_filter_changed()
 
     def _on_category_chip_clicked(self, cat: str):
@@ -2385,8 +2552,7 @@ class ActionSelection:
     def _on_clear_filter(self):
         self.active_action_filter = 'all'
         self.active_category = 'all'
-        for a_key, btn in getattr(self, 'action_buttons', {}).items():
-            btn.configure(style='Accent.TButton' if a_key == 'all' else 'TButton')
+        self._update_action_filter_visuals('all')
         self.filter_var.set('')
 
     def _on_filter_changed(self, *args):
@@ -2420,7 +2586,7 @@ class ActionSelection:
         if getattr(self, 'active_action_filter', 'all') != 'all':
             self._on_clear_filter()
             return 'break'
-        self.button_cancel_click()
+        self.on_window_close()
         return 'break'
 
     def button_save_click(self):
