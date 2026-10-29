@@ -7,6 +7,7 @@ from enum import Enum
 from tkinter.scrolledtext import ScrolledText
 
 from gui.enums import TkinterCfgState
+from gui.theme import BADGE_PALETTES, FILTER_BTN_PALETTES
 from utils.logger import logger
 from utils.utils import DirectoryPair, sanitize_path
 
@@ -597,52 +598,6 @@ def add_tooltip(widget: tk.Misc, text: str, delay_ms: int = 450) -> ToolTip:
     return tooltip
 
 
-BADGE_PALETTES: dict[str, dict[str, str]] = {
-    'neutral': {
-        'bg': '#f1f5f9',
-        'fg': '#64748b',
-        'border': '#e2e8f0',
-        'hover_bg': '#e2e8f0',
-    },
-    'neutral_bold': {
-        'bg': '#f1f5f9',
-        'fg': '#334155',
-        'border': '#cbd5e1',
-        'hover_bg': '#e2e8f0',
-    },
-    'info': {
-        'bg': '#e0f2fe',
-        'fg': '#0369a1',
-        'border': '#bae6fd',
-        'hover_bg': '#bae6fd',
-    },
-    'warning': {
-        'bg': '#fef3c7',
-        'fg': '#b45309',
-        'border': '#fde68a',
-        'hover_bg': '#fde68a',
-    },
-    'error': {
-        'bg': '#fee2e2',
-        'fg': '#b91c1c',
-        'border': '#fecaca',
-        'hover_bg': '#fecaca',
-    },
-    'success': {
-        'bg': '#dcfce7',
-        'fg': '#15803d',
-        'border': '#bbf7d0',
-        'hover_bg': '#bbf7d0',
-    },
-    'primary': {
-        'bg': '#dbeafe',
-        'fg': '#1d4ed8',
-        'border': '#bfdbfe',
-        'hover_bg': '#bfdbfe',
-    },
-}
-
-
 class BadgeLabel(tk.Label):
     """
     Modern flat status indicator / pill badge with subtle uniform tint border.
@@ -720,3 +675,118 @@ class BadgeLabel(tk.Label):
     def configure(self, cnf=None, **kwargs):
         """Alias for config."""
         return self.config(cnf, **kwargs)
+
+
+class FilterToggleButton(tk.Button):
+    """Toggleable filter button with live stats and high-contrast pressed/active visual feedback."""
+
+    def __init__(
+        self,
+        master: tk.Misc,
+        action_key: str,
+        command: Callable[[], None],
+        active: bool = False,
+        **kwargs,
+    ):
+        self.action_key = action_key
+        self.is_active = active
+        self._style = 'Accent.TButton' if active else 'TButton'
+        palette = FILTER_BTN_PALETTES.get(action_key, FILTER_BTN_PALETTES['all'])
+        self._base_text: str = str(kwargs.pop('text', palette['inactive_text']))
+
+        kwargs.pop('style', None)
+        super().__init__(
+            master,
+            command=command,
+            cursor='hand2',
+            padx=10,
+            pady=2,
+            **kwargs,
+        )
+        self.set_active(active)
+        self.bind('<Enter>', self._on_enter, add='+')
+        self.bind('<Leave>', self._on_leave, add='+')
+
+        # Keep reference to palette for hover
+        self._palette = palette
+
+    def _display_text(self) -> str:
+        return f'✓ {self._base_text}' if self.is_active else self._base_text
+
+    def set_active(self, active: bool):
+        self.is_active = active
+        self._style = 'Accent.TButton' if active else 'TButton'
+        p = FILTER_BTN_PALETTES.get(self.action_key, FILTER_BTN_PALETTES['all'])
+        if active:
+            super().configure(
+                text=self._display_text(),
+                bg=p['active_bg'],
+                fg=p['active_fg'],
+                activebackground=p['active_bg'],
+                activeforeground=p['active_fg'],
+                relief='sunken',
+                bd=2,
+                font=('Segoe UI', 9, 'bold'),
+            )
+        else:
+            super().configure(
+                text=self._display_text(),
+                bg=p['inactive_bg'],
+                fg=p['inactive_fg'],
+                activebackground=p['hover_bg'],
+                activeforeground=p['inactive_fg'],
+                relief='raised',
+                bd=1,
+                font=('Segoe UI', 9),
+            )
+
+    def _on_enter(self, _event=None):
+        if not self.is_active:
+            p = FILTER_BTN_PALETTES.get(self.action_key, FILTER_BTN_PALETTES['all'])
+            super().configure(bg=p['hover_bg'])
+
+    def _on_leave(self, _event=None):
+        if not self.is_active:
+            p = FILTER_BTN_PALETTES.get(self.action_key, FILTER_BTN_PALETTES['all'])
+            super().configure(bg=p['inactive_bg'])
+
+    def cget(self, key: str):
+        if key == 'style':
+            return self._style
+        return super().cget(key)
+
+    def configure(self, cnf=None, **kwargs):
+        if 'text' in kwargs:
+            self._base_text = str(kwargs.pop('text'))
+            kwargs['text'] = self._display_text()
+        if 'style' in kwargs:
+            st = kwargs.pop('style')
+            self.set_active(st == 'Accent.TButton')
+        if cnf or kwargs:
+            return super().configure(cnf, **kwargs)
+        return None
+
+    def config(self, cnf=None, **kwargs):
+        return self.configure(cnf, **kwargs)
+
+
+def open_path_in_explorer(path: str) -> None:
+    """Reveal a file or directory in Windows Explorer safely without blocking."""
+    if not path or path in ('-', '(none)', '(select an item to view path)'):
+        return
+    norm_path = os.path.normpath(path)
+    try:
+        import subprocess
+
+        if os.path.isfile(norm_path):
+            subprocess.Popen(['explorer.exe', f'/select,{norm_path}'])
+        elif os.path.isdir(norm_path):
+            os.startfile(norm_path)
+        else:
+            parent_dir = os.path.dirname(norm_path)
+            if os.path.isdir(parent_dir):
+                os.startfile(parent_dir)
+            else:
+                logger.warning(f"Neither '{norm_path}' nor its directory exist on disk.")
+    except Exception as e:
+        logger.warning(f"Could not open folder for '{norm_path}': {e}")
