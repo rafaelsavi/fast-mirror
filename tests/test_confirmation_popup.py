@@ -165,13 +165,12 @@ def test_custom_checkbox_treeview_headers():
     tree = CustomCheckboxTreeView(root)
     assert 'creation date (source)' not in tree.custom_headers
     assert 'creation date (target)' not in tree.custom_headers
+    assert tree.custom_headers == ['enable', 'action', 'origin', 'size', 'modified']
     assert tree['columns'] == (
-        'source',
-        'target',
-        'size (source)',
-        'size (target)',
-        'modification date (source)',
-        'modification date (target)',
+        'action',
+        'origin',
+        'size',
+        'modified',
     )
     root.destroy()
 
@@ -270,9 +269,7 @@ def test_action_selection_real_items_population(tmp_path, monkeypatch):
 
     # Verify root nodes exist
     children = popup.tree.get_children('')
-    assert 'copy' in children
-    assert 'move' in children
-    assert 'delete' in children
+    assert len(children) > 0
 
     # Verify group text includes count
     copy_text = popup.tree.item('copy', 'text')
@@ -677,13 +674,14 @@ def test_action_selection_high_volume_filter_performance(tmp_path, monkeypatch):
         assert t_filter < 0.5
         assert '100 matches' in popup.lbl_filter_count.cget('text')
 
-        # 2. Filter by category chip should take well under 0.5s
+        # 2. Filter by action button should take well under 0.5s
         t0 = time.perf_counter()
-        popup._on_category_chip_clicked('image')
+        popup._on_action_filter_clicked('copy')
         t_cat = time.perf_counter() - t0
         assert t_cat < 0.5
-        assert '20 matches' in popup.lbl_filter_count.cget('text')
-        assert '[Image]' in popup.lbl_filter_count.cget('text')
+        # Action filter combines with the active text query (file_005 -> 100 copies)
+        assert '100 matches' in popup.lbl_filter_count.cget('text')
+        assert '[Copy]' in popup.lbl_filter_count.cget('text')
 
         # 3. Clearing filter should take well under 0.5s
         t0 = time.perf_counter()
@@ -848,22 +846,30 @@ def test_custom_treeview_expand_and_collapse_all(tmp_path):
         pytest.skip('Tkinter display not available')
 
     try:
-        src = tmp_path / 's.txt'
-        tgt = tmp_path / 't.txt'
+        src_dir = tmp_path / 'src'
+        tgt_dir = tmp_path / 'tgt' / 'sub_a'
+        src_dir.mkdir()
+        tgt_dir.mkdir(parents=True)
+        (tmp_path / 'tgt' / 'sub_b').mkdir()
+        src = src_dir / 's.txt'
         src.write_text('content')
 
         tree = CustomCheckboxTreeView(root)
         tree.add_file_lists(
             {
-                Action.COPY: [(CstmPath(src), CstmPath(tgt))],
+                Action.COPY: [
+                    (CstmPath(src), CstmPath(tgt_dir / 't.txt')),
+                    (CstmPath(src), CstmPath(tmp_path / 'tgt' / 'sub_b' / 't.txt')),
+                ],
             }
         )
+        assert tree._folder_nodes
 
         tree.collapse_all()
-        assert bool(tree.item(Action.COPY.value, 'open')) is False
+        assert all(not bool(tree.item(f, 'open')) for f in tree._folder_nodes)
 
         tree.expand_all()
-        assert bool(tree.item(Action.COPY.value, 'open')) is True
+        assert all(bool(tree.item(f, 'open')) for f in tree._folder_nodes)
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
@@ -1228,14 +1234,14 @@ def test_action_selection_filter_hides_non_matching_rows(tmp_path, monkeypatch):
         checked = popup.tree.get_checked()
         assert len(checked) == 2
 
-        # 2. Filter by 'nonexistent_query': 0 matches, copy group detached / hidden
+        # 2. Filter by 'nonexistent_query': 0 matches, nothing visible
         popup.filter_var.set('SX')
         assert '0 matches' in popup.lbl_filter_count.cget('text')
-        assert Action.COPY.value not in popup.tree.get_children('')
+        assert len(popup.tree.get_children('')) == 0
 
-        # 3. Clear filter: all rows and groups restored
+        # 3. Clear filter: all rows restored
         popup.filter_var.set('')
-        assert Action.COPY.value in popup.tree.get_children('')
+        assert len(popup.tree.get_children('')) > 0
         assert len(popup.tree.get_children(Action.COPY.value)) == 2
         assert popup.lbl_filter_count.cget('text') == ''
     finally:
@@ -1329,27 +1335,27 @@ def test_custom_treeview_click_to_sort_columns(tmp_path):
             default_active=[Action.COPY],
         )
 
-        # 1. Sort by Size (Source) Ascending
-        tree.sort_by_column('size (source)')
-        assert '▲' in tree.heading('size (source)', 'text')
+        # 1. Sort by Size Ascending
+        tree.sort_by_column('size')
+        assert '▲' in tree.heading('size', 'text')
         children_asc = tree._all_group_children[Action.COPY.value]
         # Should be small (10 B), medium (200 B), large (1000 B)
         assert 'z_small.txt' in children_asc[0]
         assert 'm_medium.txt' in children_asc[1]
         assert 'a_large.txt' in children_asc[2]
 
-        # 2. Sort by Size (Source) Descending (click again)
-        tree.sort_by_column('size (source)')
-        assert '▼' in tree.heading('size (source)', 'text')
+        # 2. Sort by Size Descending (click again)
+        tree.sort_by_column('size')
+        assert '▼' in tree.heading('size', 'text')
         children_desc = tree._all_group_children[Action.COPY.value]
         # Should be large (1000 B), medium (200 B), small (10 B)
         assert 'a_large.txt' in children_desc[0]
         assert 'm_medium.txt' in children_desc[1]
         assert 'z_small.txt' in children_desc[2]
 
-        # 3. Sort by Source Alphabetical Ascending
-        tree.sort_by_column('source')
-        assert '▲' in tree.heading('source', 'text')
+        # 3. Sort by file name Alphabetical Ascending
+        tree.sort_by_column('#0')
+        assert '▲' in tree.heading('#0', 'text')
         children_name = tree._all_group_children[Action.COPY.value]
         assert 'a_large.txt' in children_name[0]
         assert 'm_medium.txt' in children_name[1]
@@ -1421,7 +1427,7 @@ def test_action_selection_safety_buttons(tmp_path, monkeypatch):
 
 
 def test_action_selection_file_type_filter_chips(tmp_path, monkeypatch):
-    """Test interactive file-type filter chips (Images, Docs, Media, Code, Archives)."""
+    """Test interactive action filter buttons (All, Copies, Moves, Deletions)."""
     monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
     try:
         root = tk.Tk()
@@ -1434,65 +1440,46 @@ def test_action_selection_file_type_filter_chips(tmp_path, monkeypatch):
     src.mkdir()
     tgt.mkdir()
 
-    f_img = src / 'photo.jpg'
-    f_img.write_text('img')
-    f_doc = src / 'report.pdf'
-    f_doc.write_text('doc')
-    f_med = src / 'music.mp3'
-    f_med.write_text('med')
-    f_code = src / 'script.py'
-    f_code.write_text('code')
-    f_arch = src / 'backup.zip'
-    f_arch.write_text('arch')
+    f_copy = src / 'copy.txt'
+    f_copy.write_text('copy')
+    f_move = src / 'move.txt'
+    f_move.write_text('move')
+    f_del = tgt / 'del.txt'
+    f_del.write_text('del')
 
     try:
         popup = ActionSelection(
             root_gui=root,
-            files_available_to_copy=[
-                (CstmPath(f_img, root_dir=src), CstmPath(tgt / 'photo.jpg', root_dir=tgt)),
-                (CstmPath(f_doc, root_dir=src), CstmPath(tgt / 'report.pdf', root_dir=tgt)),
-                (CstmPath(f_med, root_dir=src), CstmPath(tgt / 'music.mp3', root_dir=tgt)),
-                (CstmPath(f_code, root_dir=src), CstmPath(tgt / 'script.py', root_dir=tgt)),
-                (CstmPath(f_arch, root_dir=src), CstmPath(tgt / 'backup.zip', root_dir=tgt)),
-            ],
-            files_available_to_move=[],
-            files_available_to_delete=[],
-            default_actions=[Action.COPY],
+            files_available_to_copy=[(CstmPath(f_copy, root_dir=src), CstmPath(tgt / 'copy.txt', root_dir=tgt))],
+            files_available_to_move=[(CstmPath(f_move, root_dir=src), CstmPath(tgt / 'move.txt', root_dir=tgt))],
+            files_available_to_delete=[CstmPath(f_del, root_dir=tgt)],
+            default_actions=[Action.COPY, Action.MOVE, Action.DELETE],
         )
 
-        assert 'image' in popup.category_buttons
-        assert 'document' in popup.category_buttons
-        assert 'media' in popup.category_buttons
-        assert 'code' in popup.category_buttons
-        assert 'archive' in popup.category_buttons
+        assert 'all' in popup.action_buttons
+        assert 'copy' in popup.action_buttons
+        assert 'move' in popup.action_buttons
+        assert 'delete' in popup.action_buttons
 
-        # Initially all 5 are visible
-        assert len(popup.tree.get_children(Action.COPY.value)) == 5
+        # 1. Filter by Copies button
+        popup.action_buttons['copy'].invoke()
+        assert '1 match' in popup.lbl_filter_count.cget('text')
+        assert '[Copy]' in popup.lbl_filter_count.cget('text')
 
-        # 1. Filter by Images chip
-        popup.category_buttons['image'].invoke()
-        visible_images = popup.tree.get_children(Action.COPY.value)
-        assert len(visible_images) == 1
-        assert 'photo.jpg' in visible_images[0]
-        assert 'Image' in popup.lbl_filter_count.cget('text')
+        # 2. Filter by Moves button
+        popup.action_buttons['move'].invoke()
+        assert '1 match' in popup.lbl_filter_count.cget('text')
+        assert '[Move]' in popup.lbl_filter_count.cget('text')
 
-        # 2. Filter by Documents chip
-        popup.category_buttons['document'].invoke()
-        visible_docs = popup.tree.get_children(Action.COPY.value)
-        assert len(visible_docs) == 1
-        assert 'report.pdf' in visible_docs[0]
+        # 3. Filter by Deletions button
+        popup.action_buttons['delete'].invoke()
+        assert '1 match' in popup.lbl_filter_count.cget('text')
+        assert '[Delete]' in popup.lbl_filter_count.cget('text')
 
-        # 3. Filter by Code chip
-        popup.category_buttons['code'].invoke()
-        visible_code = popup.tree.get_children(Action.COPY.value)
-        assert len(visible_code) == 1
-        assert 'script.py' in visible_code[0]
-
-        # 4. Clear filter button
-        popup._on_clear_filter()
-        assert len(popup.tree.get_children(Action.COPY.value)) == 5
+        # 4. Clear filter / All button
+        popup.action_buttons['all'].invoke()
         assert popup.lbl_filter_count.cget('text') == ''
-        assert popup.active_category == 'all'
+        assert popup.active_action_filter == 'all'
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
@@ -1531,11 +1518,12 @@ def test_action_selection_keyboard_shortcuts(monkeypatch):
         assert popup.filter_var.get() == ''
         assert popup.finished is False  # Dialog NOT cancelled
 
-        # 3. Test smart Escape when category filter is active
-        popup.active_category = 'image'
+        # 3. Test smart Escape when action filter is active
+        popup.active_action_filter = 'copy'
+        popup.active_category = 'copy'
         res_esc2 = popup._on_escape_pressed()
         assert res_esc2 == 'break'
-        assert popup.active_category == 'all'
+        assert popup.active_action_filter == 'all'
         assert popup.finished is False
 
         # 4. Test Escape when no filter active -> prompts/cancels

@@ -4,6 +4,7 @@ import subprocess
 import tkinter as tk
 import winsound
 from collections.abc import Callable
+from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any
 
@@ -16,15 +17,75 @@ from utils.logger import logger
 from utils.utils import format_size
 
 
+class FolderNode:
+    """Node in directory tree used for multi-level folder hierarchy with compaction."""
+
+    def __init__(self, name: str, path_key: str):
+        self.name = name
+        self.path_key = path_key
+        self.children: dict[str, FolderNode] = {}
+        self.files: list[tuple[str, Action, str, str, dict[str, Any]]] = []
+
+
+def _extract_relative_folder_parts(
+    target_path: str,
+    root_dir: str | None = None,
+    common_prefix_parts: list[str] | None = None,
+) -> tuple[list[str], str]:
+    """Extract relative directory parts and filename without blocking network I/O or os.path.commonpath."""
+    if not target_path or target_path in ('-', '(none)'):
+        return [], ''
+
+    p = Path(target_path)
+    filename = p.name or target_path
+
+    if root_dir:
+        try:
+            rel = p.relative_to(root_dir)
+            return list(rel.parent.parts), filename
+        except ValueError:
+            pass
+
+    if common_prefix_parts and len(common_prefix_parts) > 0:
+        p_parts = list(p.parent.parts)
+        if len(p_parts) >= len(common_prefix_parts):
+            matches = True
+            for i, prefix_part in enumerate(common_prefix_parts):
+                if p_parts[i].lower() != prefix_part.lower():
+                    matches = False
+                    break
+            if matches:
+                return p_parts[len(common_prefix_parts) :], filename
+
+    p_parts = list(p.parent.parts)
+    if len(p_parts) > 1:
+        return p_parts[1:], filename
+    elif len(p_parts) == 1:
+        return p_parts, filename
+    return [], filename
+
+
+def _compact_trie(node: FolderNode, is_root: bool = False) -> FolderNode:
+    """Recursively compact single-child folder chains into single path nodes (VS Code style)."""
+    for k in list(node.children.keys()):
+        node.children[k] = _compact_trie(node.children[k], is_root=False)
+
+    if not is_root and len(node.files) == 0 and len(node.children) == 1:
+        only_child = next(iter(node.children.values()))
+        compacted = FolderNode(f'{node.name} \\ {only_child.name}', only_child.path_key)
+        compacted.children = only_child.children
+        compacted.files = only_child.files
+        return compacted
+    return node
+
+
 class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
     custom_headers = [
         'enable',
-        'source',
-        'target',
-        'size (source)',
-        'size (target)',
-        'modification date (source)',
-        'modification date (target)',
+        'action',
+        'origin',
+        'size',
+        'modified',
     ]
 
     def __init__(self, *args, on_stats_changed: Callable[[], None] | None = None, **kwargs):
@@ -32,8 +93,12 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         self._data: dict[Action, dict[str, dict[str, float | str]]] = {}
         self._item_actions: dict[str, tuple[Action, str, str]] = {}
-        self._cached_checked_by_action: dict[str, list[str]] = {}
         self._all_group_children: dict[str, list[str]] = {}
+        self._folder_nodes: set[str] = set()
+        self._folder_display_names: dict[str, str] = {}
+        self._folder_leaf_map: dict[str, list[str]] = {}
+        self._item_parents: dict[str, str] = {}
+        self._original_tree_structure: dict[str, list[str]] = {}
         self._attached_items: dict[str, set[str]] = {}
         self._highlighted_items: set[str] = set()
         self._search_cache: dict[str, tuple[str, str]] = {}
@@ -44,17 +109,19 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         # Configure Treeview columns and headers
         self['columns'] = self.custom_headers[1:]
-        self.column('#0', width=240, minwidth=180)
-        self.heading('#0', text=self.custom_headers[0], command=lambda: self.sort_by_column('#0'))
+        self.column('#0', width=340, minwidth=240)
+        self.heading('#0', text='Item / File Name', command=lambda: self.sort_by_column('#0'))
 
+        col_configs = {
+            'action': (105, 85, 'Action'),
+            'origin': (290, 180, 'Origin / Details'),
+            'size': (95, 75, 'Size'),
+            'modified': (145, 110, 'Modified'),
+        }
         for column in self.custom_headers[1:]:
-            self.heading(column, text=column.title(), command=lambda c=column: self.sort_by_column(c))
-            if 'date' in column:
-                self.column(column, width=155, minwidth=120)
-            elif 'size' in column:
-                self.column(column, width=100, minwidth=80)
-            else:
-                self.column(column, width=330, minwidth=180)
+            width, minwidth, title = col_configs.get(column, (150, 100, column.title()))
+            self.heading(column, text=title, command=lambda c=column: self.sort_by_column(c))
+            self.column(column, width=width, minwidth=minwidth)
 
         # Configure Treeview selection highlight colors
         style = ttk.Style(self)
@@ -71,6 +138,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self.tag_configure('copy_tag', background='#f6fff8')
         self.tag_configure('move_tag', background='#f0f7ff')
         self.tag_configure('delete_tag', background='#fff5f5')
+        self.tag_configure('folder_tag', background='#ffffff')
         self.tag_configure('highlight_match', background='#fff59d')
         self.tag_configure('selected_row', background='#0078d7', foreground='#ffffff')
 
@@ -79,52 +147,75 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self.refresh_group_stats()
 
     def refresh_group_stats(self):
-        """Single-pass O(N) grouping of checked items across actions to eliminate redundant tree queries."""
-        checked_items = self.get_checked()
-        checked_by_action: dict[str, list[str]] = {a: [] for a in self.get_children('')}
-        for item_id in checked_items:
-            prefix = item_id.partition('::')[0]
-            if prefix in checked_by_action:
-                checked_by_action[prefix].append(item_id)
+        """Update folder summary rows and notify stats listeners."""
+        for folder_iid in getattr(self, '_folder_nodes', set()):
+            if not self.exists(folder_iid):
+                continue
+            leaf_children = self._folder_leaf_map.get(folder_iid, [])
+            checked_leaves = [ch for ch in leaf_children if self.exists(ch) and self.tag_has('checked', ch)]
+            n_checked = len(checked_leaves)
+            n_total = len(leaf_children)
 
-        self._cached_checked_by_action = checked_by_action
+            folder_bytes = 0.0
+            has_known = False
+            for ch in checked_leaves:
+                action_info = self._item_actions.get(ch)
+                if not action_info:
+                    continue
+                action = action_info[0]
+                row = self._data.get(action, {}).get(ch, {})
+                b = row.get('size in bytes', 0)
+                if isinstance(b, int | float):
+                    folder_bytes += b
+                sz_key = 'size (target)' if action == Action.DELETE else 'size (source)'
+                if row.get(sz_key) != '-':
+                    has_known = True
 
-        for action_str, selected_lines in checked_by_action.items():
-            n_children = len(self._all_group_children.get(action_str, self.get_children(action_str)))
-            selected_number = len(selected_lines)
-            action_enum = Action.from_str(action_str)
-            action_data = self._data.get(action_enum, {})
-            size_list = [action_data[x]['size in bytes'] for x in selected_lines if x in action_data]
-
-            if not all(isinstance(size, int | float) for size in size_list):
-                raise TypeError('All elements in size_list must be numbers')
-
-            selected_size = format_size(sum(size_list))  # type: ignore[arg-type]
-            # Maintain exact substring format expected by existing tests: '<action> <size> (<X> of <Y>)'
-            if self.exists(action_str):
-                self.item(action_str, text=f'{action_str} {selected_size} ({selected_number} of {n_children})')
+            sz_str = format_size(folder_bytes) if has_known else '-'
+            folder_display = self._folder_display_names.get(folder_iid, '')
+            self.item(
+                folder_iid,
+                text=f'📁  {folder_display}',
+                values=(
+                    f'({n_checked}/{n_total} files)' if n_total > 1 else '(1 file)',
+                    '',
+                    sz_str,
+                    '',
+                ),
+            )
 
         if self.on_stats_changed:
             self.on_stats_changed()
 
+    def has_known_size(self, action: Action) -> bool:
+        """Return True if at least one checked leaf of this action has a known (non '-') size."""
+        action_data = self._data.get(action, {})
+        size_key = 'size (target)' if action == Action.DELETE else 'size (source)'
+        for item_id in self._all_group_children.get(action.value, []):
+            row = action_data.get(item_id)
+            if (
+                row is not None
+                and row.get(size_key) != '-'
+                and self.exists(item_id)
+                and self.tag_has('checked', item_id)
+            ):
+                return True
+        return False
+
     def get_action_stats(self, action: Action) -> tuple[int, int | float]:
         """Return (checked_file_count, total_checked_bytes) for the given action."""
         action_data = self._data.get(action, {})
-        cached = getattr(self, '_cached_checked_by_action', None)
-        if cached is not None:
-            lines = cached.get(action.value, [])
-        else:
-            checked = self.get_checked()
-            prefix = f'{action.value}::'
-            lines = [x for x in checked if prefix in x]
-
+        all_leaves = self._all_group_children.get(action.value, [])
+        checked_count = 0
         total_bytes: float = 0.0
-        for x in lines:
-            if x in action_data:
-                val = action_data[x].get('size in bytes')
-                if isinstance(val, int | float):
-                    total_bytes += float(val)
-        return len(lines), total_bytes
+        for item_id in all_leaves:
+            if self.exists(item_id) and self.tag_has('checked', item_id):
+                checked_count += 1
+                if item_id in action_data:
+                    val = action_data[item_id].get('size in bytes')
+                    if isinstance(val, int | float):
+                        total_bytes += float(val)
+        return checked_count, total_bytes
 
     def add_file_lists(
         self,
@@ -136,21 +227,37 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         self._item_actions.clear()
         self._all_group_children.clear()
+        self._folder_nodes.clear()
+        self._folder_display_names.clear()
+        self._folder_leaf_map.clear()
+        self._item_parents.clear()
+        self._original_tree_structure.clear()
         self._attached_items.clear()
         self._highlighted_items.clear()
         self._search_cache.clear()
         self._is_filtered = False
         self._sort_col = None
         self._sort_descending = False
-        self.heading('#0', text=self.custom_headers[0])
+
+        self.heading('#0', text='Item / File Name')
+        col_configs = {
+            'action': 'Action',
+            'origin': 'Origin / Details',
+            'size': 'Size',
+            'modified': 'Modified',
+        }
         for column in self.custom_headers[1:]:
-            self.heading(column, text=column.title())
+            self.heading(column, text=col_configs.get(column, column.title()))
+
+        # 1. Parse row data
+        all_entries: list[tuple[str, Action, str, str, dict[str, Any]]] = []
+        all_parent_parts: list[list[str]] = []
 
         for action, file_list in file_lists.items():
             self._data[action] = {}
             for file_entry in file_list:
-                args = (None, file_entry) if isinstance(file_entry, CstmPath) else file_entry
-                values = self.get_row(*args, action=action)
+                src_arg, tgt_arg = (None, file_entry) if isinstance(file_entry, CstmPath) else file_entry
+                values = self.get_row(src_arg, tgt_arg, action=action)
                 src_val = str(values['source'])
                 tgt_val = str(values['target'])
                 base_key = f'{action.value}::{src_val}::{tgt_val}'
@@ -162,74 +269,226 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
                 self._data[action][item_key] = values
                 self._item_actions[item_key] = (action, src_val, tgt_val)
+                all_entries.append((item_key, action, src_val, tgt_val, values))
 
-        for action, rows in self._data.items():
-            state_tag = 'checked' if action in default_active else 'unchecked'
-            group_item = self.insert(
-                parent='',
+                primary_tgt = tgt_val if (tgt_val and tgt_val != '-') else src_val
+                if primary_tgt and primary_tgt not in ('-', '(none)'):
+                    parent_parts = list(Path(primary_tgt).parent.parts)
+                    if parent_parts:
+                        all_parent_parts.append(parent_parts)
+
+        # 2. Determine common root prefix lexically without blocking calls
+        common_prefix_parts: list[str] = []
+        if all_parent_parts:
+            first = all_parent_parts[0]
+            for i, part in enumerate(first):
+                if all(len(p) > i and p[i].lower() == part.lower() for p in all_parent_parts):
+                    common_prefix_parts.append(part)
+                else:
+                    break
+            # If all files share the exact same folder, keep the final directory name
+            if len(common_prefix_parts) == len(first) and len(common_prefix_parts) > 1:
+                common_prefix_parts = common_prefix_parts[:-1]
+
+        # 3. Construct folder Trie
+        root_trie = FolderNode(name='', path_key='')
+        for item_key, action, src_val, tgt_val, row in all_entries:
+            primary_tgt = tgt_val if (tgt_val and tgt_val != '-') else src_val
+            folder_parts, _ = _extract_relative_folder_parts(primary_tgt, common_prefix_parts=common_prefix_parts)
+
+            curr = root_trie
+            accum_parts: list[str] = []
+            for part in folder_parts:
+                accum_parts.append(part)
+                path_key = '/'.join(accum_parts)
+                if part not in curr.children:
+                    curr.children[part] = FolderNode(name=part, path_key=path_key)
+                curr = curr.children[part]
+            curr.files.append((item_key, action, src_val, tgt_val, row))
+
+        # 4. Compact single-child folder chains
+        root_trie = _compact_trie(root_trie, is_root=True)
+
+        # 5. Insert compacted Trie into Treeview
+        self._populate_tree_from_trie('', root_trie, default_active)
+
+        # 6. Bottom-up leaf aggregation and folder state initialization
+        for folder_iid in sorted(self._folder_nodes, key=lambda x: x.count('/'), reverse=True):
+            children = self._original_tree_structure.get(folder_iid, [])
+            all_leaves: list[str] = []
+            for ch in children:
+                if ch in self._folder_nodes:
+                    all_leaves.extend(self._folder_leaf_map.get(ch, []))
+                else:
+                    all_leaves.append(ch)
+            self._folder_leaf_map[folder_iid] = all_leaves
+
+            checked_count = sum(1 for lf in all_leaves if self.tag_has('checked', lf))
+            if checked_count == len(all_leaves) and len(all_leaves) > 0:
+                self.change_state(folder_iid, 'checked')
+            elif checked_count == 0:
+                self.change_state(folder_iid, 'unchecked')
+            else:
+                self.change_state(folder_iid, 'tristate')
+
+        self.refresh_group_stats()
+
+    def _populate_tree_from_trie(self, parent_iid: str, node: FolderNode, default_active: list[Action]):
+        """Recursively insert folders and files into the treeview."""
+        # Insert subfolders
+        for child in node.children.values():
+            folder_iid = f'folder::{child.path_key}'
+            self._folder_nodes.add(folder_iid)
+            self._folder_display_names[folder_iid] = child.name
+            self._item_parents[folder_iid] = parent_iid
+            self._attached_items.setdefault(parent_iid, set()).add(folder_iid)
+            self._original_tree_structure.setdefault(parent_iid, []).append(folder_iid)
+
+            self.insert(
+                parent=parent_iid,
                 index='end',
-                iid=action.value,
-                text=action.value,
-                tags=(state_tag,),
+                iid=folder_iid,
+                text=f'📁  {child.name}',
+                values=('', '', '', ''),
+                tags=('folder_tag',),
                 open=True,
             )
-            self._all_group_children[action.value] = []
-            self._attached_items[action.value] = set()
+
+            self._populate_tree_from_trie(folder_iid, child, default_active)
+
+        # Insert files in this folder
+        for file_key, action, src_val, tgt_val, row in node.files:
+            self._folder_leaf_map.setdefault(parent_iid, []).append(file_key)
+            self._item_parents[file_key] = parent_iid
+            self._attached_items.setdefault(parent_iid, set()).add(file_key)
+            self._original_tree_structure.setdefault(parent_iid, []).append(file_key)
+            self._item_actions[file_key] = (action, src_val, tgt_val)
+            self._all_group_children.setdefault(action.value, []).append(file_key)
+
+            primary_path = tgt_val if (tgt_val and tgt_val != '-') else src_val
+            icon, _ = get_file_type_badge(primary_path)
+            fname = os.path.basename(primary_path) or primary_path
+
+            # Determine Origin / Transition details
+            if action == Action.MOVE:
+                src_dir = os.path.dirname(src_val)
+                tgt_dir = os.path.dirname(tgt_val)
+                src_name = os.path.basename(src_val)
+                tgt_name = os.path.basename(tgt_val)
+                if src_dir == tgt_dir and src_name != tgt_name:
+                    origin_str = f'was: {src_name}'
+                elif src_name == tgt_name:
+                    rel_dir = os.path.basename(src_dir) or src_dir
+                    origin_str = f'from: ...\\{rel_dir}\\'
+                else:
+                    rel_dir = os.path.basename(src_dir) or src_dir
+                    origin_str = f'from: ...\\{rel_dir}\\{src_name}'
+                action_badge = '🔵 Move'
+                sz_str = str(row.get('size (source)', '')) or '-'
+                dt_str = str(row.get('modification date (source)', '')) or '-'
+            elif action == Action.DELETE:
+                origin_str = '⚠️ Will be removed'
+                action_badge = '🔴 Delete'
+                sz_str = str(row.get('size (target)', '')) or '-'
+                dt_str = str(row.get('modification date (target)', '')) or '-'
+            else:  # Action.COPY
+                tgt_sz = row.get('size (target)')
+                origin_str = '✨ New file' if (tgt_sz == '-' or not tgt_sz) else '⚠️ Overwrite'
+                action_badge = '🟢 Copy'
+                sz_str = str(row.get('size (source)', '')) or '-'
+                dt_str = str(row.get('modification date (source)', '')) or '-'
+
+            state_tag = 'checked' if action in default_active else 'unchecked'
             action_style_tag = f'{action.value}_tag'
-            for key, row in rows.items():
-                self._all_group_children[action.value].append(key)
-                self._attached_items[action.value].add(key)
-                src_val = str(row['source'])
-                tgt_val = str(row['target'])
-                path_for_cat = src_val if (src_val and src_val != '(none)') else tgt_val
-                cat = get_file_category_group(path_for_cat)
-                search_str = f'{key.lower()} {src_val.lower()} {tgt_val.lower()}'
-                self._search_cache[key] = (search_str, cat)
 
-                self.insert(
-                    parent=group_item,
-                    index='end',
-                    iid=key,
-                    values=(
-                        row['source'],
-                        row['target'],
-                        row['size (source)'],
-                        row['size (target)'],
-                        row['modification date (source)'],
-                        row['modification date (target)'],
-                    ),
-                    tags=(action_style_tag,),
-                )
+            folder_display = self._folder_display_names.get(parent_iid, '')
+            search_str = (
+                f'{fname.lower()} {src_val.lower()} {tgt_val.lower()} {origin_str.lower()} {folder_display.lower()}'
+            )
+            self._search_cache[file_key] = (search_str, action.value)
 
-        self._attached_items[''] = set(self._all_group_children.keys())
+            self.insert(
+                parent=parent_iid,
+                index='end',
+                iid=file_key,
+                text=f'{icon}  {fname}',
+                values=(
+                    action_badge,
+                    origin_str,
+                    sz_str,
+                    dt_str,
+                ),
+                tags=(action_style_tag, state_tag),
+            )
 
     def get_checked(self) -> list[str]:
         """High-performance retrieval of checked leaf items."""
         checked: list[str] = []
-        if self._all_group_children:
-            for group, children in self._all_group_children.items():
-                if self.exists(group) and self.tag_has('unchecked', group):
-                    continue
-                for child in children:
-                    if self.exists(child) and self.tag_has('checked', child):
-                        checked.append(child)
-            return checked
-
-        for group in self.get_children(''):
-            # If the group is marked unchecked, all its descendants are unchecked
-            if self.tag_has('unchecked', group):
-                continue
-
-            children = self.get_children(group)
-            if not children:
-                if self.tag_has('checked', group):
-                    checked.append(group)
-                continue
-
-            for child in children:
-                if self.tag_has('checked', child):
-                    checked.append(child)
+        for item_key in self._item_actions:
+            if self.exists(item_key) and self.tag_has('checked', item_key):
+                checked.append(item_key)
         return checked
+
+    def get_children(self, item=None):
+        """Return child items, supporting action group names ('copy', 'move', 'delete') as aliases."""
+        if item in ('copy', 'move', 'delete'):
+            leaves = self._all_group_children.get(item, [])
+            visible = getattr(self, '_visible_leaves', None)
+            if visible is not None:
+                leaves = [lf for lf in leaves if lf in visible]
+            return tuple(leaves)
+        return super().get_children(item or '')
+
+    def item(self, item, option=None, **kw):
+        """Query or modify item options, supporting action group names ('copy', 'move', 'delete')."""
+        if item in ('copy', 'move', 'delete'):
+            if kw:
+                if 'open' in kw:
+                    for f_id in getattr(self, '_folder_nodes', set()):
+                        if self.exists(f_id):
+                            super().item(f_id, open=kw['open'])
+                return
+            act_enum = Action(item)
+            count, total_bytes = self.get_action_stats(act_enum)
+            total_files = len(self._all_group_children.get(item, []))
+            size_str = format_size(total_bytes) if self.has_known_size(act_enum) else '-'
+            text_val = f'{item} {size_str} ({count} of {total_files})'
+            if option == 'text':
+                return text_val
+            return {'text': text_val, 'open': True}
+        return super().item(item, option=option, **kw)
+
+    def change_state(self, item, state):
+        """Set checkbox state, cascading across all leaf items for action group names."""
+        if item in ('copy', 'move', 'delete'):
+            leaves = self._all_group_children.get(item, [])
+            for leaf in leaves:
+                if self.exists(leaf):
+                    super().change_state(leaf, state)
+                    if state == 'checked':
+                        self._check_ancestor(leaf)
+                    else:
+                        self._uncheck_ancestor(leaf)
+            self.refresh_group_stats()
+            return
+        super().change_state(item, state)
+
+    def tag_has(self, tag, item=None):
+        """Check if an item has a tag, supporting action group names ('copy', 'move', 'delete')."""
+        if item in ('copy', 'move', 'delete'):
+            leaves = self._all_group_children.get(item, [])
+            if not leaves:
+                return False
+            base_tag_has = super().tag_has
+            checked_count = sum(1 for lf in leaves if self.exists(lf) and base_tag_has('checked', lf))
+            if tag == 'checked':
+                return checked_count == len(leaves)
+            elif tag == 'unchecked':
+                return checked_count == 0
+            elif tag == 'tristate':
+                return 0 < checked_count < len(leaves)
+            return False
+        return super().tag_has(tag, item)
 
     @staticmethod
     def get_row(
@@ -302,39 +561,52 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         }
 
     def select_all(self):
-        """Check all group and child items that contain files."""
-        groups = self._all_group_children if self._all_group_children else self.get_children('')
-        for group in groups:
-            if self.exists(group):
-                self.change_state(group, 'checked')
+        """Check all tree items."""
+        for root in self.get_children(''):
+            self.change_state(root, 'checked')
+            self._check_descendant(root)
         self.refresh_group_stats()
 
     def deselect_all(self):
-        """Uncheck all group and child items."""
-        groups = self._all_group_children if self._all_group_children else self.get_children('')
-        for group in groups:
-            if self.exists(group):
-                self.change_state(group, 'unchecked')
+        """Uncheck all tree items."""
+        for root in self.get_children(''):
+            self.change_state(root, 'unchecked')
+            self._uncheck_descendant(root)
         self.refresh_group_stats()
 
     def uncheck_action(self, action: Action):
-        """Uncheck all items under a specific action (e.g. Action.DELETE)."""
-        if self.exists(action.value):
-            self.change_state(action.value, 'unchecked')
+        """Uncheck all leaf items belonging to a specific action."""
+        leaves = self._all_group_children.get(action.value, [])
+        for leaf in leaves:
+            if self.exists(leaf):
+                self.change_state(leaf, 'unchecked')
+                self._uncheck_ancestor(leaf)
         self.refresh_group_stats()
 
     def set_copies_only(self):
         """Check all copy items and uncheck all move and delete items."""
-        if self.exists(Action.COPY.value):
-            self.change_state(Action.COPY.value, 'checked')
-        if self.exists(Action.MOVE.value):
-            self.change_state(Action.MOVE.value, 'unchecked')
-        if self.exists(Action.DELETE.value):
-            self.change_state(Action.DELETE.value, 'unchecked')
+        copy_leaves = self._all_group_children.get(Action.COPY.value, [])
+        for leaf in copy_leaves:
+            if self.exists(leaf):
+                self.change_state(leaf, 'checked')
+                self._check_ancestor(leaf)
+        for act in (Action.MOVE, Action.DELETE):
+            for leaf in self._all_group_children.get(act.value, []):
+                if self.exists(leaf):
+                    self.change_state(leaf, 'unchecked')
+                    self._uncheck_ancestor(leaf)
         self.refresh_group_stats()
 
     def sort_by_column(self, col: str):
-        """Sort items within each action group by column ascending or descending."""
+        """Sort items within each folder and top level by column ascending or descending."""
+        orig_col = col
+        if col in ('size (source)', 'size (target)', 'size in bytes'):
+            col = 'size'
+        elif col in ('source', 'target', 'origin / details'):
+            col = 'origin'
+        elif col in ('modification date (source)', 'modification date (target)'):
+            col = 'modified'
+
         if getattr(self, '_sort_col', None) == col:
             self._sort_descending = not getattr(self, '_sort_descending', False)
         else:
@@ -345,165 +617,154 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         arrow = ' ▼' if reverse else ' ▲'
 
         # Update headings
-        col0_text = self.custom_headers[0]
+        col0_text = 'Item / File Name'
         self.heading('#0', text=f'{col0_text}{arrow}' if col == '#0' else col0_text)
         for c in self.custom_headers[1:]:
-            title = c.title()
+            title = 'Origin / Details' if c == 'origin' else ('Modified' if c == 'modified' else c.title())
             self.heading(c, text=f'{title}{arrow}' if c == col else title)
+        if orig_col != col:
+            with contextlib.suppress(Exception):
+                self.heading(orig_col, text=f'{orig_col}{arrow}')
 
-        # Sort children within each action group
-        for group in self.get_children(''):
-            children = self._all_group_children.get(group, list(self.get_children(group)))
-            if not children:
-                continue
+        def _sort_key(item_id: str):
+            if item_id in self._folder_nodes:
+                return (0, self._folder_display_names.get(item_id, item_id).lower())
+            action_info = self._item_actions.get(item_id)
+            if not action_info:
+                return (1, item_id.lower())
+            action, src_val, tgt_val = action_info
+            row = self._data.get(action, {}).get(item_id, {})
+            if col == 'size':
+                val = row.get('size in bytes', 0)
+                return (1, float(val if isinstance(val, int | float) else 0))
+            elif col == 'action':
+                return (1, action.value)
+            elif col == 'origin':
+                primary_path = tgt_val if (tgt_val and tgt_val != '-') else src_val
+                return (1, str(primary_path).lower())
+            elif col == 'modified':
+                dt_key = 'modification date (target)' if action == Action.DELETE else 'modification date (source)'
+                return (1, str(row.get(dt_key, '')))
+            elif col == '#0':
+                primary_path = tgt_val if (tgt_val and tgt_val != '-') else src_val
+                return (1, os.path.basename(primary_path).lower())
+            else:
+                return (1, item_id.lower())
 
-            try:
-                action_enum = Action.from_str(group)
-            except Exception:
-                action_enum = None
-
-            action_data = self._data.get(action_enum, {}) if action_enum else {}
-
-            def _sort_key(item_id: str, data=action_data):
-                row = data.get(item_id, {})
-                if col == 'size (source)':
-                    val = row.get('bytes (source)', 0)
-                    return float(val if isinstance(val, int | float) else 0)
-                elif col == 'size (target)':
-                    val = row.get('bytes (target)', 0)
-                    return float(val if isinstance(val, int | float) else 0)
-                elif col == 'modification date (source)':
-                    return str(row.get('modification date (source)', ''))
-                elif col == 'modification date (target)':
-                    return str(row.get('modification date (target)', ''))
-                elif col == 'source':
-                    return str(row.get('source', '')).lower()
-                elif col == 'target':
-                    return str(row.get('target', '')).lower()
-                elif col == '#0':
-                    is_checked = self.tag_has('checked', item_id)
-                    return (0 if is_checked else 1, item_id.lower())
-                else:
-                    return item_id.lower()
-
+        for parent_iid, children in list(self._original_tree_structure.items()):
             sorted_children = sorted(children, key=_sort_key, reverse=reverse)
-            self._all_group_children[group] = sorted_children
-
-            attached = self._attached_items.get(group, set())
+            self._original_tree_structure[parent_iid] = sorted_children
+            attached = self._attached_items.get(parent_iid, set())
             idx = 0
-            for item_id in sorted_children:
-                if self.exists(item_id) and (not self._is_filtered or item_id in attached):
-                    self.move(item_id, group, idx)
+            for child_id in sorted_children:
+                if self.exists(child_id) and (not self._is_filtered or child_id in attached):
+                    self.move(child_id, parent_iid, idx)
                     idx += 1
 
+        for act_str, leaves in self._all_group_children.items():
+            self._all_group_children[act_str] = sorted(leaves, key=_sort_key, reverse=reverse)
+
     def expand_all(self):
-        """Expand all action groups."""
-        for group in self.get_children(''):
-            self.item(group, open=True)
+        """Expand all folder nodes."""
+        for folder_iid in self._folder_nodes:
+            if self.exists(folder_iid):
+                self.item(folder_iid, open=True)
 
     def collapse_all(self):
-        """Collapse all action groups."""
-        for group in self.get_children(''):
-            self.item(group, open=False)
+        """Collapse all folder nodes."""
+        for folder_iid in self._folder_nodes:
+            if self.exists(folder_iid):
+                self.item(folder_iid, open=False)
 
-    def filter_items(self, query: str = '', category: str | None = None) -> tuple[int, str | None]:
+    def filter_items(
+        self,
+        query: str = '',
+        action_filter: str | None = None,
+        category: str | None = None,
+    ) -> tuple[int, str | None]:
         """
-        Filter the displayed tree items by search query and optional file type category.
-
-        Detaches non-matching leaf items and empty groups, and reattaches matching items.
+        Filter the displayed tree items by free text and action type ('all', 'copy', 'move', 'delete').
+        Detaches non-matching items and empty folders, and reattaches matching items.
         Returns (match_count, first_match_id).
         """
         query = query.strip().lower()
-        cat_filter = category.lower() if category and category.lower() not in ('all', '') else None
-        first_match: str | None = None
+        effective_act = action_filter or category
+        act = effective_act.lower() if effective_act and effective_act.lower() not in ('all', '') else None
+        first_match = None
         match_count = 0
 
-        # If both query and category filter are empty, restore all items and groups in their original order
-        if not query and cat_filter is None:
+        # If neither filter is active, restore full original hierarchy
+        if not query and act is None:
+            self._visible_leaves = None
             if not getattr(self, '_is_filtered', False):
                 return 0, None
             self._is_filtered = False
 
-            # Clear highlight tag only on previously highlighted items
+            # Clear highlight match tag
             for child in list(self._highlighted_items):
                 if self.exists(child):
                     tags = tuple(t for t in self.item(child, 'tags') if t != 'highlight_match')
                     self.item(child, tags=tags)
             self._highlighted_items.clear()
 
-            # Restore any detached items and groups in order
-            root_attached = self._attached_items.setdefault('', set(self.get_children('')))
-            for group, all_children in self._all_group_children.items():
-                if not self.exists(group):
+            # Reattach in original order (one Tk call per parent)
+            for parent_iid, children in self._original_tree_structure.items():
+                if parent_iid and not self.exists(parent_iid):
                     continue
-                attached = self._attached_items.setdefault(group, set())
-                if len(attached) < len(all_children):
-                    for child in all_children:
-                        if child not in attached and self.exists(child):
-                            self.reattach(child, group, 'end')
-                    attached.update(all_children)
-                if group not in root_attached:
-                    self.reattach(group, '', 'end')
-                    root_attached.add(group)
-
+                self.set_children(parent_iid, *children)
+                self._attached_items[parent_iid] = set(children)
             return 0, None
 
         self._is_filtered = True
+        matching_leaves: set[str] = set()
+        self._visible_leaves = matching_leaves
 
-        root_attached = self._attached_items.setdefault('', set(self.get_children('')))
+        for item_key, (search_str, file_action) in self._search_cache.items():
+            text_match = not query or (query in search_str)
+            act_match = (act is None) or (file_action == act)
+            if text_match and act_match:
+                matching_leaves.add(item_key)
+                match_count += 1
+                if first_match is None:
+                    first_match = item_key
 
-        for group, all_children in self._all_group_children.items():
-            if not self.exists(group):
+        # Folders that contain at least one matching leaf
+        active_folders: set[str] = set()
+        for folder_iid, leaves in self._folder_leaf_map.items():
+            if any(lf in matching_leaves for lf in leaves):
+                active_folders.add(folder_iid)
+
+        # Clear stale highlights
+        for child in list(self._highlighted_items):
+            if child not in matching_leaves or not query:
+                if self.exists(child):
+                    tags = tuple(t for t in self.item(child, 'tags') if t != 'highlight_match')
+                    self.item(child, tags=tags)
+                self._highlighted_items.discard(child)
+
+        # Update visibility in treeview (one Tk call per parent)
+        for parent_iid, children in self._original_tree_structure.items():
+            if parent_iid and not self.exists(parent_iid):
                 continue
+            parent_is_active = parent_iid == '' or parent_iid in active_folders
+            visible: list[str] = []
+            if parent_is_active:
+                for child_iid in children:
+                    if child_iid in self._folder_nodes:
+                        if child_iid in active_folders:
+                            visible.append(child_iid)
+                    elif child_iid in matching_leaves:
+                        visible.append(child_iid)
+            self.set_children(parent_iid, *visible)
+            self._attached_items[parent_iid] = set(visible)
 
-            attached = self._attached_items.setdefault(group, set())
-            group_has_matches = False
-
-            for child in all_children:
-                search_str, cat = self._search_cache.get(child, ('', ''))
-                text_match = not query or (query in search_str)
-                cat_match = (cat_filter is None) or (cat == cat_filter)
-
-                if text_match and cat_match:
-                    match_count += 1
-                    group_has_matches = True
-                    if first_match is None:
-                        first_match = child
-
-                    if child not in attached:
-                        self.reattach(child, group, 'end')
-                        attached.add(child)
-
-                    if query:
-                        if child not in self._highlighted_items:
-                            tags = tuple(t for t in self.item(child, 'tags') if t != 'highlight_match') + (
-                                'highlight_match',
-                            )
-                            self.item(child, tags=tags)
-                            self._highlighted_items.add(child)
-                    elif child in self._highlighted_items:
-                        tags = tuple(t for t in self.item(child, 'tags') if t != 'highlight_match')
-                        self.item(child, tags=tags)
-                        self._highlighted_items.discard(child)
-                else:
-                    if child in attached:
-                        self.detach(child)
-                        attached.discard(child)
-
-                    if child in self._highlighted_items:
-                        tags = tuple(t for t in self.item(child, 'tags') if t != 'highlight_match')
-                        self.item(child, tags=tags)
-                        self._highlighted_items.discard(child)
-
-            if group_has_matches:
-                if group not in root_attached:
-                    self.reattach(group, '', 'end')
-                    root_attached.add(group)
-                self.item(group, open=True)
-            else:
-                if group in root_attached:
-                    self.detach(group)
-                    root_attached.discard(group)
+            for child_iid in visible:
+                if child_iid in self._folder_nodes:
+                    self.item(child_iid, open=True)
+                elif query and child_iid not in self._highlighted_items:
+                    tags = tuple(self.item(child_iid, 'tags')) + ('highlight_match',)
+                    self.item(child_iid, tags=tags)
+                    self._highlighted_items.add(child_iid)
 
         return match_count, first_match
 
@@ -1108,8 +1369,11 @@ class ActionSelection:
             font=('Segoe UI', 9),
             padx=8,
             pady=2,
+            cursor='hand2',
         )
         self.lbl_stat_copy.pack(side='left', padx=(0, 6))
+        self.lbl_stat_copy.bind('<Button-1>', lambda e: self._on_action_filter_clicked('copy'))
+        add_tooltip(self.lbl_stat_copy, 'Click to filter tree by Copy operations.')
 
         self.lbl_stat_move = BadgeLabel(
             badge_frame,
@@ -1118,8 +1382,11 @@ class ActionSelection:
             font=('Segoe UI', 9),
             padx=8,
             pady=2,
+            cursor='hand2',
         )
         self.lbl_stat_move.pack(side='left', padx=(0, 6))
+        self.lbl_stat_move.bind('<Button-1>', lambda e: self._on_action_filter_clicked('move'))
+        add_tooltip(self.lbl_stat_move, 'Click to filter tree by Move operations.')
 
         self.lbl_stat_delete = BadgeLabel(
             badge_frame,
@@ -1128,8 +1395,11 @@ class ActionSelection:
             font=('Segoe UI', 9),
             padx=8,
             pady=2,
+            cursor='hand2',
         )
         self.lbl_stat_delete.pack(side='left', padx=(0, 6))
+        self.lbl_stat_delete.bind('<Button-1>', lambda e: self._on_action_filter_clicked('delete'))
+        add_tooltip(self.lbl_stat_delete, 'Click to filter tree by Delete operations.')
 
     def _create_toolbar(self):
         toolbar_frame = ttk.Frame(self.popup, padding=(8, 4))
@@ -1166,7 +1436,7 @@ class ActionSelection:
             command=lambda: self.tree.expand_all(),
             width=11,
         )
-        add_tooltip(btn_expand, 'Expand all action categories to display every file.')
+        add_tooltip(btn_expand, 'Expand all folder categories to display every file.')
         btn_expand.pack(side='left', padx=(0, 4))
 
         btn_collapse = ttk.Button(
@@ -1175,7 +1445,7 @@ class ActionSelection:
             command=lambda: self.tree.collapse_all(),
             width=11,
         )
-        add_tooltip(btn_collapse, 'Collapse all action categories.')
+        add_tooltip(btn_collapse, 'Collapse all folder categories.')
         btn_collapse.pack(side='left', padx=(0, 8))
 
         ttk.Separator(row_actions, orient='vertical').pack(side='left', fill='y', padx=4)
@@ -1199,7 +1469,7 @@ class ActionSelection:
         add_tooltip(self.btn_copies_only, 'Check only copy operations; uncheck moves and deletions.')
         self.btn_copies_only.pack(side='left', padx=(0, 4))
 
-        # Row 2: Search Entry & File Type Filter Chips
+        # Row 2: Search Entry & Action Filter Buttons
         row_filter = ttk.Frame(toolbar_frame)
         row_filter.pack(fill='x', pady=(2, 0))
 
@@ -1223,32 +1493,33 @@ class ActionSelection:
 
         ttk.Separator(row_filter, orient='vertical').pack(side='left', fill='y', padx=4)
 
-        lbl_type = ttk.Label(row_filter, text='Type:', font=('Segoe UI', 9))
+        lbl_type = ttk.Label(row_filter, text='Action:', font=('Segoe UI', 9))
         lbl_type.pack(side='left', padx=(6, 4))
 
         self.active_category: str = 'all'
-        self.category_buttons: dict[str, ttk.Button] = {}
-        chip_defs = [
+        self.active_action_filter: str = 'all'
+        self.action_buttons: dict[str, ttk.Button] = {}
+        action_defs = [
             ('all', 'All', None),
-            ('image', 'Images', 'image'),
-            ('document', 'Docs', 'document'),
-            ('media', 'Media', 'media'),
-            ('code', 'Code', 'code'),
-            ('archive', 'Archives', 'archive'),
+            ('copy', 'Copies', 'copy'),
+            ('move', 'Moves', 'move'),
+            ('delete', 'Deletions', 'delete'),
         ]
 
-        for cat_id, cat_label, icon_name in chip_defs:
+        for act_id, act_label, icon_name in action_defs:
             btn = ttk.Button(
                 row_filter,
-                text=cat_label,
-                command=lambda c=cat_id: self._on_category_chip_clicked(c),
-                style='Accent.TButton' if cat_id == 'all' else 'TButton',
+                text=act_label,
+                command=lambda a=act_id: self._on_action_filter_clicked(a),
+                style='Accent.TButton' if act_id == 'all' else 'TButton',
             )
             if icon_name:
                 apply_icon(btn, icon_name)
-            add_tooltip(btn, f'Filter by {cat_label.lower()} files.')
+            add_tooltip(btn, f'Filter list to show only {act_label.lower()}.')
             btn.pack(side='left', padx=2)
-            self.category_buttons[cat_id] = btn
+            self.action_buttons[act_id] = btn
+
+        self.category_buttons = self.action_buttons  # Backwards compatibility alias
 
         self.lbl_filter_count = ttk.Label(row_filter, text='', font=('Segoe UI', 9))
         self.lbl_filter_count.pack(side='left', padx=(8, 0))
@@ -1562,7 +1833,7 @@ class ActionSelection:
                 return
             item_id = selected[0]
 
-        if item_id in self.tree.get_children(''):
+        if item_id in self.tree.get_children('') or item_id in getattr(self.tree, '_folder_nodes', set()):
             return
 
         item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
@@ -1601,7 +1872,7 @@ class ActionSelection:
             self._on_item_selected(None)
             curr_selection = [row_id]
 
-        if row_id in self.tree.get_children(''):
+        if row_id in self.tree.get_children('') or row_id in self.tree._folder_nodes:
             self._show_group_context_menu(event, row_id)
         elif len(curr_selection) > 1:
             self._show_multi_item_context_menu(event, curr_selection)
@@ -1622,7 +1893,7 @@ class ActionSelection:
         dummy_event = type('DummyEvent', (), {'x_root': x, 'y_root': y})()
         if len(selected) > 1:
             self._show_multi_item_context_menu(dummy_event, list(selected))
-        elif selected[0] in self.tree.get_children(''):
+        elif selected[0] in self.tree.get_children('') or selected[0] in self.tree._folder_nodes:
             self._show_group_context_menu(dummy_event, selected[0])
         else:
             self._show_single_item_context_menu(dummy_event, selected[0])
@@ -1749,8 +2020,13 @@ class ActionSelection:
 
     def _show_group_context_menu(self, event, group_id: str):
         menu = tk.Menu(self.popup, tearoff=0)
-        group_name = group_id.upper()
-        children = self.tree._all_group_children.get(group_id, list(self.tree.get_children(group_id)))
+        is_folder = group_id in self.tree._folder_nodes
+        if is_folder:
+            group_name = self.tree._folder_display_names.get(group_id, group_id)
+            children = list(self.tree._folder_leaf_map.get(group_id, []))
+        else:
+            group_name = group_id.upper()
+            children = self.tree._all_group_children.get(group_id, list(self.tree.get_children(group_id)))
         count = len(children)
 
         menu.add_command(
@@ -1763,10 +2039,11 @@ class ActionSelection:
             command=lambda: self._copy_multi_paths(children, 'target'),
             state='normal' if count > 0 else 'disabled',
         )
-        menu.add_command(
-            label=f'📋 Copy Group Summary ({group_name})',
-            command=lambda: self._copy_group_summary(group_id),
-        )
+        if not is_folder:
+            menu.add_command(
+                label=f'📋 Copy Group Summary ({group_name})',
+                command=lambda: self._copy_group_summary(group_id),
+            )
 
         menu.add_separator()
 
@@ -1867,7 +2144,14 @@ class ActionSelection:
         self.tree.refresh_group_stats()
 
     def _set_group_check(self, group_id: str, state: str):
-        if self.tree.exists(group_id):
+        if group_id in getattr(self.tree, '_folder_nodes', set()) and self.tree.exists(group_id):
+            if state == 'checked':
+                self.tree._check_descendant(group_id)
+                self.tree._check_ancestor(group_id)
+            else:
+                self.tree._uncheck_descendant(group_id)
+                self.tree._uncheck_ancestor(group_id)
+        elif group_id in ('copy', 'move', 'delete') or self.tree.exists(group_id):
             self.tree.change_state(group_id, state)
         self.tree.refresh_group_stats()
 
@@ -1879,6 +2163,24 @@ class ActionSelection:
         selected = self.tree.selection()
         if selected:
             item_id = selected[0]
+            if item_id in getattr(self.tree, '_folder_nodes', set()):
+                leaves = self.tree._folder_leaf_map.get(item_id, [])
+                for lf in leaves:
+                    info = getattr(self.tree, '_item_actions', {}).get(lf)
+                    if info:
+                        tgt_p = info[2]
+                        if tgt_p and tgt_p not in ('-', '(none)'):
+                            dir_to_open = os.path.dirname(tgt_p)
+                            if os.path.exists(dir_to_open):
+                                self._open_path_in_explorer(dir_to_open)
+                                return
+                        src_p = info[1]
+                        if src_p and src_p not in ('-', '(none)'):
+                            dir_to_open = os.path.dirname(src_p)
+                            if os.path.exists(dir_to_open):
+                                self._open_path_in_explorer(dir_to_open)
+                                return
+                return
             item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
             if item_info is not None:
                 _, source_path, target_path = item_info
@@ -1962,6 +2264,26 @@ class ActionSelection:
                 with contextlib.suppress(Exception):
                     action = Action(parts[0])
         else:
+            if item_id in getattr(self.tree, '_folder_nodes', set()):
+                disp_name = self.tree._folder_display_names.get(item_id, item_id)
+                leaves = self.tree._folder_leaf_map.get(item_id, [])
+                folder_bytes = 0.0
+                for lf in leaves:
+                    lf_info = self.tree._item_actions.get(lf)
+                    if lf_info:
+                        b = self.tree._data.get(lf_info[0], {}).get(lf, {}).get('size in bytes', 0)
+                        if isinstance(b, int | float):
+                            folder_bytes += b
+                sz_text = format_size(folder_bytes) if folder_bytes > 0 else '-'
+                self.lbl_inspector_badge.config(text='📁 Folder')
+                self.lbl_inspector_diff.config(
+                    text=f'Folder contains {len(leaves)} planned sync file{"s" if len(leaves) != 1 else ""} ({sz_text})'
+                )
+                self.lbl_inspector_source.config(text=f'Folder: {disp_name}')
+                self.lbl_inspector_target.config(text='-')
+                self.lbl_inspector_src_meta.config(text=f'Files: {len(leaves)}  •  Total Size: {sz_text}')
+                self.lbl_inspector_tgt_meta.config(text='')
+                return
             self.lbl_inspector_badge.config(text='📁 Group')
             self.lbl_inspector_diff.config(text=f'Category: {item_id.upper()}')
             self.lbl_inspector_source.config(text=f'Group: {item_id.upper()}')
@@ -2041,38 +2363,41 @@ class ActionSelection:
             name = action.value.capitalize()
             if count == 0:
                 return f'{icon} {name}: 0 files (0 B)'
-            action_data = self.tree._data.get(action, {})
-            checked = getattr(self.tree, '_cached_checked_by_action', {}).get(action.value, [])
-            size_key = 'size (target)' if action == Action.DELETE else 'size (source)'
-            has_known = any(action_data[x].get(size_key) != '-' for x in checked if x in action_data)
-            size_str = format_size(bytes_val) if has_known else '-'
+            size_str = format_size(bytes_val) if self.tree.has_known_size(action) else '-'
             return f'{icon} {name}: {count} files ({size_str})'
 
         self.lbl_stat_copy.config(text=_format_badge(Action.COPY, copy_count, copy_bytes, '🟢'))
         self.lbl_stat_move.config(text=_format_badge(Action.MOVE, move_count, move_bytes, '🔵'))
         self.lbl_stat_delete.config(text=_format_badge(Action.DELETE, del_count, del_bytes, '🔴'))
 
-    def _on_category_chip_clicked(self, cat: str):
-        self.active_category = cat
-        for c_key, btn in getattr(self, 'category_buttons', {}).items():
-            btn.configure(style='Accent.TButton' if c_key == cat else 'TButton')
+    def _on_action_filter_clicked(self, act_id: str):
+        if getattr(self, 'active_action_filter', 'all') == act_id and act_id != 'all':
+            act_id = 'all'
+        self.active_action_filter = act_id
+        self.active_category = act_id
+        for a_key, btn in getattr(self, 'action_buttons', {}).items():
+            btn.configure(style='Accent.TButton' if a_key == act_id else 'TButton')
         self._on_filter_changed()
 
+    def _on_category_chip_clicked(self, cat: str):
+        self._on_action_filter_clicked(cat)
+
     def _on_clear_filter(self):
+        self.active_action_filter = 'all'
         self.active_category = 'all'
-        for c_key, btn in getattr(self, 'category_buttons', {}).items():
-            btn.configure(style='Accent.TButton' if c_key == 'all' else 'TButton')
+        for a_key, btn in getattr(self, 'action_buttons', {}).items():
+            btn.configure(style='Accent.TButton' if a_key == 'all' else 'TButton')
         self.filter_var.set('')
 
     def _on_filter_changed(self, *args):
         query = self.filter_var.get()
-        active_cat = getattr(self, 'active_category', 'all')
-        match_count, first_match = self.tree.filter_items(query, category=active_cat)
+        active_act = getattr(self, 'active_action_filter', 'all')
+        match_count, first_match = self.tree.filter_items(query, action_filter=active_act)
 
-        is_filtering = bool(query.strip()) or (active_cat != 'all')
+        is_filtering = bool(query.strip()) or (active_act != 'all')
         if is_filtering:
-            cat_desc = f' [{active_cat.title()}]' if active_cat != 'all' else ''
-            self.lbl_filter_count.config(text=f'({match_count} match{"es" if match_count != 1 else ""}{cat_desc})')
+            act_desc = f' [{active_act.title()}]' if active_act != 'all' else ''
+            self.lbl_filter_count.config(text=f'({match_count} match{"es" if match_count != 1 else ""}{act_desc})')
             if first_match is not None:
                 self.tree.see(first_match)
                 self.tree.selection_set(first_match)
@@ -2092,7 +2417,7 @@ class ActionSelection:
         if getattr(self, 'filter_var', None) and self.filter_var.get():
             self._on_clear_filter()
             return 'break'
-        if getattr(self, 'active_category', 'all') != 'all':
+        if getattr(self, 'active_action_filter', 'all') != 'all':
             self._on_clear_filter()
             return 'break'
         self.button_cancel_click()
