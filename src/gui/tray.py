@@ -7,7 +7,7 @@ from tkinter import messagebox
 import pystray
 from PIL import Image
 
-from gui.icons import apply_window_icon, get_app_icon_path
+from gui.icons import apply_window_icon, conceal_window, get_app_icon_path, reveal_window
 from utils.logger import is_test_or_agent_mode, logger
 
 
@@ -25,8 +25,8 @@ class TrayableTk(tk.Tk):
                     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 
         super().__init__()
+        conceal_window(self)
         apply_window_icon(self)
-        self.update_idletasks()
         self._tray_icon: pystray.Icon | None = None
         self._is_closing = False
         self._on_sync_now: Callable[[], None] | None = None
@@ -140,7 +140,7 @@ class TrayableTk(tk.Tk):
         self.after(0, self._restore_window)
 
     def _restore_window(self):
-        self.deiconify()
+        reveal_window(self)
         self.lift()
         with contextlib.suppress(Exception):
             if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'):

@@ -7,7 +7,9 @@ avoiding raw Unicode/emoji font fallback artifacts on Windows GDI.
 
 from __future__ import annotations
 
+import _tkinter
 import contextlib
+import ctypes
 import os
 import tkinter as tk
 from tkinter import ttk
@@ -16,6 +18,43 @@ from typing import Any
 _APP_ICON_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app_icon.ico'))
 _ICONS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'icons')
 _ICON_CACHE: dict[str, tk.PhotoImage] = {}
+
+
+def conceal_window(window: tk.Tk | tk.Toplevel) -> None:
+    """
+    Conceal a newly created Tk or Toplevel window before configuring attributes or building widgets.
+
+    Withdrawing first prevents Tcl/Tk's Win32 UpdateWrapper (triggered by iconbitmap, resizable,
+    and transient) from mapping temporary HWNDs and stealing foreground activation from the parent
+    window. Setting -alpha 0.0 ensures the window remains invisible during deiconify() until child
+    widgets have processed MapNotify/ConfigureNotify and completed their initial paint.
+    """
+    with contextlib.suppress(Exception):
+        window.withdraw()
+    with contextlib.suppress(Exception):
+        window.attributes('-alpha', 0.0)
+
+
+def reveal_window(window: tk.Tk | tk.Toplevel) -> None:
+    """
+    Map, lay out, and paint all child widgets while transparent (-alpha 0.0), then reveal at -alpha 1.0.
+
+    Processes pending TCL_WINDOW_EVENTS (MapNotify, ConfigureNotify, Expose) and TCL_IDLE_EVENTS
+    without firing TCL_TIMER_EVENTS, then flushes Win32 GDI WM_PAINT before restoring full opacity.
+    """
+    with contextlib.suppress(Exception):
+        window.attributes('-alpha', 0.0)
+        window.deiconify()
+        flags = _tkinter.DONT_WAIT | _tkinter.WINDOW_EVENTS | _tkinter.IDLE_EVENTS
+        for _ in range(100):
+            if not window.tk.dooneevent(flags):
+                break
+        window.update_idletasks()
+        if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'):
+            hwnd = window.winfo_id()
+            top_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
+            ctypes.windll.user32.UpdateWindow(top_hwnd)
+        window.attributes('-alpha', 1.0)
 
 
 def get_app_icon_path() -> str | None:

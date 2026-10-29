@@ -552,3 +552,62 @@ def test_log_panel_theme_toggles():
     assert lp.text_logger.cget('fg') == '#1c1c1c'
 
     root.destroy()
+
+
+def test_flicker_free_window_conceal_and_reveal(tmp_path, monkeypatch):
+    """Verify TrayableTk starts concealed and windows map/layout child widgets before restoring alpha=1.0."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        from gui.confirmation_popup import FileDetailsDialog
+        from gui.tray import TrayableTk
+
+        tray_root = TrayableTk()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        # 1. TrayableTk must start withdrawn and transparent so it never flashes a blank 200x200 frame
+        assert tray_root.state() == 'withdrawn'
+        assert tray_root.winfo_ismapped() == 0
+        assert float(tray_root.attributes('-alpha')) == 0.0
+
+        # 2. ActionSelection must map and lay out its child treeview before returning at alpha=1.0
+        src1 = CstmPath(str(tmp_path / 'a.txt'))
+        tgt1 = CstmPath(str(tmp_path / 'b.txt'))
+        popup = ActionSelection(
+            root_gui=tray_root,
+            files_available_to_copy=[(src1, tgt1)],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+        try:
+            assert float(popup.popup.attributes('-alpha')) == 1.0
+            assert popup.tree.winfo_ismapped() == 1
+            assert popup.tree.winfo_width() > 100
+            assert popup.button_save.winfo_ismapped() == 1
+        finally:
+            popup.popup.destroy()
+
+        # 3. ReportsWindow (BaseModalDialog) must map and lay out its treeview before returning at alpha=1.0
+        from utils.logger import logger
+
+        monkeypatch.setattr(logger, 'log_dir', str(tmp_path))
+        rep_win = ReportsWindow(tray_root)
+        try:
+            assert float(rep_win.window.attributes('-alpha')) == 1.0
+            assert rep_win.tree.winfo_ismapped() == 1
+            assert rep_win.tree.winfo_width() > 100
+        finally:
+            rep_win.window.destroy()
+
+        # 4. FileDetailsDialog must map and lay out its action buttons before returning at alpha=1.0
+        details = FileDetailsDialog(tray_root, Action.COPY, str(src1), str(tgt1), row_data={}, is_checked=True)
+        try:
+            assert float(details.dialog.attributes('-alpha')) == 1.0
+            assert details.btn_copy_all.winfo_ismapped() == 1
+            assert details.btn_copy_all.winfo_width() > 10
+        finally:
+            details.dialog.destroy()
+    finally:
+        tray_root.destroy()

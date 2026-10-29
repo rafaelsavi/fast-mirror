@@ -20,7 +20,7 @@ from gui.components.schedule_panel import SchedulePanel
 from gui.components.status_bar import StatusBar
 from gui.components.telemetry_bar import TelemetryBar
 from gui.enums import BackendThreadStatus, TkinterCfgRelief
-from gui.icons import apply_window_icon
+from gui.icons import apply_window_icon, conceal_window, reveal_window
 from gui.scheduler import calculate_next_run
 from gui.taskbar import TaskbarProgress
 from gui.tray import TrayableTk
@@ -47,8 +47,7 @@ class Gui:
     def __init__(self, config_path: str | None = None, profile_name: str | None = None):
         # Initialize GUI window
         self.root = TrayableTk()
-        with contextlib.suppress(Exception):
-            self.root.attributes('-alpha', 0.0)
+        conceal_window(self.root)
         apply_window_icon(self.root)
         self.root.title('FastMirror')
 
@@ -176,12 +175,9 @@ class Gui:
             pos_x = max(0, (sw - w) // 2)
             pos_y = max(0, (sh - h) // 2)
             self.root.geometry(f'{w}x{h}+{pos_x}+{pos_y}')
-            self.root.update_idletasks()
         except Exception:
             pass
-        with contextlib.suppress(Exception):
-            self.root.attributes('-alpha', 1.0)
-            self.root.deiconify()
+        reveal_window(self.root)
 
     @property
     def backend_thread_status(self) -> BackendThreadStatus:

@@ -7,7 +7,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from gui.components.base_modal import BaseModalDialog
 from gui.health_check import TargetHealth, probe_single_target
-from gui.icons import apply_icon, apply_window_icon
+from gui.icons import apply_icon, apply_window_icon, conceal_window, reveal_window
 from gui.widgets import BadgeLabel, DirectoryPair, EntryPaths, add_tooltip
 from utils.utils import sanitize_path
 
@@ -441,8 +441,7 @@ class DirectoryPairsModal(BaseModalDialog):
 
     def _open_pair_editor(self, default_src: str | None, default_tgt: str | None, edit_idx: int | None):
         dialog = tk.Toplevel(self.window)
-        with contextlib.suppress(Exception):
-            dialog.attributes('-alpha', 0.0)
+        conceal_window(dialog)
         is_edit = edit_idx is not None
         dialog.title('Edit Directory Pair' if is_edit else 'Add New Directory Pair')
         apply_window_icon(dialog)
@@ -542,9 +541,8 @@ class DirectoryPairsModal(BaseModalDialog):
         except Exception:
             dialog.geometry(f'{width}x{height}')
 
+        reveal_window(dialog)
         with contextlib.suppress(Exception):
-            dialog.update_idletasks()
-            dialog.attributes('-alpha', 1.0)
             dialog.grab_set()
 
         entry_src.focus_set()

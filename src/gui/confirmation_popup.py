@@ -11,7 +11,7 @@ from typing import Any
 import ttkwidgets
 
 from core.file import CstmPath
-from gui.icons import apply_icon, apply_window_icon
+from gui.icons import apply_icon, apply_window_icon, conceal_window, reveal_window
 from gui.widgets import Action, BadgeLabel, add_tooltip
 from utils.logger import logger
 from utils.utils import format_size
@@ -889,8 +889,7 @@ class FileDetailsDialog:
         self.filename = os.path.basename(primary_path) or primary_path
 
         self.dialog = tk.Toplevel(parent)
-        with contextlib.suppress(Exception):
-            self.dialog.attributes('-alpha', 0.0)
+        conceal_window(self.dialog)
         self.dialog.title(f'FastMirror - File Information - {self.filename}')
         with contextlib.suppress(Exception):
             self.dialog.configure(bg='SystemButtonFace')
@@ -904,10 +903,8 @@ class FileDetailsDialog:
         self.dialog.bind('<Escape>', lambda e: self.dialog.destroy())
         self.dialog.bind('<Return>', lambda e: self.dialog.destroy())
 
+        reveal_window(self.dialog)
         with contextlib.suppress(Exception):
-            self.dialog.update_idletasks()
-            self.dialog.attributes('-alpha', 1.0)
-            self.dialog.deiconify()
             self.dialog.grab_set()
         self.dialog.focus_set()
 
@@ -1399,9 +1396,7 @@ class ActionSelection:
 
         # Create window
         self.popup = tk.Toplevel(self.root_gui)
-        with contextlib.suppress(Exception):
-            self.popup.attributes('-alpha', 0.0)
-        self.popup.withdraw()
+        conceal_window(self.popup)
         self.popup.title('FastMirror - Confirm Actions')
         with contextlib.suppress(Exception):
             self.popup.configure(bg='SystemButtonFace')
@@ -1426,11 +1421,8 @@ class ActionSelection:
 
         self.create_widgets()
 
-        # Smooth reveal after widgets and treeview are completely loaded
-        self.popup.update_idletasks()
-        with contextlib.suppress(Exception):
-            self.popup.attributes('-alpha', 1.0)
-        self.popup.deiconify()
+        # Smooth reveal after widgets and treeview are completely mapped and painted
+        reveal_window(self.popup)
 
         # Modal grab (safe fallback for headless / tests)
         with contextlib.suppress(Exception):

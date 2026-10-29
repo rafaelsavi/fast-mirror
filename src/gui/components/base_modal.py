@@ -3,16 +3,16 @@
 import contextlib
 import tkinter as tk
 
-from gui.icons import apply_window_icon
+from gui.icons import apply_window_icon, conceal_window, reveal_window
 
 
 class BaseModalDialog(tk.Toplevel):
     """
     Architectural template base class for all modal windows in FastMirror.
 
-    Eliminates initial top-left flicker by initializing with alpha=0, assembling
-    widgets in memory, centering over parent or primary display, and smoothly
-    revealing at alpha=1.0.
+    Eliminates initial top-left flicker by initializing withdrawn with alpha=0,
+    assembling widgets in memory, centering over parent or primary display,
+    mapping and painting child widgets while transparent, and revealing at alpha=1.0.
     """
 
     def __init__(
@@ -35,9 +35,8 @@ class BaseModalDialog(tk.Toplevel):
         # Backward-compatibility alias so code/tests accessing self.window work seamlessly
         self.window = self
 
-        # Conceal immediately with alpha=0 to prevent the Win32 top-left flicker
-        with contextlib.suppress(Exception):
-            self.attributes('-alpha', 0.0)
+        # Conceal immediately (withdraw + alpha=0) to prevent Win32 HWND recreation & top-left flicker
+        conceal_window(self)
 
         # Setup window decorations & styling
         self.title(title)
@@ -72,11 +71,8 @@ class BaseModalDialog(tk.Toplevel):
         except Exception:
             self.geometry(f'{self.modal_width}x{self.modal_height}')
 
-        # Ensure layout is settled before revealing
-        with contextlib.suppress(Exception):
-            self.update_idletasks()
-            self.attributes('-alpha', 1.0)
-            self.deiconify()
+        # Ensure child widgets are mapped, laid out, and painted while alpha=0 before revealing
+        reveal_window(self)
 
         if modal:
             with contextlib.suppress(Exception):
