@@ -11,12 +11,38 @@ import _tkinter
 import contextlib
 import ctypes
 import os
+import sys
 import tkinter as tk
 from tkinter import ttk
 from typing import Any
 
-_APP_ICON_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app_icon.ico'))
-_ICONS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'icons')
+
+def _resolve_app_icon_path() -> str:
+    direct = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app_icon.ico'))
+    if os.path.isfile(direct):
+        return direct
+    if hasattr(sys, '_MEIPASS'):
+        for sub in ('gui/app_icon.ico', 'app_icon.ico', 'src/gui/app_icon.ico'):
+            candidate = os.path.join(sys._MEIPASS, sub)
+            if os.path.isfile(candidate):
+                return os.path.abspath(candidate)
+    return direct
+
+
+def _resolve_icons_dir() -> str:
+    direct = os.path.join(os.path.dirname(__file__), 'assets', 'icons')
+    if os.path.isdir(direct):
+        return direct
+    if hasattr(sys, '_MEIPASS'):
+        for sub in ('gui/assets/icons', 'assets/icons', 'src/gui/assets/icons'):
+            candidate = os.path.join(sys._MEIPASS, sub)
+            if os.path.isdir(candidate):
+                return candidate
+    return direct
+
+
+_APP_ICON_PATH = _resolve_app_icon_path()
+_ICONS_DIR = _resolve_icons_dir()
 _ICON_CACHE: dict[str, tk.PhotoImage] = {}
 
 

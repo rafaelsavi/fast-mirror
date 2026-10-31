@@ -4,6 +4,11 @@ import os
 import subprocess
 import sys
 
+# Ensure src directory is in sys.path when running from source
+src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
+if os.path.isdir(src_dir) and src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
 # Enable System DPI awareness on Windows to prevent DWM bitmap scaling blur without drag stutter
 if hasattr(ctypes, 'windll'):
     with contextlib.suppress(Exception):
@@ -14,9 +19,6 @@ if hasattr(ctypes, 'windll'):
 
 # Handle CLI flags before GUI single-instance mutex
 if any(arg in sys.argv for arg in ('--create-shortcut', '--shortcut')):
-    src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
-    if src_dir not in sys.path:
-        sys.path.insert(0, src_dir)
     from utils.shortcut import create_windows_shortcut  # noqa: E402
 
     try:
@@ -46,30 +48,28 @@ if kernel32:
     if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         user32 = getattr(ctypes.windll, 'user32', None)
         if user32:
-            hwnd = user32.FindWindowW(None, 'FastMirror')
+            from utils.constants import WINDOW_TITLE
+
+            hwnd = user32.FindWindowW(None, WINDOW_TITLE) or user32.FindWindowW(None, 'FastMirror')
             if hwnd:
                 user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                 user32.SetForegroundWindow(hwnd)
         sys.exit(0)
 
-# Activate venv if not already active
-venv_dir = os.path.join(os.path.dirname(__file__), '.venv', 'Scripts')
-venv_pythonw = os.path.join(venv_dir, 'pythonw.exe')
-venv_python = os.path.join(venv_dir, 'python.exe')
+# Activate venv if not already active and not running as a frozen executable
+if not getattr(sys, 'frozen', False):
+    venv_dir = os.path.join(os.path.dirname(__file__), '.venv', 'Scripts')
+    venv_pythonw = os.path.join(venv_dir, 'pythonw.exe')
+    venv_python = os.path.join(venv_dir, 'python.exe')
 
-if (
-    hasattr(sys, 'base_prefix')
-    and sys.base_prefix == sys.prefix
-    and os.path.exists(venv_pythonw)
-    and os.path.abspath(sys.executable) not in [os.path.abspath(venv_pythonw), os.path.abspath(venv_python)]
-):
-    subprocess.Popen([venv_pythonw] + sys.argv)
-    sys.exit(0)
-
-# Ensure src is on sys.path for direct execution
-src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
-if src_dir not in sys.path:
-    sys.path.insert(0, src_dir)
+    if (
+        hasattr(sys, 'base_prefix')
+        and sys.base_prefix == sys.prefix
+        and os.path.exists(venv_pythonw)
+        and os.path.abspath(sys.executable) not in [os.path.abspath(venv_pythonw), os.path.abspath(venv_python)]
+    ):
+        subprocess.Popen([venv_pythonw] + sys.argv)
+        sys.exit(0)
 
 from gui.gui import Gui  # noqa: E402
 

@@ -35,7 +35,7 @@ from gui.widgets import (
     WeekDays,
 )
 from gui.worker_thread import WorkerThread
-from utils.constants import CONFIG_PATH
+from utils.constants import CONFIG_PATH, WINDOW_TITLE
 from utils.logger import logger
 from utils.profile_manager import ProfileManager, sanitize_profile_name
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
@@ -49,7 +49,7 @@ class Gui:
         self.root = TrayableTk()
         conceal_window(self.root)
         apply_window_icon(self.root)
-        self.root.title('FastMirror')
+        self.root.title(WINDOW_TITLE)
 
         self._config_path = Path(config_path or CONFIG_PATH).resolve()
         self.profile_manager = ProfileManager(config_path=self._config_path)
