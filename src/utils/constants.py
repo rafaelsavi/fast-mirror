@@ -51,8 +51,8 @@ def _read_app_version() -> str:
 
         found_versions: list[str] = []
         for dist in distributions():
-            dist_name = getattr(dist, 'name', None) or (
-                dist.metadata['Name'] if dist.metadata and 'Name' in dist.metadata else None
+            dist_name = (
+                dist.metadata['Name'] if (dist.metadata and 'Name' in dist.metadata) else getattr(dist, 'name', None)
             )
             if dist_name and dist_name.lower() == 'fast-mirror':
                 ver = dist.version
@@ -70,7 +70,7 @@ def _read_app_version() -> str:
     except Exception:
         pass
 
-    return '1.2.0'
+    return '1.2.1'
 
 
 APP_VERSION = _read_app_version()

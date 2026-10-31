@@ -9,6 +9,19 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-31
+
+### Fixed
+- **Shortcut & Desktop Icon Rendering**:
+  - Configured Windows Start Menu and Desktop shortcuts to resolve the application icon directly from `FastMirror.exe` PE binary resources (`IconFilename: "{app}\{#AppExeName}"`), eliminating blank or generic sheet icons in Windows Explorer.
+  - Linked `UninstallDisplayIcon` in Windows Settings and Control Panel directly to `FastMirror.exe`.
+  - Added explicit copying of `app_icon.ico` into `{app}\gui\` as an additional filesystem asset.
+- **Installer Upgrade In-Place Cleaning**:
+  - Configured Inno Setup `[InstallDelete]` to purge `{app}\_internal` prior to extracting updated files, eliminating orphaned `.dist-info` directories and stale dependency DLLs from earlier installations.
+  - Hardened runtime version resolution (`_read_app_version()`) to prioritize bundled `pyproject.toml` and evaluate the highest SemVer from installed distribution metadata.
+- **Test Suite Module Teardown Stability**:
+  - Replaced per-test `tk.Tk` root instantiation in `test_new_profile_modal.py` with a module-scoped fixture, preventing rapid Tcl interpreter recreation and Win32 file lock collisions.
+
 ## [1.2.0] - 2026-10-31
 
 ### Added
@@ -21,15 +34,6 @@ The version is centrally maintained in `pyproject.toml`.
   - Modern modal window displaying the new version, release date, and release notes fetched directly from GitHub.
   - Provides direct one-click download buttons for the Windows Setup installer (`.exe`) and Portable edition (`.zip`) along with GitHub release links.
   - Offline-safe and rate-limit resilient: fails silently during startup or offline conditions with zero unhandled exceptions or UI disruption.
-
-### Fixed
-- **Shortcut & Uninstaller Icon Display**:
-  - Fixed Windows Start Menu and Desktop shortcuts by extracting icon resources directly from `FastMirror.exe` (`IconFilename: "{app}\{#AppExeName}"`) instead of an invalid subpath (`{app}\gui\app_icon.ico`), restoring sharp high-DPI desktop and taskbar application icons.
-  - Set `UninstallDisplayIcon` to `{app}\{#AppExeName}` so the Windows Installed Apps / Control Panel list displays the proper FastMirror icon.
-  - Added explicit installation of `app_icon.ico` to `{app}\gui\` as an additional filesystem asset.
-- **Installer Upgrade Stale Metadata & Orphaned Binary Purge**:
-  - Configured Inno Setup `[InstallDelete]` to purge `{app}\_internal` prior to extracting new files during in-place upgrades, preventing stale `.dist-info` directories and orphaned DLLs from previous installations.
-  - Enhanced `_read_app_version()` to prioritize `pyproject.toml` (bundled directly into the application package via PyInstaller `datas`) and select the highest SemVer from available distribution metadata if multiple dist-info folders exist, eliminating version reporting regressions after updates.
 
 ## [1.1.1] - 2026-10-31
 

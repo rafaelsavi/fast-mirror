@@ -238,7 +238,7 @@ Application version is maintained exclusively in **`pyproject.toml`**:
 ```toml
 [project]
 name = "fast-mirror"
-version = "1.2.0"
+version = "1.2.1"
 ```
 
 ### Automated Release on Push

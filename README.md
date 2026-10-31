@@ -20,8 +20,8 @@ FastMirror is designed for anyone who regularly backs up important local folders
 
 | Edition | File | Best For |
 | :--- | :--- | :--- |
-| 📦 **Installer (Recommended)** | `FastMirror-v1.2.0-Windows-Setup.exe` | **Most users.** Runs a standard setup wizard without requiring administrator elevation. Installs to your user profile, adds Start Menu & Desktop shortcuts, and seamlessly preserves your configuration during updates. |
-| 🧳 **Portable Edition** | `FastMirror-v1.2.0-Windows-Portable.zip` | **USB flash drives & external drives.** Unzip and double-click `FastMirror.exe`. Fully self-contained—keeps all settings, database caches, and logs inside its local folder without touching your Windows user profile. |
+| 📦 **Installer (Recommended)** | `FastMirror-v1.2.1-Windows-Setup.exe` | **Most users.** Runs a standard setup wizard without requiring administrator elevation. Installs to your user profile, adds Start Menu & Desktop shortcuts, and seamlessly preserves your configuration during updates. |
+| 🧳 **Portable Edition** | `FastMirror-v1.2.1-Windows-Portable.zip` | **USB flash drives & external drives.** Unzip and double-click `FastMirror.exe`. Fully self-contained—keeps all settings, database caches, and logs inside its local folder without touching your Windows user profile. |
 
 ---
 
