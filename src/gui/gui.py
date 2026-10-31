@@ -1199,22 +1199,20 @@ class Gui:
                     current_file: str,
                     speed: str,
                 ):
-                    if hasattr(self, 'telemetry_bar'):
-                        self.root.after(
-                            0,
-                            lambda a=action, c=current, t=total, bt=bytes_transferred, cf=current_file, s=speed: (
-                                self.telemetry_bar.set_determinate(
-                                    action=a,
-                                    current=c,
-                                    total=t,
-                                    bytes_transferred=bt,
-                                    current_file=cf,
-                                    speed=s,
-                                )
-                            ),
-                        )
-                    if hasattr(self, 'taskbar'):
-                        self.root.after(0, lambda c=current, t=total: self.taskbar.set_determinate(c, t))
+                    def _update_telemetry() -> None:
+                        if hasattr(self, 'telemetry_bar'):
+                            self.telemetry_bar.set_determinate(
+                                action=action,
+                                current=current,
+                                total=total,
+                                bytes_transferred=bytes_transferred,
+                                current_file=current_file,
+                                speed=speed,
+                            )
+                        if hasattr(self, 'taskbar'):
+                            self.taskbar.set_determinate(current, total)
+
+                    self.root.after(0, _update_telemetry)
 
                 self._active_sync = SyncDirs(
                     files_to_copy=compare.files_to_copy,
@@ -1249,14 +1247,15 @@ class Gui:
                             f'Backup completed with {total_errors} error{"s" if total_errors != 1 else ""} '
                             f'({total_successes} file{"s" if total_successes != 1 else ""} synchronized).'
                         )
-                        self.root.after(
-                            0,
-                            lambda m=msg: self.root.notify(
+
+                        def _notify_err(m: str = msg) -> None:
+                            self.root.notify(
                                 message=m,
                                 title='FastMirror - Errors Encountered',
                                 on_click=self._on_error_notification_clicked,
-                            ),
-                        )
+                            )
+
+                        self.root.after(0, _notify_err)
                         if hasattr(self, 'taskbar'):
                             self.root.after(0, self.taskbar.set_error)
                     elif total_successes > 0:
@@ -1264,38 +1263,41 @@ class Gui:
                             f'Backup synchronization completed successfully '
                             f'({total_successes} file{"s" if total_successes != 1 else ""} processed).'
                         )
-                        self.root.after(
-                            0,
-                            lambda m=msg: self.root.notify(
+
+                        def _notify_success(m: str = msg) -> None:
+                            self.root.notify(
                                 message=m,
                                 title='FastMirror',
                                 on_click=self._on_default_notification_clicked,
-                            ),
-                        )
+                            )
+
+                        self.root.after(0, _notify_success)
                     elif not had_work:
                         msg = 'Synchronization finished: no files were modified.'
-                        self.root.after(
-                            0,
-                            lambda m=msg: self.root.notify(
+
+                        def _notify_no_work(m: str = msg) -> None:
+                            self.root.notify(
                                 message=m,
                                 title='FastMirror',
                                 on_click=self._on_default_notification_clicked,
-                            ),
-                        )
+                            )
+
+                        self.root.after(0, _notify_no_work)
             else:
                 if not self._cancel_event.is_set():
                     summary_msg = (
                         f'Comparison completed: {len(compare.files_to_copy)} to copy, '
                         f'{len(compare.files_to_move)} to move, {len(compare.files_to_delete)} to delete.'
                     )
-                    self.root.after(
-                        0,
-                        lambda m=summary_msg: self.root.notify(
+
+                    def _notify_comp(m: str = summary_msg) -> None:
+                        self.root.notify(
                             message=m,
                             title='FastMirror',
                             on_click=self._on_default_notification_clicked,
-                        ),
-                    )
+                        )
+
+                    self.root.after(0, _notify_comp)
         except Exception as e:
             has_error = True
             logger.error(f'Backend execution encountered an unexpected error: {e}')

@@ -677,7 +677,7 @@ class SyncDirs:
 
         size = (
             source.cached_stats.st_size
-            if (isinstance(source, CstmPath) and source.has_cached_stats)
+            if (isinstance(source, CstmPath) and source.has_cached_stats and source.cached_stats is not None)
             else get_size(source)
         )
         logger.debug(f"Moving file {i:,} of {n_files:,}: '{source}' -> '{target}' ({format_size(size)})")
@@ -696,7 +696,11 @@ class SyncDirs:
         return True, size
 
     def _delete_file(self, path: CstmPath | str, i: int, n_files: int) -> tuple[bool, int | float]:
-        size = path.cached_stats.st_size if (isinstance(path, CstmPath) and path.has_cached_stats) else get_size(path)
+        size = (
+            path.cached_stats.st_size
+            if (isinstance(path, CstmPath) and path.has_cached_stats and path.cached_stats is not None)
+            else get_size(path)
+        )
         logger.debug(f"Deleting file {i:,} of {n_files:,}: '{path}' ({format_size(size)})")
 
         try:
