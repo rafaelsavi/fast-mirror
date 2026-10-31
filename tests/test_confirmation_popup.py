@@ -2107,17 +2107,17 @@ def test_smart_diff_move_origin_formatting():
     # 3. Folder case-only rename (even when nested inside a subfolder like RAW)
     assert (
         _format_move_origin(
-            f'{share}\\2013\\12 - Trip Video\\video.mp4',
+            f'{share}\\2013\\12 - trip video\\video.mp4',
             f'{share}\\2013\\12 - Trip Video\\video.mp4',
         )
-        == 'Case rename: 12 - Trip Video → 12 - Trip Video'
+        == 'Case rename: 12 - trip video → 12 - Trip Video'
     )
     assert (
         _format_move_origin(
-            f'{share}\\2016\\04 - Event Location\\RAW\\photo.JPG',
+            f'{share}\\2016\\04 - event location\\RAW\\photo.JPG',
             f'{share}\\2016\\04 - Event Location\\RAW\\photo.JPG',
         )
-        == 'Case rename: 04 - Event Location → 04 - Event Location'
+        == 'Case rename: 04 - event location → 04 - Event Location'
     )
 
     # 4. Moved UP from a subfolder
