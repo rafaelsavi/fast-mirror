@@ -110,7 +110,7 @@ In standard Windows desktop software architecture, executable files and user sta
 - FastMirror places user settings in `%LOCALAPPDATA%\FastMirror\data\`.
 
 ### Updating FastMirror
-When you download and run a newer installer (e.g. upgrading from `v0.1.0` to `v0.2.0`):
+When you download and run a newer installer (e.g. upgrading from `v1.0.0` to `v1.1.0`):
 1. Inno Setup safely updates the executable files inside `%LOCALAPPDATA%\Programs\FastMirror\`.
 2. **Your `%LOCALAPPDATA%\FastMirror\data\` directory is left completely untouched.**
 3. When you open the updated FastMirror, all your directory pairs, profiles, scheduled backup times, and cached file databases are immediately available.

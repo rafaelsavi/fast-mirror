@@ -10,7 +10,7 @@ This document details the single-source-of-truth versioning architecture, local 
   ```toml
   [project]
   name = "fast-mirror"
-  version = "0.1.0"
+  version = "1.0.0"
   ```
 - **Runtime Resolution**: At runtime, [`src.utils.constants.APP_VERSION`](../../src/utils/constants.py) dynamically reads `pyproject.toml` (or `importlib.metadata`) and sets `WINDOW_TITLE = f'FastMirror v{APP_VERSION}'`.
 - **Never Hardcode Version Strings**: Never hardcode version strings in source code, GUI labels, or launcher scripts.

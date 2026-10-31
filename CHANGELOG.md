@@ -9,7 +9,9 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-31
+## [1.0.0] - 2026-10-31
+
+First official production release, representing the culmination of the 2025–2026 development cycle. Provides automated, multi-threaded directory mirroring, synchronization, and backup between local Windows drives and remote SMB/UNC network shares with SQLite WAL caching and a modern desktop GUI.
 
 ### Added
 - **Core Synchronization Engine**:
