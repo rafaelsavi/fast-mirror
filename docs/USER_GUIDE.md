@@ -85,7 +85,7 @@ Step 1: Add Folders          Step 2: Quick Compare          Step 3: Sync Now
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│ FastMirror v1.0.0                   Profile: [ Default ▾ ] [Save] [+ New] [Del] │
+│ FastMirror v1.2.0                   Profile: [ Default ▾ ] [Save] [+ New] [Del] │
 ├───────────────────────────────────┬─────────────────────────────────────────────┤
 │ PATHS & DIRECTORY PAIRS           │ ACTIONS & SETTINGS                          │
 │ [ + Add Pair ] [ Edit Pairs ]     │ [ Quick Compare ]  [ Sync Now ]  [ Reports ]│
@@ -244,6 +244,12 @@ FastMirror is engineered with strict data safety rules:
 
 ### What happens if my external hard drive or NAS is unplugged?
 FastMirror performs a non-blocking reachability probe before attempting any synchronization. If the destination drive is disconnected, FastMirror logs a clear warning, skips the unreachable pair safely, and proceeds with other available pairs without failing or corrupting data.
+
+### How do I update to a newer version?
+FastMirror automatically checks for new releases on startup without slowing down your system. When an update is available:
+1. Click the `⚡ Update: vX.Y.Z` button in the top status bar or select **Check for Updates...** from the System Tray menu.
+2. Review the release notes and click **Download Setup (.exe)**.
+3. Run the downloaded installer. It will automatically update FastMirror in seconds while preserving all your folder pairs, profiles, and backup history.
 
 ### Will FastMirror ever delete files from my original Source folders?
 **No, never.** FastMirror is strictly a one-way mirror. It only ever writes to or removes obsolete files from the **Target** destination. Your Source files are treated as read-only inputs.

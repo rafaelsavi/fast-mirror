@@ -14,6 +14,7 @@ from gui.components.reports_window import ReportsWindow
 from gui.components.schedule_panel import SchedulePanel
 from gui.components.status_bar import StatusBar
 from gui.components.sync_tree_model import FolderNode
+from gui.components.update_modal import UpdateModal
 
 __all__ = [
     'ActionsPanel',
@@ -30,5 +31,6 @@ __all__ = [
     'ReportsWindow',
     'SchedulePanel',
     'StatusBar',
+    'UpdateModal',
     'prompt_new_profile',
 ]

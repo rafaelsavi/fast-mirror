@@ -29,7 +29,7 @@ def get_version() -> str:
                 match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', line)
                 if match:
                     return match.group(1)
-    return '1.0.0'
+    return '1.2.0'
 
 
 def find_iscc() -> str | None:

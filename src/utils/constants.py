@@ -50,8 +50,12 @@ def _read_app_version() -> str:
         except Exception:
             pass
 
-    return '1.0.0'
+    return '1.2.0'
 
 
 APP_VERSION = _read_app_version()
 WINDOW_TITLE = f'FastMirror v{APP_VERSION}'
+
+GITHUB_REPO = 'rafaelsavi/fast-mirror'
+GITHUB_RELEASES_URL = f'https://github.com/{GITHUB_REPO}/releases'
+GITHUB_API_LATEST_RELEASE = f'https://api.github.com/repos/{GITHUB_REPO}/releases/latest'

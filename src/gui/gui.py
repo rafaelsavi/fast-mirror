@@ -36,8 +36,9 @@ from gui.widgets import (
 )
 from gui.worker_thread import WorkerThread
 from utils.constants import CONFIG_PATH, WINDOW_TITLE
-from utils.logger import logger
+from utils.logger import is_test_or_agent_mode, logger
 from utils.profile_manager import ProfileManager, sanitize_profile_name
+from utils.updater import ReleaseInfo, check_for_updates_async
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
 
 
@@ -145,6 +146,7 @@ class Gui:
             on_stop_operation=self.request_stop_operation,
             on_open_report=self.button_action_open_report,
             on_help=self.button_action_open_help,
+            on_check_updates=self.button_action_check_updates,
             is_running=lambda: self.backend_thread_status == BackendThreadStatus.RUNNING,
             on_exit_check=self.confirm_exit_unsaved_changes,
         )
@@ -161,6 +163,11 @@ class Gui:
 
         # Center main window on primary display and smoothly reveal
         self._center_and_reveal_root()
+
+        # Schedule non-blocking update check (silent, skipped in test/agent mode)
+        self._latest_release_info: ReleaseInfo | None = None
+        if not is_test_or_agent_mode():
+            self.root.after(2000, self.check_for_updates_background)
 
         # Run GUI loop
         self.root.mainloop()
@@ -927,6 +934,64 @@ class Gui:
         from gui.components.help_modal import HelpModal
 
         HelpModal(self.root)
+
+    def check_for_updates_background(self):
+        """Asynchronously query GitHub for app updates in the background."""
+        if is_test_or_agent_mode():
+            return
+        check_for_updates_async(self._on_background_update_result)
+
+    def _on_background_update_result(self, info: ReleaseInfo | None, err: str | None):
+        """Handle background update check response on the main UI thread."""
+
+        def _apply():
+            if info and info.is_newer:
+                self._latest_release_info = info
+                if hasattr(self, 'status_bar'):
+                    self.status_bar.show_update_button(
+                        info.version,
+                        on_click=lambda: self.open_update_dialog(info),
+                    )
+                self.root.update_tray_tooltip(f'{WINDOW_TITLE} (v{info.version} available)')
+                self.root.notify(
+                    f'FastMirror v{info.version} is available! Click to view release details and update.',
+                    title='FastMirror Update Available',
+                    on_click=lambda: self.open_update_dialog(info),
+                )
+
+        self.root.after(0, _apply)
+
+    def button_action_check_updates(self):
+        """Check for updates manually when triggered from tray menu or settings."""
+        if self._latest_release_info and self._latest_release_info.is_newer:
+            self.open_update_dialog(self._latest_release_info)
+            return
+
+        def _on_manual_result(info: ReleaseInfo | None, err: str | None):
+            def _apply():
+                if info and info.is_newer:
+                    self._latest_release_info = info
+                    self.open_update_dialog(info)
+                elif info:
+                    messagebox.showinfo(
+                        'Up to Date',
+                        f'FastMirror is up to date!\n\nYou are running the latest version (v{info.version}).',
+                    )
+                else:
+                    messagebox.showwarning(
+                        'Update Check Failed',
+                        f'Could not check for FastMirror updates at this time.\n\nReason: {err or "Unknown error"}',
+                    )
+
+            self.root.after(0, _apply)
+
+        check_for_updates_async(_on_manual_result)
+
+    def open_update_dialog(self, release_info: ReleaseInfo):
+        """Open the interactive update notification modal."""
+        from gui.components.update_modal import UpdateModal
+
+        UpdateModal(self.root, release_info)
 
     def button_action_quick_compare(self):
         self.toggle_state_quick_compare = not self.toggle_state_quick_compare

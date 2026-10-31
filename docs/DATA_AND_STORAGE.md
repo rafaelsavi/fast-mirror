@@ -110,10 +110,14 @@ In standard Windows desktop software architecture, executable files and user sta
 - FastMirror places user settings in `%LOCALAPPDATA%\FastMirror\data\`.
 
 ### Updating FastMirror
-When you download and run a newer installer (e.g. upgrading from `v1.0.0` to `v1.1.0`):
-1. Inno Setup safely updates the executable files inside `%LOCALAPPDATA%\Programs\FastMirror\`.
-2. **Your `%LOCALAPPDATA%\FastMirror\data\` directory is left completely untouched.**
-3. When you open the updated FastMirror, all your directory pairs, profiles, scheduled backup times, and cached file databases are immediately available.
+FastMirror includes an automatic, non-blocking **In-App Update Checker**:
+- When FastMirror starts, it quietly checks GitHub in the background for new releases.
+- When an update is available, a `⚡ Update: vX.Y.Z` button appears in the top status bar and in the system tray menu.
+- Clicking the update button opens a summary of release notes with direct one-click download buttons for the setup installer (`.exe`) and portable edition (`.zip`).
+- When you run the downloaded installer:
+  1. Inno Setup safely updates the executable files inside `%LOCALAPPDATA%\Programs\FastMirror\`.
+  2. **Your `%LOCALAPPDATA%\FastMirror\data\` directory is left completely untouched.**
+  3. When you open the updated FastMirror, all your directory pairs, profiles, scheduled backup times, and cached file databases are immediately available.
 
 ### Uninstalling FastMirror
 If you choose to uninstall FastMirror via Windows **Settings $\rightarrow$ Apps $\rightarrow$ Installed apps**:

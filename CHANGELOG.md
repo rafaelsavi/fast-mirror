@@ -9,6 +9,19 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-31
+
+### Added
+- **Asynchronous In-App Update Checker (`updater.py`)**:
+  - Automatically queries the GitHub Releases API in a background daemon thread 2 seconds after startup, comparing the latest release tag against `APP_VERSION` via SemVer.
+  - Displays a prominent, one-click `⚡ Update: vX.Y.Z` button in the top status bar when a newer release is detected.
+  - Adds a "Check for Updates..." action to the Windows system tray context menu and updates tray tooltip with new version availability.
+  - Integrates an interactive "Check for Updates" button directly into the Help & Documentation modal (`HelpModal`).
+- **Update Notification Dialog (`UpdateModal`)**:
+  - Modern modal window displaying the new version, release date, and release notes fetched directly from GitHub.
+  - Provides direct one-click download buttons for the Windows Setup installer (`.exe`) and Portable edition (`.zip`) along with GitHub release links.
+  - Offline-safe and rate-limit resilient: fails silently during startup or offline conditions with zero unhandled exceptions or UI disruption.
+
 ## [1.1.1] - 2026-10-31
 
 ### Fixed

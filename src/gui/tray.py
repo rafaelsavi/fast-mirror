@@ -66,6 +66,7 @@ class TrayableTk(tk.Tk):
         self._on_exit_check: Callable[[], bool] | None = None
         self._on_notification_click: Callable[[], None] | None = None
         self._on_help: Callable[[], None] | None = None
+        self._on_check_updates: Callable[[], None] | None = None
 
         self.add_system_tray_icon()
         self.protocol('WM_DELETE_WINDOW', self.on_closing)
@@ -81,6 +82,7 @@ class TrayableTk(tk.Tk):
         on_exit_check: Callable[[], bool] | None = None,
         on_notification_click: Callable[[], None] | None = None,
         on_help: Callable[[], None] | None = None,
+        on_check_updates: Callable[[], None] | None = None,
     ):
         """Register callbacks for quick actions triggered from the system tray menu and exit verification."""
         self._on_sync_now = on_sync_now
@@ -91,6 +93,7 @@ class TrayableTk(tk.Tk):
         self._on_exit_check = on_exit_check
         self._on_notification_click = on_notification_click
         self._on_help = on_help
+        self._on_check_updates = on_check_updates
         self._update_tray_menu()
 
     def set_exit_check(self, on_exit_check: Callable[[], bool] | None):
@@ -178,6 +181,13 @@ class TrayableTk(tk.Tk):
                 pystray.MenuItem(
                     'Help & Shortcuts (F1)',
                     lambda icon, item: self._dispatch_action(self._on_help),
+                )
+            )
+        if self._on_check_updates is not None:
+            items.append(
+                pystray.MenuItem(
+                    'Check for Updates...',
+                    lambda icon, item: self._dispatch_action(self._on_check_updates),
                 )
             )
         items.extend(

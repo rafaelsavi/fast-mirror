@@ -64,6 +64,20 @@ class StatusBar(ttk.Frame):
         self.lbl_sched_val.pack(side='left')
         add_tooltip(self.lbl_sched_val, 'Scheduled time for the next automated backup execution.')
 
+        self._on_update_click: Callable[[], None] | None = None
+        self.btn_update = ttk.Button(
+            sched_box,
+            text='⚡ Update',
+            command=self._handle_update,
+            style='Accent.TButton',
+            width=15,
+        )
+        apply_icon(self.btn_update, 'sync')
+        add_tooltip(
+            self.btn_update,
+            'A newer version of FastMirror is available! Click to view release details and update.',
+        )
+
         self.btn_help = ttk.Button(
             sched_box,
             text='? Help (F1)',
@@ -80,6 +94,20 @@ class StatusBar(ttk.Frame):
         # Trace status changes
         self.text_var_status.trace_add('write', self._on_status_changed)
         self._on_status_changed()
+
+    def show_update_button(self, new_version: str, on_click: Callable[[], None]):
+        """Display prominent update button when a newer version is detected."""
+        self._on_update_click = on_click
+        self.btn_update.configure(text=f'⚡ Update: v{new_version}')
+        self.btn_update.pack(side='left', padx=(10, 0), before=self.btn_help)
+
+    def hide_update_button(self):
+        """Hide update button."""
+        self.btn_update.pack_forget()
+
+    def _handle_update(self):
+        if self._on_update_click is not None:
+            self._on_update_click()
 
     def _handle_help(self):
         if self.on_open_help is not None:

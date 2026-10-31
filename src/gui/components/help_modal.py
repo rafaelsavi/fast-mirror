@@ -14,6 +14,7 @@ from gui.components.base_modal import BaseModalDialog
 from gui.icons import apply_icon, apply_window_icon
 from gui.widgets import BadgeLabel, add_tooltip, open_path_in_explorer
 from utils.constants import APP_VERSION, LOGS_DIR, PROFILES_DIR, ROOT_DIR
+from utils.updater import ReleaseInfo, check_for_updates_async
 
 
 class HelpModal(BaseModalDialog):
@@ -394,6 +395,21 @@ class HelpModal(BaseModalDialog):
             )
             ttk.Label(card, text=val, font=('Segoe UI', 9)).grid(row=idx, column=1, sticky='w', pady=2)
 
+        # Check for updates button alongside version
+        self.btn_check_update = ttk.Button(
+            card,
+            text='Check for Updates',
+            command=self._on_check_updates_click,
+            width=18,
+        )
+        apply_icon(self.btn_check_update, 'sync')
+        add_tooltip(self.btn_check_update, 'Check GitHub for newer FastMirror releases.')
+        self.btn_check_update.grid(row=1, column=2, padx=(12, 0), sticky='w')
+
+        self.lbl_update_status = ttk.Label(card, text='', font=('Segoe UI', 9))
+        self.lbl_update_status.grid(row=1, column=3, padx=(8, 0), sticky='w')
+        self._cached_release: ReleaseInfo | None = None
+
         # Diagnostics & Folder actions card
         diag_card = ttk.LabelFrame(tab, text=' Diagnostics & Folder Shortcuts ', padding=12)
         diag_card.grid(row=1, column=0, sticky='nsew')
@@ -430,6 +446,32 @@ class HelpModal(BaseModalDialog):
         btn_profiles.pack(side='left', padx=(0, 6))
 
         return tab
+
+    def _on_check_updates_click(self):
+        if self._cached_release and self._cached_release.is_newer:
+            from gui.components.update_modal import UpdateModal
+
+            UpdateModal(self.window, self._cached_release)
+            return
+
+        self.btn_check_update.configure(state='disabled')
+        self.lbl_update_status.configure(text='Checking GitHub...')
+
+        def _on_result(info: ReleaseInfo | None, err: str | None):
+            def _apply():
+                self.btn_check_update.configure(state='normal')
+                if info and info.is_newer:
+                    self._cached_release = info
+                    self.lbl_update_status.configure(text=f'⚡ v{info.version} available!', foreground='#16a34a')
+                    self.btn_check_update.configure(text='View Update Details')
+                elif info:
+                    self.lbl_update_status.configure(text='✓ You have the latest version.', foreground='#15803d')
+                else:
+                    self.lbl_update_status.configure(text=err or 'Check failed.', foreground='#dc2626')
+
+            self.window.after(0, _apply)
+
+        check_for_updates_async(_on_result)
 
     def _open_user_guide(self):
         """Open user guide markdown documentation in default system viewer or browser."""
