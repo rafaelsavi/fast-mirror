@@ -17,6 +17,18 @@ Follow this runbook to ensure that all changes adhere to project standards and i
 
 ---
 
+## 0. Unified Verification Suite (Recommended)
+Run the all-in-one verification suite locally:
+```powershell
+uv run python scripts/verify.py --check-version
+```
+To automatically apply formatting and safe lint fixes:
+```powershell
+uv run python scripts/verify.py --fix
+```
+
+---
+
 ## 1. Automated Test Suite
 Execute the entire test suite using `pytest`:
 
