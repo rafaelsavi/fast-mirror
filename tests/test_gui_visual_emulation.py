@@ -39,7 +39,7 @@ def capture_window_bitmap(hwnd: int) -> Image.Image | None:
     width = rect.right - rect.left
     height = rect.bottom - rect.top
 
-    if width <= 0 or height <= 0:
+    if width <= 0 or height <= 0 or rect.left >= 10000 or rect.top >= 10000:
         return None
 
     hwnd_dc = user32.GetWindowDC(hwnd)
