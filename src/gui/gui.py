@@ -144,6 +144,7 @@ class Gui:
             on_quick_compare=self.tray_action_quick_compare,
             on_stop_operation=self.request_stop_operation,
             on_open_report=self.button_action_open_report,
+            on_help=self.button_action_open_help,
             is_running=lambda: self.backend_thread_status == BackendThreadStatus.RUNNING,
             on_exit_check=self.confirm_exit_unsaved_changes,
         )
@@ -304,6 +305,7 @@ class Gui:
             self.root,
             text_var_status=self.text_var_status,
             text_var_next_appointment=self.text_var_next_appointment,
+            on_open_help=self.button_action_open_help,
             padding=(8, 4),
         )
         self.status_bar.grid(row=0, column=0, columnspan=2, sticky='ew', padx=10, pady=(8, 4))
@@ -391,6 +393,7 @@ class Gui:
         self._gui_initialized = True
 
         # Keyboard shortcuts for configuration workflows
+        self.root.bind('<F1>', lambda e: self.button_action_open_help())
         self.root.bind('<Control-s>', lambda e: self.button_action_save_config())
         self.root.bind('<Control-S>', lambda e: self.button_action_save_config())
         self.root.bind('<Control-o>', lambda e: self.button_action_load_config_from_file())
@@ -918,6 +921,12 @@ class Gui:
     def button_action_open_report_history(self):
         """Open past reports browser dialog."""
         ReportsWindow(self.root)
+
+    def button_action_open_help(self):
+        """Open the interactive FastMirror help and quick guide dialog."""
+        from gui.components.help_modal import HelpModal
+
+        HelpModal(self.root)
 
     def button_action_quick_compare(self):
         self.toggle_state_quick_compare = not self.toggle_state_quick_compare

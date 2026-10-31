@@ -373,6 +373,7 @@ class ActionSelection:
             width=14,
         )
         apply_icon(self.btn_see_in_folder, 'folder')
+        add_tooltip(self.btn_see_in_folder, 'Reveal the selected file in Windows Explorer.')
         self.btn_see_in_folder.pack(side='left', padx=(0, 4))
 
         self.btn_copy_path = ttk.Button(
@@ -434,6 +435,7 @@ class ActionSelection:
             style='Accent.TButton',
             width=18,
         )
+        add_tooltip(self.button_save, 'Execute all approved synchronization operations (Enter).')
         self.button_save.pack(side='right', padx=(6, 0))
 
         self.button_cancel = ttk.Button(
@@ -442,6 +444,7 @@ class ActionSelection:
             command=self.on_window_close,
             width=12,
         )
+        add_tooltip(self.button_cancel, 'Cancel operations and leave files untouched (Esc).')
         self.button_cancel.pack(side='right')
 
     def _copy_to_clipboard(self, text: str, description: str = 'text'):

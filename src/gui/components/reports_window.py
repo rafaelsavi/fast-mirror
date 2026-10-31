@@ -6,6 +6,7 @@ from tkinter import messagebox, ttk
 
 from gui.components.base_modal import BaseModalDialog
 from gui.icons import apply_icon, apply_window_icon
+from gui.widgets import add_tooltip
 from utils.logger import logger
 from utils.utils import format_size
 
@@ -86,6 +87,7 @@ class ReportsWindow(BaseModalDialog):
         self.lbl_count.pack(side='left', padx=(4, 0))
 
         self.btn_close = ttk.Button(bottom, text='Close', command=self.window.destroy, width=11)
+        add_tooltip(self.btn_close, 'Close the reports browser.')
         self.btn_close.pack(side='right', padx=(4, 0))
 
         self.btn_clean = ttk.Button(
@@ -95,6 +97,7 @@ class ReportsWindow(BaseModalDialog):
             width=16,
         )
         apply_icon(self.btn_clean, 'broom')
+        add_tooltip(self.btn_clean, 'Delete reports older than 30 days to free disk space.')
         self.btn_clean.pack(side='right', padx=(4, 4))
 
         self.btn_folder = ttk.Button(
@@ -104,6 +107,7 @@ class ReportsWindow(BaseModalDialog):
             width=13,
         )
         apply_icon(self.btn_folder, 'folder')
+        add_tooltip(self.btn_folder, 'Open reports and logs folder in Windows Explorer.')
         self.btn_folder.pack(side='right', padx=(4, 4))
 
         self.btn_open = ttk.Button(
@@ -114,6 +118,7 @@ class ReportsWindow(BaseModalDialog):
             width=14,
         )
         apply_icon(self.btn_open, 'document')
+        add_tooltip(self.btn_open, 'Open selected comparison report in Microsoft Excel.')
         self.btn_open.pack(side='right', padx=(4, 4))
 
     def _load_reports(self):

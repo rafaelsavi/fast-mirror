@@ -2319,3 +2319,123 @@ def test_windows_notification_click_handling(monkeypatch):
         gui._on_default_notification_clicked()
     finally:
         gui.root.destroy()
+
+
+def test_help_modal_initialization_and_tabs(monkeypatch):
+    """Verify HelpModal creates all 4 documentation tabs, shortcuts tree, and closes cleanly."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.help_modal import HelpModal
+
+    modal = HelpModal(root)
+    try:
+        assert modal.window is not None
+        assert modal.notebook is not None
+        tab_titles = [modal.notebook.tab(i, 'text').strip() for i in range(modal.notebook.index('end'))]
+        assert '🚀 Quick Start' in tab_titles
+        assert '⚙️ Features & Options' in tab_titles
+        assert '⌨️ Keyboard Shortcuts' in tab_titles
+        assert 'ℹ️ About & Support' in tab_titles
+
+        assert modal.btn_user_guide is not None
+        assert modal.btn_close is not None
+
+        # Verify keyboard shortcuts treeview populated
+        shortcuts_tab = modal.notebook.nametowidget(modal.notebook.tabs()[2])
+        tree = None
+        for child in shortcuts_tab.winfo_children():
+            for subchild in child.winfo_children():
+                if isinstance(subchild, ttk.Treeview):
+                    tree = subchild
+                    break
+        assert tree is not None
+        assert len(tree.get_children()) >= 8
+
+        # Test user guide opener doesn't crash
+        monkeypatch.setattr('gui.components.help_modal.open_path_in_explorer', lambda path: None)
+        modal._open_user_guide()
+    finally:
+        modal.destroy()
+        root.destroy()
+
+
+def test_status_bar_help_button_callback():
+    """Verify StatusBar displays Help button and invokes callback when clicked."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.status_bar import StatusBar
+
+    help_invoked = []
+    status_var = tk.StringVar(value='STANDBY')
+    sched_var = tk.StringVar(value='None')
+
+    bar = StatusBar(
+        root,
+        text_var_status=status_var,
+        text_var_next_appointment=sched_var,
+        on_open_help=lambda: help_invoked.append(True),
+    )
+
+    assert hasattr(bar, 'btn_help')
+    assert hasattr(bar.btn_help, '_tooltip')
+    bar.btn_help.invoke()
+    assert help_invoked == [True]
+
+    root.destroy()
+
+
+def test_gui_f1_shortcut_and_open_help(monkeypatch):
+    """Verify Gui has button_action_open_help and F1 binding."""
+    from gui.gui import Gui
+
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'load_config', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    gui = Gui()
+    try:
+        assert hasattr(gui, 'button_action_open_help')
+        # Mock HelpModal instantiation to ensure button_action_open_help works
+        opened = []
+        monkeypatch.setattr('gui.components.help_modal.HelpModal', lambda parent: opened.append(parent))
+        gui.button_action_open_help()
+        assert opened == [gui.root]
+    finally:
+        gui.root.destroy()
+
+
+def test_gui_tooltips_presence(tmp_path):
+    """Verify tooltips are attached to key controls across main GUI panels."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.paths_panel import PathsPanel
+    from gui.components.schedule_panel import SchedulePanel
+    from gui.components.telemetry_bar import TelemetryBar
+
+    paths = PathsPanel(root)
+    assert hasattr(paths.btn_manage_paths, '_tooltip')
+    assert hasattr(paths.btn_check_targets, '_tooltip')
+    assert hasattr(paths.btn_manage_exclusions, '_tooltip')
+
+    sched = SchedulePanel(root)
+    assert hasattr(sched.cb_enable_schedule, '_tooltip')
+    assert hasattr(sched.entry_times, '_tooltip')
+
+    telem = TelemetryBar(root)
+    assert hasattr(telem.lbl_status, '_tooltip')
+    assert hasattr(telem.progress, '_tooltip')
+
+    root.destroy()

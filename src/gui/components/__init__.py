@@ -6,6 +6,7 @@ from gui.components.checkbox_treeview import CustomCheckboxTreeView
 from gui.components.directory_pairs_modal import DirectoryPairsModal
 from gui.components.exclusions_modal import ExclusionsModal
 from gui.components.file_details_dialog import FileDetailsDialog
+from gui.components.help_modal import HelpModal
 from gui.components.log_panel import LogPanel
 from gui.components.new_profile_modal import NewProfileModal, prompt_new_profile
 from gui.components.paths_panel import PathsPanel
@@ -22,6 +23,7 @@ __all__ = [
     'ExclusionsModal',
     'FileDetailsDialog',
     'FolderNode',
+    'HelpModal',
     'LogPanel',
     'NewProfileModal',
     'PathsPanel',

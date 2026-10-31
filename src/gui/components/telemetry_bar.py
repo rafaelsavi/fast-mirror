@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import ttk
 
+from gui.widgets import add_tooltip
+
 
 class TelemetryBar(ttk.Frame):
     """Modern real-time telemetry bar showing animated progress, transfer speed, and current file."""
@@ -49,6 +51,10 @@ class TelemetryBar(ttk.Frame):
             mode='indeterminate',
         )
         self.progress.grid(row=2, column=0, columnspan=2, sticky='ew', padx=(4, 4), pady=(2, 4))
+
+        add_tooltip(self.lbl_status, 'Real-time synchronization status, processed item counter, and transfer speed.')
+        add_tooltip(self.lbl_details, 'Relative path of the file currently being processed.')
+        add_tooltip(self.progress, 'Overall progress of the active scanning or file synchronization operation.')
 
     def set_indeterminate(self, message: str = 'Scanning files...'):
         """Switch to smooth indeterminate animated progress during directory scanning."""

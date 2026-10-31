@@ -91,6 +91,7 @@ class DirectoryPairsModal(BaseModalDialog):
             width=13,
         )
         apply_icon(self.btn_add, 'plus')
+        add_tooltip(self.btn_add, 'Add a new source and target directory pair to backup.')
         self.btn_add.pack(side='left', padx=(0, 4))
 
         self.btn_edit = ttk.Button(
@@ -100,6 +101,7 @@ class DirectoryPairsModal(BaseModalDialog):
             width=15,
         )
         apply_icon(self.btn_edit, 'pencil')
+        add_tooltip(self.btn_edit, 'Edit the selected directory pair paths.')
         self.btn_edit.pack(side='left', padx=4)
 
         self.btn_remove = ttk.Button(
@@ -109,6 +111,7 @@ class DirectoryPairsModal(BaseModalDialog):
             width=11,
         )
         apply_icon(self.btn_remove, 'trash')
+        add_tooltip(self.btn_remove, 'Remove the selected directory pair from the configuration.')
         self.btn_remove.pack(side='left', padx=4)
 
         self.btn_open_source = ttk.Button(

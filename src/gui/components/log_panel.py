@@ -61,6 +61,7 @@ class LogPanel(ttk.LabelFrame):
                 command=self._handle_level_change,
             )
             cb.pack(side='left', padx=4)
+            add_tooltip(cb, f'Show or hide {level} messages in the activity log.')
             self.check_box_log_level[level] = cb
 
         # Right side: Auto-scroll, Clear, Copy, Export, and Open Folder
@@ -81,6 +82,8 @@ class LogPanel(ttk.LabelFrame):
         add_tooltip(self.btn_clear, 'Clear all activity log messages')
         self.btn_clear.pack(side='right', padx=2)
 
+        add_tooltip(self.checkbox_auto_scroll, 'Automatically scroll log to the latest message as new events arrive.')
+
         self.btn_copy = ttk.Button(
             toolbar,
             text='Copy',
@@ -88,6 +91,7 @@ class LogPanel(ttk.LabelFrame):
             width=10,
         )
         apply_icon(self.btn_copy, 'copy')
+        add_tooltip(self.btn_copy, 'Copy all visible activity log messages to the Windows clipboard.')
         self.btn_copy.pack(side='right', padx=2)
 
         self.btn_export = ttk.Button(
@@ -97,6 +101,7 @@ class LogPanel(ttk.LabelFrame):
             width=11,
         )
         apply_icon(self.btn_export, 'save')
+        add_tooltip(self.btn_export, 'Export the current activity log to a text file.')
         self.btn_export.pack(side='right', padx=2)
 
         self.btn_open_folder = ttk.Button(
@@ -106,6 +111,7 @@ class LogPanel(ttk.LabelFrame):
             width=12,
         )
         apply_icon(self.btn_open_folder, 'folder')
+        add_tooltip(self.btn_open_folder, 'Open the application logs folder in Windows Explorer.')
         self.btn_open_folder.pack(side='right', padx=2)
 
         # Toolbar Row 1: Search & Filter inside Log Console
@@ -116,6 +122,7 @@ class LogPanel(ttk.LabelFrame):
         lbl_find.pack(side='left', padx=(0, 4))
 
         self.entry_search = ttk.Entry(search_bar, textvariable=self.search_var, width=32)
+        add_tooltip(self.entry_search, 'Type text to find and highlight matches within the activity log.')
         self.entry_search.pack(side='left', padx=(0, 2))
 
         btn_clear_search = ttk.Button(
@@ -124,6 +131,7 @@ class LogPanel(ttk.LabelFrame):
             width=3,
             command=self._clear_search,
         )
+        add_tooltip(btn_clear_search, 'Clear search query and remove highlight.')
         btn_clear_search.pack(side='left', padx=(0, 4))
 
         btn_prev = ttk.Button(
@@ -132,6 +140,7 @@ class LogPanel(ttk.LabelFrame):
             width=3,
             command=self._prev_match,
         )
+        add_tooltip(btn_prev, 'Jump to previous search match in the log.')
         btn_prev.pack(side='left', padx=1)
 
         btn_next = ttk.Button(
@@ -140,6 +149,7 @@ class LogPanel(ttk.LabelFrame):
             width=3,
             command=self._next_match,
         )
+        add_tooltip(btn_next, 'Jump to next search match in the log.')
         btn_next.pack(side='left', padx=1)
 
         lbl_count = ttk.Label(

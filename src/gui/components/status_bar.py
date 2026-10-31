@@ -1,7 +1,9 @@
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
 
-from gui.widgets import BadgeLabel
+from gui.icons import apply_icon
+from gui.widgets import BadgeLabel, add_tooltip
 
 
 class StatusBar(ttk.Frame):
@@ -12,11 +14,13 @@ class StatusBar(ttk.Frame):
         master: tk.Misc,
         text_var_status: tk.StringVar,
         text_var_next_appointment: tk.StringVar,
+        on_open_help: Callable[[], None] | None = None,
         **kwargs,
     ):
         super().__init__(master, **kwargs)
         self.text_var_status = text_var_status
         self.text_var_next_appointment = text_var_next_appointment
+        self.on_open_help = on_open_help
 
         self._create_widgets()
 
@@ -40,8 +44,12 @@ class StatusBar(ttk.Frame):
         )
         self.lbl_status_pill.pack(side='left', padx=(2, 0))
         self.lbl_status_val = self.lbl_status_pill
+        add_tooltip(
+            self.lbl_status_pill,
+            'Current engine status. Standby when idle; Running during active sync; Stopping during cancellation.',
+        )
 
-        # Right: Next scheduled appointment
+        # Right: Next scheduled appointment & Help button
         sched_box = ttk.Frame(self)
         sched_box.grid(row=0, column=1, sticky='e', padx=8, pady=2)
 
@@ -54,6 +62,17 @@ class StatusBar(ttk.Frame):
             font=('Segoe UI', 9),
         )
         self.lbl_sched_val.pack(side='left')
+        add_tooltip(self.lbl_sched_val, 'Scheduled time for the next automated backup execution.')
+
+        self.btn_help = ttk.Button(
+            sched_box,
+            text='? Help (F1)',
+            command=self._handle_help,
+            width=11,
+        )
+        apply_icon(self.btn_help, 'document')
+        self.btn_help.pack(side='left', padx=(14, 0))
+        add_tooltip(self.btn_help, 'Open FastMirror User Guide, Quick Start, and Keyboard Shortcuts (F1).')
 
         sep = ttk.Separator(self, orient='horizontal')
         sep.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(4, 0))
@@ -61,6 +80,15 @@ class StatusBar(ttk.Frame):
         # Trace status changes
         self.text_var_status.trace_add('write', self._on_status_changed)
         self._on_status_changed()
+
+    def _handle_help(self):
+        if self.on_open_help is not None:
+            self.on_open_help()
+        else:
+            from gui.components.help_modal import HelpModal
+
+            top = self.winfo_toplevel()
+            HelpModal(top)
 
     def _on_status_changed(self, *args):
         raw_status = self.text_var_status.get()

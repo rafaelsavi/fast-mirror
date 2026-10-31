@@ -6,7 +6,7 @@ import pathspec
 
 from gui.components.base_modal import BaseModalDialog
 from gui.icons import apply_icon, apply_window_icon
-from gui.widgets import BadgeLabel, EntryExclusions
+from gui.widgets import BadgeLabel, EntryExclusions, add_tooltip
 from utils.utils import sanitize_path
 
 
@@ -95,9 +95,11 @@ class ExclusionsModal(BaseModalDialog):
         entry_new = ttk.Entry(add_frame, textvariable=self.new_pattern_var)
         entry_new.grid(row=0, column=1, sticky='ew', padx=4)
         entry_new.bind('<Return>', lambda e: self._handle_add_pattern())
+        add_tooltip(entry_new, 'Enter a wildcard pattern to ignore (e.g. *.tmp, node_modules/, $RECYCLE.BIN).')
 
         btn_add = ttk.Button(add_frame, text='Add', command=self._handle_add_pattern, width=9)
         apply_icon(btn_add, 'plus')
+        add_tooltip(btn_add, 'Add the pattern to the exclusion ignore list.')
         btn_add.grid(row=0, column=2, sticky='e', padx=(4, 0))
 
         # Row 1: Search / Filter bar
@@ -109,6 +111,7 @@ class ExclusionsModal(BaseModalDialog):
         self.filter_var = tk.StringVar()
         self.filter_var.trace_add('write', lambda *args: self._populate_table())
         entry_filter = ttk.Entry(filter_frame, textvariable=self.filter_var)
+        add_tooltip(entry_filter, 'Filter displayed patterns by text.')
         entry_filter.grid(row=0, column=1, sticky='ew', padx=4)
 
         btn_clear_filter = ttk.Button(
@@ -117,6 +120,7 @@ class ExclusionsModal(BaseModalDialog):
             command=lambda: self.filter_var.set(''),
             width=3,
         )
+        add_tooltip(btn_clear_filter, 'Clear the pattern filter text.')
         btn_clear_filter.grid(row=0, column=2, sticky='e', padx=(4, 0))
 
         # Row 2: Patterns Table

@@ -12,7 +12,7 @@ from typing import Literal
 
 from gui.health_check import TargetHealth, probe_targets_async
 from gui.icons import apply_icon
-from gui.widgets import BadgeLabel, EntryExclusions, EntryPaths
+from gui.widgets import BadgeLabel, EntryExclusions, EntryPaths, add_tooltip
 
 
 class PathsPanel(ttk.LabelFrame):
@@ -70,6 +70,15 @@ class PathsPanel(ttk.LabelFrame):
         apply_icon(self.btn_check_targets, 'pulse')
         self.btn_check_targets.pack(side='left', padx=2)
 
+        add_tooltip(
+            self.btn_manage_paths, 'Open interactive manager to add, edit, remove, reorder, or test directory pairs.'
+        )
+        add_tooltip(
+            self.btn_check_targets,
+            'Verify that all target backup drives and network shares are reachable and have free space.',
+        )
+        add_tooltip(self.lbl_pair_count, 'Total number of configured source -> target directory backup pairs.')
+
         # Row 1: Non-Editable Syntax-Highlighted Directory Pairs Display (ScrolledText)
         if entry_paths is not None:
             self.entry_paths = entry_paths
@@ -79,6 +88,9 @@ class PathsPanel(ttk.LabelFrame):
         self.entry_paths.configure(state=tk.DISABLED, cursor='arrow')
         self.entry_paths.grid(row=1, column=0, sticky='ew', padx=8, pady=(2, 2))
         self.entry_paths.on_changed = self._update_pair_stats
+        add_tooltip(
+            self.entry_paths, 'Configured directory pairs (Source -> Target). Click "Manage Pairs..." to add or edit.'
+        )
 
         # Row 2: Health Diagnostic Status Line
         self.lbl_health_status = ttk.Label(
@@ -88,6 +100,9 @@ class PathsPanel(ttk.LabelFrame):
             foreground='#666666',
         )
         self.lbl_health_status.grid(row=2, column=0, sticky='w', padx=8, pady=(1, 5))
+        add_tooltip(
+            self.lbl_health_status, 'Diagnostic reachability and free disk space status for backup target folders.'
+        )
 
         # Row 3: Exclusions Header Toolbar
         excl_header = ttk.Frame(self)
@@ -112,6 +127,13 @@ class PathsPanel(ttk.LabelFrame):
         apply_icon(self.btn_manage_exclusions, 'gear')
         self.btn_manage_exclusions.pack(side='left', padx=2)
 
+        add_tooltip(
+            self.lbl_excl_count, 'Number of active wildcard pattern rules filtering files from synchronization.'
+        )
+        add_tooltip(
+            self.btn_manage_exclusions, 'Open the exclusions manager to configure and test wildcard ignore rules.'
+        )
+
         # Row 4: Non-Editable Full-Width Exclusions Entry
         if entry_exclusions is not None:
             self.entry_exclusions = entry_exclusions
@@ -119,6 +141,10 @@ class PathsPanel(ttk.LabelFrame):
             self.entry_exclusions = EntryExclusions(self, width=90)
         self.entry_exclusions.configure(state='readonly')
         self.entry_exclusions.grid(row=4, column=0, sticky='ew', padx=8, pady=(2, 4))
+        add_tooltip(
+            self.entry_exclusions,
+            'Comma-separated list of wildcard file and directory ignore patterns (e.g. *.tmp, $RECYCLE.BIN).',
+        )
 
         # Traces for real-time count badges
         self.entry_exclusions.var.trace_add('write', lambda *args: self._update_exclusion_count())

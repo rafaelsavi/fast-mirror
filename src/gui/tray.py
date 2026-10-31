@@ -65,6 +65,7 @@ class TrayableTk(tk.Tk):
         self._is_running_check: Callable[[], bool] | None = None
         self._on_exit_check: Callable[[], bool] | None = None
         self._on_notification_click: Callable[[], None] | None = None
+        self._on_help: Callable[[], None] | None = None
 
         self.add_system_tray_icon()
         self.protocol('WM_DELETE_WINDOW', self.on_closing)
@@ -79,6 +80,7 @@ class TrayableTk(tk.Tk):
         is_running: Callable[[], bool] | None = None,
         on_exit_check: Callable[[], bool] | None = None,
         on_notification_click: Callable[[], None] | None = None,
+        on_help: Callable[[], None] | None = None,
     ):
         """Register callbacks for quick actions triggered from the system tray menu and exit verification."""
         self._on_sync_now = on_sync_now
@@ -88,6 +90,7 @@ class TrayableTk(tk.Tk):
         self._is_running_check = is_running
         self._on_exit_check = on_exit_check
         self._on_notification_click = on_notification_click
+        self._on_help = on_help
         self._update_tray_menu()
 
     def set_exit_check(self, on_exit_check: Callable[[], bool] | None):
@@ -146,7 +149,7 @@ class TrayableTk(tk.Tk):
 
     def _build_tray_menu(self) -> pystray.Menu:
         """Construct the contextual menu for the tray icon with dynamic item state."""
-        return pystray.Menu(
+        items: list[pystray.MenuItem] = [
             pystray.MenuItem('Show Window', lambda icon, item: self.show_window(), default=True),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
@@ -169,9 +172,21 @@ class TrayableTk(tk.Tk):
                 lambda icon, item: self._dispatch_action(self._on_open_report),
                 enabled=lambda item: self._on_open_report is not None,
             ),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem('Quit', lambda icon, item: self.after(0, self.finalize_quit)),
+        ]
+        if self._on_help is not None:
+            items.append(
+                pystray.MenuItem(
+                    'Help & Shortcuts (F1)',
+                    lambda icon, item: self._dispatch_action(self._on_help),
+                )
+            )
+        items.extend(
+            [
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem('Quit', lambda icon, item: self.after(0, self.finalize_quit)),
+            ]
         )
+        return pystray.Menu(*items)
 
     def _update_tray_menu(self):
         """Update live tray icon menu descriptors."""

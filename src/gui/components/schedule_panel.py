@@ -4,7 +4,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import Literal
 
-from gui.widgets import EntryTimes, WeekDays
+from gui.widgets import EntryTimes, WeekDays, add_tooltip
 
 
 class SchedulePanel(ttk.LabelFrame):
@@ -43,6 +43,10 @@ class SchedulePanel(ttk.LabelFrame):
             command=self._on_schedule_toggle,
         )
         self.cb_enable_schedule.pack(side='left')
+        add_tooltip(
+            self.cb_enable_schedule,
+            'Enable or disable automated background synchronization according to configured days and times.',
+        )
 
         self.lbl_schedule_status = ttk.Label(
             header_box,
@@ -51,6 +55,7 @@ class SchedulePanel(ttk.LabelFrame):
             foreground='#007acc' if self.schedule_var.get() else '#777777',
         )
         self.lbl_schedule_status.pack(side='left', padx=(6, 0))
+        add_tooltip(self.lbl_schedule_status, 'Current activation status of the automated background scheduler.')
 
         # Thin visual divider
         sep = ttk.Separator(self, orient='horizontal')
@@ -77,6 +82,7 @@ class SchedulePanel(ttk.LabelFrame):
                 variable=self.week_days.checkboxes[day],
             )
             cb.grid(row=row, column=col, sticky='w', padx=(0, 10), pady=1)
+            add_tooltip(cb, f'Run scheduled backup on {day}.')
             self.checkbox_week_days[day] = cb
 
         # Times Container (Row 2, Column 1)
@@ -91,6 +97,9 @@ class SchedulePanel(ttk.LabelFrame):
         else:
             self.entry_times = EntryTimes(times_box, width=8, height=5)
         self.entry_times.pack(anchor='w', pady=(0, 2))
+        add_tooltip(
+            self.entry_times, 'Daily execution times in 24-hour HH:MM format, one per line (e.g. 14:30 or 20:00).'
+        )
 
     def _on_schedule_toggle(self):
         active = bool(self.schedule_var.get())

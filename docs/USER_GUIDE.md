@@ -104,10 +104,12 @@ Step 1: Add Folders          Step 2: Quick Compare          Step 3: Sync Now
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Top Toolbar & Profile Management
+### Top Toolbar, Help & Profile Management
 
 FastMirror allows you to organize different backup sets into **Profiles** (e.g. `Default`, `Work Projects`, `Family Media`, `NAS Backup`):
 
+- **Help & Quick Guide (`? Help (F1)`)**: Click the **? Help (F1)** button in the top status bar or press <kbd>F1</kbd> anywhere in the application to open the integrated quick start guide, feature reference, and keyboard shortcuts list.
+- **Contextual Tooltips**: Hover your mouse over any button, input field, checkbox, or status indicator across the application to view instant, non-blocking tooltips explaining its behavior and usage tips.
 - **Profile Selector (`Profile: [ Default ▾ ]`)**: Instantly switches between different sets of directory pairs, schedules, and settings.
 - **Save (`Ctrl+S`)**: Saves any modifications to the active profile.
 - **+ New**: Creates a new profile. You can start clean with a blank profile or clone the settings of the currently active profile.

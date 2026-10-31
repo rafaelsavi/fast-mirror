@@ -573,6 +573,7 @@ class ToolTip:
                 borderwidth=1,
                 padx=6,
                 pady=3,
+                wraplength=360,
                 font=('Segoe UI', 8),
             )
             lbl.pack()
