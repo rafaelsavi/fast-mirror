@@ -10,6 +10,35 @@ from PIL import Image
 from gui.icons import apply_window_icon, conceal_window, get_app_icon_path, reveal_window
 from utils.logger import is_test_or_agent_mode, logger
 
+# Win32 Shell_NotifyIcon balloon / toast click notification code (WM_USER + 5 = 0x0405)
+NIN_BALLOONUSERCLICK = 0x0405
+NIN_POPUPOPEN = 0x0406
+
+
+def _create_win32_tray_icon(
+    name: str,
+    icon: Image.Image,
+    title: str,
+    menu: pystray.Menu,
+    on_notification_click: Callable[[], None] | None = None,
+) -> pystray.Icon:
+    """Create a pystray Icon that also handles Windows toast/balloon click events (NIN_BALLOONUSERCLICK)."""
+    base_cls = pystray.Icon
+
+    class _ClickableTrayIcon(base_cls):  # type: ignore[valid-type, misc]
+        def _on_notify(self, wparam, lparam):
+            # Extract low word in case NOTIFYICON_VERSION_4 packs icon ID in high word
+            event_code = lparam & 0xFFFF if isinstance(lparam, int) else lparam
+            if lparam == NIN_BALLOONUSERCLICK or event_code == NIN_BALLOONUSERCLICK:
+                if on_notification_click is not None:
+                    on_notification_click()
+                else:
+                    self()
+                return
+            super()._on_notify(wparam, lparam)
+
+    return _ClickableTrayIcon(name, icon, title, menu)
+
 
 class TrayableTk(tk.Tk):
     """Tkinter root window with modern cross-platform system tray integration via pystray."""
@@ -35,6 +64,7 @@ class TrayableTk(tk.Tk):
         self._on_open_report: Callable[[], None] | None = None
         self._is_running_check: Callable[[], bool] | None = None
         self._on_exit_check: Callable[[], bool] | None = None
+        self._on_notification_click: Callable[[], None] | None = None
 
         self.add_system_tray_icon()
         self.protocol('WM_DELETE_WINDOW', self.on_closing)
@@ -48,6 +78,7 @@ class TrayableTk(tk.Tk):
         on_open_report: Callable[[], None] | None = None,
         is_running: Callable[[], bool] | None = None,
         on_exit_check: Callable[[], bool] | None = None,
+        on_notification_click: Callable[[], None] | None = None,
     ):
         """Register callbacks for quick actions triggered from the system tray menu and exit verification."""
         self._on_sync_now = on_sync_now
@@ -56,6 +87,7 @@ class TrayableTk(tk.Tk):
         self._on_open_report = on_open_report
         self._is_running_check = is_running
         self._on_exit_check = on_exit_check
+        self._on_notification_click = on_notification_click
         self._update_tray_menu()
 
     def set_exit_check(self, on_exit_check: Callable[[], bool] | None):
@@ -73,11 +105,29 @@ class TrayableTk(tk.Tk):
             with contextlib.suppress(Exception):
                 self._tray_icon.title = safe_text
 
-    def notify(self, message: str, title: str | None = None):
+    def notify(
+        self,
+        message: str,
+        title: str | None = None,
+        on_click: Callable[[], None] | None = None,
+    ):
         """Display a system notification balloon/toast from the system tray icon."""
+        if on_click is not None:
+            self._on_notification_click = on_click
         if self._tray_icon is not None:
             with contextlib.suppress(Exception):
                 self._tray_icon.notify(message=message, title=title or 'FastMirror')
+
+    def _handle_notification_click(self):
+        """Handle user clicking on the Windows toast/balloon notification."""
+        callback = self._on_notification_click
+        self.after(0, lambda: self._execute_notification_click(callback))
+
+    def _execute_notification_click(self, callback: Callable[[], None] | None = None):
+        self._restore_window()
+        if callback is not None:
+            with contextlib.suppress(Exception):
+                callback()
 
     def _is_operation_running(self, item=None) -> bool:
         if self._is_running_check is not None:
@@ -140,11 +190,17 @@ class TrayableTk(tk.Tk):
         self.after(0, self._restore_window)
 
     def _restore_window(self):
+        with contextlib.suppress(Exception):
+            if self.state() == 'iconic':
+                self.state('normal')
         reveal_window(self)
         self.lift()
         with contextlib.suppress(Exception):
             if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'):
-                ctypes.windll.user32.SetForegroundWindow(self.winfo_id())
+                hwnd = self.winfo_id()
+                top_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
+                ctypes.windll.user32.ShowWindow(top_hwnd, 9)  # SW_RESTORE
+                ctypes.windll.user32.SetForegroundWindow(top_hwnd)
         with contextlib.suppress(Exception):
             self.focus_force()
 
@@ -195,7 +251,13 @@ class TrayableTk(tk.Tk):
 
             image = Image.open(icon_path)
             menu = self._build_tray_menu()
-            self._tray_icon = pystray.Icon('fast_mirror', image, 'FastMirror', menu)
+            self._tray_icon = _create_win32_tray_icon(
+                'fast_mirror',
+                image,
+                'FastMirror',
+                menu,
+                on_notification_click=self._handle_notification_click,
+            )
             self._tray_icon.run_detached()
         except Exception as e:
             logger.warning(f'Could not initialize system tray icon. Exception: {e}')

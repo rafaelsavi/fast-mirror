@@ -970,6 +970,18 @@ class Gui:
         if self.backend_thread_status == BackendThreadStatus.STANDBY:
             self.toggle_state_quick_compare = True
 
+    def _on_default_notification_clicked(self):
+        """Handle user clicking a standard completion notification."""
+        if hasattr(self, 'log_panel') and hasattr(self.log_panel, 'text_logger'):
+            with contextlib.suppress(Exception):
+                self.log_panel.text_logger.yview(tk.END)
+
+    def _on_error_notification_clicked(self):
+        """Handle user clicking an error notification by navigating to the error in the log."""
+        if hasattr(self, 'log_panel'):
+            with contextlib.suppress(Exception):
+                self.log_panel.jump_to_next_error()
+
     def request_stop_operation(self):
         """Request cancellation/stopping of currently running background process."""
         if self.backend_thread_status == BackendThreadStatus.RUNNING:
@@ -1242,6 +1254,7 @@ class Gui:
                             lambda m=msg: self.root.notify(
                                 message=m,
                                 title='FastMirror - Errors Encountered',
+                                on_click=self._on_error_notification_clicked,
                             ),
                         )
                         if hasattr(self, 'taskbar'):
@@ -1256,6 +1269,7 @@ class Gui:
                             lambda m=msg: self.root.notify(
                                 message=m,
                                 title='FastMirror',
+                                on_click=self._on_default_notification_clicked,
                             ),
                         )
                     elif not had_work:
@@ -1265,6 +1279,7 @@ class Gui:
                             lambda m=msg: self.root.notify(
                                 message=m,
                                 title='FastMirror',
+                                on_click=self._on_default_notification_clicked,
                             ),
                         )
             else:
@@ -1278,6 +1293,7 @@ class Gui:
                         lambda m=summary_msg: self.root.notify(
                             message=m,
                             title='FastMirror',
+                            on_click=self._on_default_notification_clicked,
                         ),
                     )
         except Exception as e:

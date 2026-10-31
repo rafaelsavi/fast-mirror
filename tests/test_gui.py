@@ -2228,3 +2228,94 @@ def test_tray_finalize_quit_exit_check(monkeypatch):
     finally:
         # Real destruction
         TrayableTk.destroy(tray_window)
+
+
+def test_windows_notification_click_handling(monkeypatch):
+    """Verify that clicking a Windows notification restores the window and triggers the associated callback."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.destroy()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from unittest.mock import MagicMock
+
+    from PIL import Image
+
+    from gui.gui import Gui
+    from gui.tray import NIN_BALLOONUSERCLICK, TrayableTk, _create_win32_tray_icon
+
+    # 1. Verify _create_win32_tray_icon intercepts NIN_BALLOONUSERCLICK (0x0405)
+    clicked_events = []
+    img = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+    import pystray
+
+    icon = _create_win32_tray_icon(
+        'test_icon',
+        img,
+        'TestTitle',
+        pystray.Menu(pystray.MenuItem('Show', lambda i, item: clicked_events.append('default'), default=True)),
+        on_notification_click=lambda: clicked_events.append('notification_clicked'),
+    )
+
+    # Simulate Windows sending NIN_BALLOONUSERCLICK via WM_NOTIFY lparam
+    icon._on_notify(0, NIN_BALLOONUSERCLICK)
+    assert clicked_events == ['notification_clicked']
+
+    # Also verify packed high-word icon ID with NIN_BALLOONUSERCLICK in low word
+    icon._on_notify(0, (123 << 16) | NIN_BALLOONUSERCLICK)
+    assert clicked_events == ['notification_clicked', 'notification_clicked']
+
+    # 2. Verify TrayableTk.notify stores on_click and _handle_notification_click restores window & invokes callback
+    tray_window = TrayableTk()
+    tray_window.withdraw()
+    try:
+        mock_icon = MagicMock()
+        tray_window._tray_icon = mock_icon
+
+        restored = []
+        monkeypatch.setattr(tray_window, '_restore_window', lambda: restored.append(True))
+
+        custom_actions = []
+        tray_window.notify(
+            'Sync completed with 1 error',
+            'FastMirror - Errors Encountered',
+            on_click=lambda: custom_actions.append('error_clicked'),
+        )
+        mock_icon.notify.assert_called_once_with(
+            message='Sync completed with 1 error',
+            title='FastMirror - Errors Encountered',
+        )
+
+        tray_window._handle_notification_click()
+        tray_window.update()
+
+        assert restored == [True]
+        assert custom_actions == ['error_clicked']
+    finally:
+        TrayableTk.destroy(tray_window)
+
+    # 3. Verify Gui notification click handlers navigate log appropriately
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'load_config', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    gui = Gui()
+    try:
+        gui.log_panel.text_logger.insert('Info line 1', 'INFO')
+        gui.log_panel.text_logger.insert('Error line 2', 'ERROR')
+        gui.log_panel.log_levels.checkboxes['ERROR'].set(False)
+        gui.log_panel._handle_level_change()
+        assert 'ERROR' not in gui.log_panel.log_levels.get()
+
+        # Clicking error notification enables ERROR log level and highlights error line
+        gui._on_error_notification_clicked()
+        assert 'ERROR' in gui.log_panel.log_levels.get()
+        assert gui.log_panel.text_logger.tag_ranges('TAG_JUMP_HIGHLIGHT')
+
+        # Clicking default notification scrolls log to end cleanly
+        gui._on_default_notification_clicked()
+    finally:
+        gui.root.destroy()
