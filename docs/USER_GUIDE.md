@@ -1,594 +1,263 @@
-# FastMirror
+# FastMirror — Desktop User Guide
 
-This guide contains the detailed product, setup, usage, configuration, logging, and troubleshooting documentation. For a concise overview, see the [project landing page](../README.md).
+[![Platform Windows](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6.svg?logo=windows)](https://www.microsoft.com/windows/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
+[![Database: SQLite WAL](https://img.shields.io/badge/database-SQLite%20WAL-003B57.svg?logo=sqlite)](https://sqlite.org/)
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Platform Windows](https://img.shields.io/badge/platform-Windows-0078D6.svg)](https://www.microsoft.com/windows/)
-[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Type Checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue.svg)](https://mypy-lang.org/)
-[![Database: SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg)](https://sqlite.org/)
+**FastMirror** is an automated, one-way folder mirroring and backup application for Windows. It lets you mirror important local folders to external drives or network storage shares (`\\server\share`).
 
-**FastMirror** is a Windows backup tool for repeatedly synchronizing the same source and destination folders. It mirrors changes one way—from source to target—and is especially useful when the target is a slow external drive or network share.
-
-Unlike a sync that must walk both directory trees on every run, FastMirror can use a local SQLite index of the target. After the initial scan, this avoids repeatedly listing every target file over a slow network connection. It also detects many moves and renames so existing target files can be moved instead of transferred again. You can review proposed file operations before they run, or schedule recurring syncs.
+Unlike generic copy tools that re-read every file across slow Wi-Fi or SMB network connections, FastMirror uses a local target cache to perform lightning-fast incremental checks, detects when files were renamed or moved so they don't need to be transferred again, and lets you visually preview every change before anything is touched.
 
 ---
 
 ## Table of Contents
 
-- [Key Features](#key-features)
-- [How It Works](#how-it-works)
-  - [Synchronization Pipeline](#synchronization-pipeline)
-  - [Move & Rename Detection](#move--rename-detection)
-  - [Local SQLite Mirror Acceleration](#local-sqlite-mirror-acceleration)
-- [System Architecture](#system-architecture)
-- [Prerequisites & Installation](#prerequisites--installation)
-  - [Download Standalone Windows Binaries (No Python Required)](#download-standalone-windows-binaries-no-python-required)
-  - [Installing from Source (Developers)](#installing-from-source-developers)
-- [Data Storage, Configurations & Portability](#data-storage-configurations--portability)
-  - [Storage Locations Breakdown](#storage-locations-breakdown)
-  - [Installed Mode vs. Portable Mode](#installed-mode-vs-portable-mode)
-  - [Opening Data Folders from the Interface](#opening-data-folders-from-the-interface)
-  - [Upgrades and Uninstallation Safety](#upgrades-and-uninstallation-safety)
-  - [Backup & Restore Your Settings](#backup--restore-your-settings)
-- [Usage Guide](#usage-guide)
-  - [Launching the Application](#launching-the-application)
-  - [Configuring Backup Pairs](#configuring-backup-pairs)
-  - [Exclusion Patterns](#exclusion-patterns)
-  - [Comparison & Synchronization Options](#comparison--synchronization-options)
-  - [Scheduling Automated Backups](#scheduling-automated-backups)
-  - [Interactive Action Confirmation Popup](#interactive-action-confirmation-popup)
-  - [System Tray Operation](#system-tray-operation)
-- [Configuration Reference (`config.json`)](#configuration-reference-configjson)
-- [Logging and Excel Reports](#logging-and-excel-reports)
-- [Development and Testing](#development-and-testing)
-  - [Running Unit Tests](#running-unit-tests)
-  - [Linting and Formatting](#linting-and-formatting)
-  - [Type Checking](#type-checking)
-- [Troubleshooting & FAQs](#troubleshooting--faqs)
-- [Additional Documentation](#additional-documentation)
-- [License & Author](#license--author)
+1. [Downloading & Installing (No Python Needed)](#downloading--installing-no-python-needed)
+   - [Setup Installer (Recommended)](#1-setup-installer-recommended)
+   - [Portable Edition (ZIP)](#2-portable-edition-zip)
+2. [Quick Start: Your First Backup in 3 Minutes](#quick-start-your-first-backup-in-3-minutes)
+3. [User Interface Tour](#user-interface-tour)
+   - [Top Toolbar & Profile Management](#top-toolbar--profile-management)
+   - [Paths & Directory Pairs Panel](#paths--directory-pairs-panel)
+   - [Exclusion Filters](#exclusion-filters)
+   - [Weekly Scheduler Panel](#weekly-scheduler-panel)
+   - [Backup Options & Comparison Modes](#backup-options--comparison-modes)
+   - [Interactive Action Confirmation Dialog](#interactive-action-confirmation-dialog)
+   - [Windows System Tray & Notifications](#windows-system-tray--notifications)
+   - [Activity Log Panel & History Reports](#activity-log-panel--history-reports)
+4. [Safety Features & Invariants](#safety-features--invariants)
+5. [Frequently Asked Questions (FAQ)](#frequently-asked-questions-faq)
+6. [Additional Guides](#additional-guides)
 
 ---
 
-## Key Features
+## Downloading & Installing (No Python Needed)
 
-- **Fast One-Way Mirror Synchronization**: Backs up local folders to secondary drives, external hard drives, or remote network shares (UNC paths like `\\192.168.1.100\Backup`).
-- **Local SQLite Mirror Indexing**: Caches target file paths and blake2b metadata hashes in a normalized relational `local_mirror.db` with exclusion fingerprinting. This eliminates the need to scan thousands of files across slow network links on every run.
-- **Smart Move & Rename Detection**: Recognizes when files were renamed or moved to different folders on the source side. Rather than deleting and re-uploading large files over the network, it executes local/remote file moves directly on the target.
-- **Interactive Action Review**: An interactive treeview dialog previews proposed `COPY`, `MOVE`, and `DELETE` actions with individual file sizes, timestamps, and aggregate group volumes with Windows audio cues.
-- **Built-in Weekly Scheduler**: Configure specific days of the week and daily execution times for fully unattended backups.
-- **Windows System Tray Integration**: Minimizes to the Windows notification area via native `pystray` integration. Closing the window prompts to keep running in the background.
-- **Cancellable Background Worker Thread**: Long-running comparison and synchronization jobs execute asynchronously in a dedicated `WorkerThread` with cooperative `threading.Event` cancellation, keeping the GUI responsive and avoiding state corruption.
-- **Gitwildmatch Exclusions**: Excludes files and folders using `.gitignore`-style wildcard syntax (powered by `pathspec`), pruning ignored directories on the fly during filesystem traversal.
-- **Detailed Logging & Excel Audit Reports**: In-GUI color-coded log console with real-time level filtering, persistent log files on disk, and optional detailed Excel (`.xlsx`) comparison reports via `pandas`.
-- **Windows Attribute & Long Path Resilience**: Automatically clears read-only attributes on locked target files and detects paths exceeding Windows `MAX_PATH` limits.
+You do **not** need Python, Git, or command-line tools to use FastMirror. Download pre-compiled Windows releases directly from GitHub:
 
----
+👉 **[Download Latest Release on GitHub](https://github.com/rafaelsavi/fast-mirror/releases/latest)**
 
-## How It Works
-
-### Synchronization Pipeline
-
-The backup engine operates in distinct stages:
-
-```mermaid
-flowchart TD
-    A[Start Sync / Compare] --> B[Scan Source Directory Tree]
-    B --> C{Use Local Mirror?}
-    C -- Yes --> D[Load Target Entries from local_mirror.db]
-    C -- No --> E[Walk Target Filesystem & Update Mirror]
-    D --> F[Link Source and Target Files]
-    E --> F
-    F --> G[Detect Same Relative Paths]
-    F --> H[Detect Renamed / Moved Files]
-    F --> I[Identify Source-Only Files]
-    F --> J[Identify Target-Only Files]
-    G --> K[Compare Linked Files: Metadata / Content]
-    H --> L[Generate Action Lists: Copy, Move, Delete]
-    I --> L
-    J --> L
-    K --> L
-    L --> M{Confirm Sync Enabled?}
-    M -- Yes --> N[Open Action Selection Dialog with Timer]
-    M -- No --> O[Filter by Default Actions]
-    N --> P[Execute Approved Operations]
-    O --> P
-    P --> Q[1. Copy New & Modified Files]
-    P --> R[2. Move Renamed Files]
-    P --> S[3. Delete Obsolete Files]
-    P --> T[4. Prune Empty Directories]
-    P --> U[Update SQLite Mirror Database]
-    Q --> V[Done]
-    R --> V
-    S --> V
-    T --> V
-    U --> V
-```
-
-### Move & Rename Detection
-
-Traditional synchronization scripts treat a renamed or moved file as two separate operations: deleting the target file and copying the source file anew. Over slow connections or Wi-Fi, transferring gigabytes of already-existing data is wasteful.
-
-The `FastMirror` linking algorithm:
-1. First correlates files that share the exact same relative path from their respective roots.
-2. For remaining unlinked files, it matches files possessing unique filenames and identical metadata (size and modification time hash).
-3. Matched files with differing relative paths are flagged for a quick `shutil.move()` operation directly on the target, followed by a mirror database key update.
-
-### Local SQLite Mirror Acceleration
-
-Scanning tens of thousands of files across a slow SMB/CIFS network share can take several minutes. When the **"Use fast scan based on local mirror"** option is enabled:
-- The target file catalog is loaded from a local SQLite database (`local_mirror.db`).
-- Each directory pair and unique exclusion set has an isolated table.
-- File records store an 8-byte `blake2b` digest of the file's `(st_size, st_mtime)`.
-- File operations (`copy`, `move`, `delete`) keep the mirror database updated incrementally.
-- Users can trigger a clean rescan anytime using the **"Rebuild local mirror"** option.
-
----
-
-## System Architecture
-
-The codebase is organized into modular packages:
-
-```
-fast-mirror/
-├── config.example.json       # Example configuration template (copy to data/config.json)
-├── launch.pyw                # Windowless Windows launcher with auto-venv detection
-├── data/                     # Local runtime data (ignored in git)
-│   ├── config.json           # Active GUI and scheduler configuration
-│   ├── local_mirror.db       # SQLite database for cached target mirrors
-│   └── logs/                 # Session log files and generated Excel reports
-├── pyproject.toml            # Project metadata, dependencies, and tool settings
-├── src/
-│   ├── core/
-│   │   ├── backend.py        # CompareDirs, SyncDirs orchestration engine
-│   │   ├── file_ops.py       # Robust atomic file operations (copy, move, delete, unlock)
-│   │   ├── path_resolver.py  # Path conversions & specificity-scored root resolution
-│   │   ├── file.py           # CstmPath, File abstractions, hash calculation
-│   │   └── mirror.py         # MirrorDatabase SQLite manager
-│   ├── gui/
-│   │   ├── gui.py            # Main application orchestrator, watchdogs, scheduler
-│   │   ├── confirmation_popup.py # ActionSelection modal & CustomCheckboxTreeView
-│   │   ├── health_check.py   # Non-blocking target reachability & disk space prober
-│   │   ├── scheduler.py      # Optimized 8-day candidate run calculator
-│   │   ├── tray.py           # TrayableTk system tray integration via pystray
-│   │   ├── icons.py          # Icon registry and tinting engine
-│   │   ├── enums.py          # Tkinter & Thread state enums
-│   │   ├── worker_thread.py  # WorkerThread background execution & cooperative cancellation
-│   │   ├── widgets.py        # Custom Tkinter controls (Paths, Exclusions, Loggers)
-│   │   ├── assets/icons/     # Modern 16x16 PNG icons
-│   │   ├── components/       # Modular GUI panels (Actions, Log, Paths, Schedule, Status, Telemetry, Modals)
-│   │   └── app_icon.ico      # Application and tray icon
-│   └── utils/
-│       ├── constants.py      # ROOT_DIR locator and data folder paths
-│       ├── logger.py         # Context-aware singleton logger with test mode isolation
-│       └── utils.py          # Helpers (formatting, progress logging, paths)
-└── tests/
-    ├── conftest.py           # Test isolation fixtures
-    ├── test_e2e.py           # End-to-end integration workflows
-    ├── test_paths.py         # Path resolution, UNC share tests, and config validation
-    ├── test_file_ops.py      # Robust file operations, locks, and retries
-    ├── test_sync.py          # Directory synchronization & comparison
-    ├── test_mirror.py        # SQLite WAL mirror database tests
-    ├── test_confirmation_popup.py # Action confirmation popup & treeview
-    ├── test_gui.py           # GUI scheduler, settings, and TextLogger
-    ├── test_gui_visual_emulation.py # UI widget event flow & visual invariant tests
-    ├── test_logger.py        # Logging handlers and log isolation
-    ├── test_worker_thread.py # Worker thread execution & cancellation tests
-    └── TestData/             # Local directory pairs for testing
-```
-
----
-
-## Prerequisites & Installation
-
-### Download Standalone Windows Binaries (No Python Required)
-
-For most users and non-programmers, FastMirror provides standalone, pre-compiled Windows 64-bit releases. You **do not need Python installed** on your computer.
-
-👉 **[Download the Latest Release on GitHub](https://github.com/rafaelsavi/fast-mirror/releases/latest)**
-
-#### Option 1: Windows Setup Installer (Recommended)
+### 1. Setup Installer (Recommended)
 - **File**: `FastMirror-v<version>-Windows-Setup.exe`
-- **Installation**: Double-click the installer. It installs per-user into `%LOCALAPPDATA%\Programs\FastMirror` without requiring administrator privileges or UAC elevation.
-- **Shortcuts**: Automatically creates Start Menu and optional Desktop shortcuts.
-- **Upgrades**: Installing a newer version automatically upgrades the application files while strictly preserving your backup profiles, folder pairs, schedules, and mirror database.
+- **Installation**: Double-click the installer and follow the prompt.
+- **Per-User Setup**: Installs directly into your user profile (`%LOCALAPPDATA%\Programs\FastMirror`). Does **not** require Windows Administrator elevation or UAC prompts.
+- **Shortcuts**: Automatically adds Start Menu and Desktop shortcuts.
+- **Seamless Upgrades**: Installing future updates will automatically replace the program files while keeping all your profiles, schedules, and mirror database completely intact.
 
-#### Option 2: Portable Edition
+### 2. Portable Edition (ZIP)
 - **File**: `FastMirror-v<version>-Windows-Portable.zip`
-- **Installation**: Extract the ZIP file anywhere (such as a USB thumb drive, external hard drive, or desktop folder) and double-click `FastMirror.exe`.
-- **Self-Contained**: Operates in standalone portable mode. All configuration profiles, database caches, and log files are stored strictly inside the local `data/` folder next to `FastMirror.exe`. No data is written to your Windows user profile or registry.
+- **Installation**: Right-click the ZIP file $\rightarrow$ **Extract All...** to any folder (e.g. on a USB flash drive or external hard drive).
+- **Self-Contained**: Double-click `FastMirror.exe` to run. All configurations, profiles, and databases are stored locally in the same folder without touching your Windows user profile.
 
 ---
 
-### Installing from Source (Developers)
+## Quick Start: Your First Backup in 3 Minutes
 
-If you are developing or contributing to FastMirror:
+Follow these three simple steps to run your first backup:
 
-#### Prerequisites
-- **Operating System**: Windows 10 or Windows 11 (requires native Windows APIs for UNC networking and audio alerts).
-- **Python**: Version **3.10** or higher (Python 3.13 tested).
-- **Package Manager**: [uv](https://docs.astral.sh/uv/) (recommended) or standard `pip`.
-
-#### Installation with uv (Recommended)
-1. **Clone the repository:**
-   ```powershell
-   git clone https://github.com/rafaelsavi/fast-mirror.git
-   cd fast-mirror
-   ```
-2. **Sync virtual environment and dependencies:**
-   ```powershell
-   uv sync
-   ```
-3. **Launch application:**
-   ```powershell
-   uv run python launch.pyw
-   ```
-
-#### Installation with standard pip
-1. **Create and activate a virtual environment:**
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\activate
-   ```
-2. **Install the package in editable mode:**
-   ```powershell
-   pip install -e ".[dev]"
-   ```
-3. **Launch application:**
-   ```powershell
-   python launch.pyw
-   ```
-
----
-
-## Data Storage, Configurations & Portability
-
-FastMirror strictly adheres to modern Windows filesystem conventions, ensuring safety, non-destructive updates, and complete data isolation.
-
-### Storage Locations Breakdown
-
-| Component | Installed Mode Path | Portable Mode Path | Description |
-| :--- | :--- | :--- | :--- |
-| **Global Config** | `%LOCALAPPDATA%\FastMirror\data\config.json` | `<app_dir>\data\config.json` | Mirror of the currently active configuration for backward compatibility. |
-| **Backup Profiles** | `%LOCALAPPDATA%\FastMirror\data\profiles\<name>.json` | `<app_dir>\data\profiles\<name>.json` | Named configuration profiles (`Default.json`, `NAS.json`, etc.). |
-| **Mirror Database** | `%LOCALAPPDATA%\FastMirror\data\local_mirror.db` | `<app_dir>\data\local_mirror.db` | SQLite database (WAL mode) caching target file paths and blake2b hashes. |
-| **Database WAL/SHM** | `%LOCALAPPDATA%\FastMirror\data\local_mirror.db-wal` | `<app_dir>\data\local_mirror.db-wal` | High-performance write-ahead log for non-blocking concurrent SQLite transactions. |
-| **Runtime Logs** | `%LOCALAPPDATA%\FastMirror\data\logs\log_*.txt` | `<app_dir>\data\logs\log_*.txt` | Timestamped human-readable execution and audit logs. |
-| **Excel Reports** | `%LOCALAPPDATA%\FastMirror\data\logs\compare_report_*.xlsx` | `<app_dir>\data\logs\compare_report_*.xlsx` | Generated Excel spreadsheets when "Save detailed report" is checked. |
-
-*(Note: `%LOCALAPPDATA%` defaults to `C:\Users\Username\AppData\Local` on standard Windows installations).*
-
-### Installed Mode vs. Portable Mode
-
-1. **Installed Mode**:
-   - Binaries reside in `%LOCALAPPDATA%\Programs\FastMirror\`.
-   - Data is stored in `%LOCALAPPDATA%\FastMirror\data\`.
-   - **Why this separation matters**: In Windows, application binaries and user data should never share the same folder. When you run an installer update (e.g. from `v0.1.0` to `v0.2.0`), Inno Setup cleanly updates the executable files in `Programs\FastMirror`, leaving your `data\` folder completely untouched. You will never lose your directory pairs, exclusion lists, or SQLite index when upgrading.
-   - **Multi-User Isolation**: If multiple users share the same Windows PC, each user gets their own separate `%LOCALAPPDATA%\FastMirror\data\` directory.
-
-2. **Portable Mode**:
-   - FastMirror detects portable mode when `portable.txt` or a `data/` folder exists alongside `FastMirror.exe`.
-   - All state is confined to `<exe_dir>\data\`.
-   - Ideal for running directly off an external backup hard drive or USB thumb drive.
-
-### Opening Data Folders from the Interface
-
-You do not need to manually navigate through hidden Windows AppData folders to inspect your configuration or logs:
-- **Profiles Folder**: Right-click the **Profile** selector dropdown in the top toolbar -> click **📂 Open Profiles Folder**.
-- **Logs & Reports Folder**: In the bottom-right **Activity Log** panel, click the **📁 Open Log Folder** button.
-- **Past Reports Browser**: Click **Past reports...** in the Actions toolbar to browse, open, or delete previous Excel audit reports.
-
-### Upgrades and Uninstallation Safety
-
-- **Updating FastMirror**: Download and run the new `FastMirror-Setup.exe`. The installer updates the program files; your existing profiles, directory pairs, and cache database are recognized immediately upon the next launch.
-- **Uninstalling FastMirror**: If you uninstall FastMirror via Windows **Settings -> Installed apps**, Windows removes the program files in `%LOCALAPPDATA%\Programs\FastMirror`. Your `%LOCALAPPDATA%\FastMirror\data\` folder is intentionally preserved to prevent accidental data loss. To perform a complete clean removal, simply delete the `%LOCALAPPDATA%\FastMirror` folder manually.
-
-### Backup & Restore Your Settings
-
-To back up your FastMirror configuration (e.g. when moving to a new computer):
-1. Copy the `%LOCALAPPDATA%\FastMirror\data\profiles\` folder (or your portable `data\profiles\` folder).
-2. On the new computer, paste the profile JSON files into `%LOCALAPPDATA%\FastMirror\data\profiles\`.
-3. Launch FastMirror—all your directory pairs, exclusions, schedules, and profile names will appear automatically!
-
----
-
-## Usage Guide
-
-### Launching the Application & Windows Shortcuts
-
-You can launch and integrate FastMirror into your Windows workflow in several ways:
-
-1. **Creating a Desktop Shortcut (Recommended)**:
-   Generate a Windows desktop shortcut configured with the windowless launcher (`launch.pyw`), native application icon (`app_icon.ico`), and working directory in one command:
-   ```powershell
-   python launch.pyw --shortcut
-   ```
-   *(or `python launch.pyw --create-shortcut`)*
-
-2. **Windowless Launcher (`launch.pyw`)**:
-   Double-click `launch.pyw` in Windows Explorer or run from PowerShell:
-   ```powershell
-   pythonw launch.pyw
-   ```
-   *`launch.pyw` automatically detects and invokes the Python executable inside `.venv` without opening an unwanted command-prompt console.*
-
-3. **Standard Module Execution**:
-   ```powershell
-   uv run python -m gui.gui
-   ```
-   or with an activated virtual environment:
-   ```powershell
-   python -m gui.gui
-   ```
-
-4. **Windows Start Menu & Startup Folder (Run in Tray on Boot)**:
-   - To have FastMirror start automatically in the system tray when Windows boots:
-     1. Press <kbd>Win</kbd> + <kbd>R</kbd>, type `shell:startup`, and press <kbd>Enter</kbd>.
-     2. Copy your `FastMirror.lnk` desktop shortcut into the opened Startup folder (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`).
-   - To pin FastMirror to your Windows Start Menu:
-     1. Press <kbd>Win</kbd> + <kbd>R</kbd>, type `shell:programs`, and press <kbd>Enter</kbd>.
-     2. Copy the `FastMirror.lnk` shortcut into this folder (`%APPDATA%\Microsoft\Windows\Start Menu\Programs`).
-
-5. **Manual Windows Shortcut Setup**:
-   If configuring a custom shortcut manually in Windows Explorer:
-   - **Target**: `D:\Path\To\fast-mirror\.venv\Scripts\pythonw.exe "D:\Path\To\fast-mirror\launch.pyw"`
-   - **Start in (Working Directory)**: `D:\Path\To\fast-mirror`
-   - **Icon**: Click **Change Icon...** -> Browse to `D:\Path\To\fast-mirror\src\gui\app_icon.ico`
-   - **Run**: `Normal window` (the launcher uses `pythonw.exe` and never displays a console prompt)
-
----
-
-### Configuring Backup Pairs
-
-In the upper-right section of the main window (**Directory Pairs & Exclusions**):
-
-1. Configured pairs are shown in a compact, syntax-highlighted display with live count badges and health statuses.
-2. Click **Manage Pairs...** to open the **Directory Backup Pairs Manager** modal:
-   - Click **Add Pair...** to select a **Source folder** followed by a **Target folder** via standard Windows folder selection dialogs.
-   - Edit, delete, or test existing pairs with automatic validation (verifying that source exists and destination or its parent is reachable).
-   - Formatted automatically as `SOURCE -> TARGET` (e.g. `D:\Photos -> \\192.168.1.100\Backup\Photos`).
-3. Click **Health Check** to run an asynchronous target diagnostic probe verifying network reachability and available free disk space.
-4. Click **Explorer** to open the selected directory pair directly in Windows Explorer.
-
----
-
-### Exclusion Patterns
-
-Under **Exclusions** in the same panel:
-
-1. Active patterns are summarized in a compact view with rule count badges.
-2. Click **Manage Exclusions...** to open the **Exclusion Patterns Manager** modal:
-   - Search and filter patterns dynamically with instantaneous match stepping.
-   - Add new glob patterns adhering to `.gitignore` (`gitwildmatch`) rules.
-   - Built-in wildmatch syntax cheatsheet and validation.
-3. Common examples:
-   ```text
-   $RECYCLE.BIN, **\.git\**, **\.venv\**, **\__pycache__\**, **\~$*, Temp, Cache
-   ```
-- Matching directories are pruned in place during filesystem traversal, dramatically accelerating scans.
-
----
-
-### Comparison & Synchronization Options
-
-| Option Checkbox | Description | Recommended Setting |
-| :--- | :--- | :---: |
-| **Use fast scan based on local mirror** | Skips scanning the target storage on disk; loads target files from `local_mirror.db`. | **ON** (especially for NAS / slow drives) |
-| **Rebuild local mirror** | Resets the target's SQLite mirror table and performs a full scan from disk to re-index. Automatically unchecks fast scan. | **OFF** (use only when target changed externally) |
-| **Use fast comparison based on metadata** | Compares `st_size` and `st_mtime` via an 8-byte blake2b digest. If disabled, performs full byte-by-byte file comparison. | **ON** |
-| **Request confirmation before sync** | Prompts with an interactive review table before writing any changes. | **ON** |
-| **Save detailed report** | Generates an Excel spreadsheet (`data/logs/compare_report_*.xlsx`) documenting every analyzed file status. | **Optional** |
-
-#### Default Actions
-Check or uncheck which actions are enabled by default in the confirmation dialog:
-- **Copy**: New files and modified files.
-- **Move**: Files detected as moved/renamed.
-- **Delete**: Obsolete files residing in the target that no longer exist in the source.
-
----
-
-### Scheduling Automated Backups
-
-1. Select the desired **Week days** (e.g. `MON`, `WED`, `FRI`, `SUN`).
-2. In the **Times** field, enter execution times in 24-hour `HH:MM` format, one per line (e.g. `20:30`).
-3. Click the **Schedule (OFF)** toggle button. It will switch to **Schedule (ON)** and depress.
-4. The **Next synchronization** field will display the exact date, time, and day of the week for the upcoming job.
-5. Click **Save** under *GUI Configuration* to store the schedule so it persists across restarts.
-
----
-
-### Interactive Action Confirmation Popup
-
-When synchronization begins with **"Request confirmation before sync"** enabled, a dedicated modal appears:
-
-- **Categorized Treeview**: Displays expandable groups for **copy**, **move**, and **delete** with individual file sizes, source paths, destination paths, and modification dates.
-- **Live Group Statistics**: Group headers dynamically update with the total byte size and count of selected items (e.g. `copy 1.45GB (32 of 32)`).
-- **Controls**:
-  - **Save and continue**: Immediately executes checked actions.
-  - **Cancel**: Aborts the operation without touching files.
-
----
-
-### System Tray Operation
-
-- **Minimizing**: Clicking the standard window Minimize button (`_`) hides the window and docks the application into the Windows system tray with the sync icon.
-- **Closing**: Clicking the window Close button (`X`) triggers a prompt offering to minimize to the tray instead of exiting.
-- **Restoring**: Double-click or single-click the system tray icon, or right-click to open the context menu and select **Open**.
-- **Exiting**: Right-click the system tray icon and select **Quit**.
-
----
-
-## Configuration Reference (`config.json`)
-
-All GUI settings are saved to `data/config.json`. Below is a documented example:
-
-```json
-{
-    "entry_paths": [
-        [
-            "C:\\Photos",
-            "\\\\nas\\backup\\Photos"
-        ],
-        [
-            "D:\\Documents",
-            "\\\\nas\\backup\\Documents"
-        ]
-    ],
-    "week_days": [
-        "TUE",
-        "FRI",
-        "SUN"
-    ],
-    "entry_times": [
-        "20:30"
-    ],
-    "entry_exclusions": [
-        "$RECYCLE.BIN",
-        "**\\.git\\**",
-        "**\\.venv\\**",
-        "**\\__pycache__\\**",
-        "**\\~$*",
-        "Filmes",
-        "Jogos"
-    ],
-    "log_levels": [
-        "INFO",
-        "WARNING",
-        "ERROR",
-        "CRITICAL"
-    ],
-    "checkbox_default_actions": [
-        "copy",
-        "move",
-        "delete"
-    ],
-    "checkbox_var_use_mirror": true,
-    "checkbox_var_build_mirror": false,
-    "checkbox_var_metadata_comparison": true,
-    "checkbox_var_confirm_sync": true,
-    "checkbox_var_save_report": false
-}
+```text
+Step 1: Add Folders          Step 2: Quick Compare          Step 3: Sync Now
+┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
+│ Source -> Target    │ ──► │ Review Proposed     │ ──► │ Safely Apply        │
+│ Directory Pairs     │     │ Changes & Volumes   │     │ Approved Operations │
+└─────────────────────┘     └─────────────────────┘     └─────────────────────┘
 ```
 
-### Configuration Keys
+1. **Add Your Directory Pair**:
+   - In the **Paths & Directory Pairs** panel on the left, click **+ Add Pair**.
+   - Browse or paste your **Source** folder (e.g. `D:\Photos` or `C:\Users\Username\Documents`).
+   - Browse or paste your **Target** backup destination (e.g. `E:\Backup\Photos` or `\\NAS\Storage\Photos`).
+   - Click **Save Pair**.
 
-| Key | Type | Description |
-| :--- | :--- | :--- |
-| `entry_paths` | `list[list[str, str]]` | List of `[source_directory, target_directory]` pairs. |
-| `week_days` | `list[str]` | List of enabled days: `["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]`. |
-| `entry_times` | `list[str]` | List of scheduled execution times in `HH:MM` format. |
-| `entry_exclusions` | `list[str]` | List of gitwildmatch pattern strings to exclude. |
-| `log_levels` | `list[str]` | Active logging levels visible in GUI: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
-| `checkbox_default_actions` | `list[str]` | Default enabled actions in the popup: `"copy"`, `"move"`, `"delete"`. |
-| `checkbox_var_use_mirror` | `bool` | Whether to scan target files from local SQLite database. |
-| `checkbox_var_build_mirror` | `bool` | Whether to wipe and rebuild the target's SQLite mirror table. |
-| `checkbox_var_metadata_comparison` | `bool` | `true` for fast metadata hashing; `false` for byte content comparison. |
-| `checkbox_var_confirm_sync` | `bool` | `true` to require interactive confirmation before syncing. |
-| `checkbox_var_save_report` | `bool` | `true` to export an Excel file for each comparison. |
+2. **Run a Quick Compare**:
+   - In the top Actions toolbar, click **Quick Compare**.
+   - FastMirror scans your source folder, loads the destination index, and displays an **interactive confirmation popup**.
+   - The popup lists every planned `COPY`, `MOVE`, and `DELETE` operation with individual file sizes, timestamps, and total volumes.
 
----
-
-## Logging and Excel Reports
-
-### Real-Time GUI Logger
-The bottom-right panel displays real-time logs routed through a thread-safe `queue.Queue`.
-- **Level Filters**: Check or uncheck log levels (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) to filter visible messages on the fly.
-- **Auto-scroll**: Keeps the text widget scrolled to the latest entry.
-- **Color Coding**: Gray for debug, black for info, orange for warnings, red for errors, and underlined red for critical issues.
-
-### Persistent Files
-- All events are automatically logged with timestamps to `data/logs/log_YYYY-MM-DD_HH-MM-SS.txt`.
-- When **Save detailed report** is checked, an Excel workbook `data/logs/compare_report_YYYY-MM-DD_HH-MM-SS.xlsx` is generated with columns for file path, file size, modification dates, status (`only source`, `only target`, `moved`, `modified`, `same`), and comparison errors.
-- Click **Open last report** in the GUI to immediately open the most recent Excel file in Microsoft Excel or your default spreadsheet handler, or click **Past reports...** to browse, inspect, and manage historical audit logs.
+3. **Execute the Backup**:
+   - Review the proposed operations. If there are deletions you wish to prevent, simply uncheck them.
+   - Click **Proceed with Sync** (or press <kbd>Enter</kbd>).
+   - FastMirror safely copies new/modified files, moves renamed files, and updates the index.
 
 ---
 
-## Development and Testing
+## User Interface Tour
 
-### Running Unit Tests
-
-The test suite uses [pytest](https://docs.pytest.org/):
-
-```powershell
-uv run pytest
-```
-or
-```powershell
-pytest
-```
-
-To run with verbose output:
-```powershell
-pytest -v tests/test_mirror.py
-```
-
-### Linting and Formatting
-
-The project enforces code style using [Ruff](https://github.com/astral-sh/ruff):
-
-```powershell
-# Check for lint errors
-uv run ruff check .
-
-# Automatically fix fixable issues
-uv run ruff check --fix .
-
-# Check code formatting
-uv run ruff format --check .
-
-# Apply formatting
-uv run ruff format .
+```text
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ FastMirror v0.1.0                   Profile: [ Default ▾ ] [Save] [+ New] [Del] │
+├───────────────────────────────────┬─────────────────────────────────────────────┤
+│ PATHS & DIRECTORY PAIRS           │ ACTIONS & SETTINGS                          │
+│ [ + Add Pair ] [ Edit Pairs ]     │ [ Quick Compare ]  [ Sync Now ]  [ Reports ]│
+│                                   │ Comparison Mode: (•) Metadata  ( ) Content  │
+│ 📁 D:\Photos                      │ [✓] Use mirror cache   [ ] Rebuild mirror   │
+│  └─► \\NAS\Backup\Photos          │ [✓] Confirm before sync [ ] Save Excel report│
+│      Status: Reachable (142 GB)   ├─────────────────────────────────────────────┤
+│                                   │ WEEKLY SCHEDULE                             │
+│ 📁 C:\Users\Username\Documents    │ Days: [✓] Mon [✓] Wed [✓] Fri [ ] Sun       │
+│  └─► E:\Backups\Documents         │ Times: [ 20:30 ] [ + Add Time ]             │
+│      Status: Reachable (18 GB)    │ Next Run: Today at 20:30 (in 3h 15m)        │
+├───────────────────────────────────┴─────────────────────────────────────────────┤
+│ ACTIVITY LOG                                [INFO] [WARNING] [ERROR] [📁 Folder] │
+│ 14:15:02: Scanning D:\Photos...                                                 │
+│ 14:15:05: Comparison complete: 3 to copy (14.2 MB), 1 to move, 0 to delete      │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Configuration highlights (`pyproject.toml`):
-- Line length: `120`
-- Target Python version: `py310`
-- Quote style: Single quotes (`'`)
-- Enabled rules: Flake8, Bugbear, Isort, Simplify, Pyupgrade, Docstrings.
+### Top Toolbar & Profile Management
 
-### Type Checking
+FastMirror allows you to organize different backup sets into **Profiles** (e.g. `Default`, `Work Projects`, `Family Media`, `NAS Backup`):
 
-Type annotations are validated with [mypy](https://mypy-lang.org/):
-
-```powershell
-uv run mypy src
-```
+- **Profile Selector (`Profile: [ Default ▾ ]`)**: Instantly switches between different sets of directory pairs, schedules, and settings.
+- **Save (`Ctrl+S`)**: Saves any modifications to the active profile.
+- **+ New**: Creates a new profile. You can start clean with a blank profile or clone the settings of the currently active profile.
+- **Delete**: Deletes the selected profile (the `Default` profile cannot be deleted).
+- **Right-Click Context Menu**:
+  - Right-click the **Profile** dropdown to access advanced actions:
+    - `🔄 Reload Profile (Ctrl+R)`: Discard unsaved changes and reload from disk.
+    - `📋 Clone Active Profile...`: Duplicate the current profile under a new name.
+    - `✏️ Rename Active Profile...`: Rename the active profile.
+    - `📁 Import Profile...`: Import a configuration file from another computer.
+    - `📂 Open Profiles Folder`: Opens the folder containing your profile JSON files in Windows Explorer.
+    - `🧹 Reset to Defaults`: Resets the active profile to factory settings.
 
 ---
 
-## Troubleshooting & FAQs
+### Paths & Directory Pairs Panel
 
-### 1. "Mirror does not exist for target directory... Using file system instead"
-- **Cause**: Fast scan is enabled, but the database table has not been populated yet.
-- **Resolution**: Let the first run complete; it will scan the filesystem and populate the mirror automatically for subsequent runs.
+This panel displays all configured one-way backup paths:
 
-### 2. Permission errors when overwriting target files
-- **Cause**: Target files may have the Windows read-only attribute set or are locked by another process.
-- **Resolution**: `SyncDirs` attempts to clear read-only file attributes via `ctypes.windll.kernel32.SetFileAttributesW`. If another application (like Lightroom or Word) has an exclusive lock, close that application and rerun.
-
-### 3. File paths exceeding Windows 260 character limit (`MAX_PATH`)
-- **Cause**: Deep folder hierarchies can exceed the legacy 260-character Windows path limit.
-- **Resolution**: Enable Windows Long Paths in the Windows Registry (`LongPathsEnabled = 1` in `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`) or shorten top-level folder names.
-
-### 4. System tray icon does not appear
-- **Cause**: The application uses `pystray` to dock in the Windows notification area. If system tray initialization fails, a warning is logged while the main GUI continues running.
+- **Source $\rightarrow$ Target Mapping**: Each card shows the local folder path and where it mirrors to.
+- **Destination Health & Reachability**: FastMirror automatically verifies whether destinations (like USB drives or network shares) are plugged in and connected, displaying free disk space chips.
+- **Right-Click Card Menu**: Right-click any directory card to:
+  - Open Source or Target in Windows Explorer.
+  - Temporarily disable the pair without deleting it.
+  - Delete or reorder pairs.
 
 ---
 
-## Additional Documentation
+### Exclusion Filters
 
-For deeper technical breakdowns, consult the other guides in this folder:
+To prevent copying temporary files, caches, or system folders:
 
-- [System Architecture & Synchronization Engine](ARCHITECTURE.md)
-- [Configuration & Exclusion Patterns Guide](CONFIGURATION.md)
-- [Development, Testing & Contribution Guidelines](DEVELOPMENT.md)
-- [Synchronization Robustness](SYNC_ROBUSTNESS.md)
+1. Click **Exclusions** in the Paths panel.
+2. FastMirror supports familiar `.gitignore`-style wildcard syntax:
+   - `$RECYCLE.BIN` / `System Volume Information`: Windows system folders (ignored by default).
+   - `\~$*`: Microsoft Office temporary lock files.
+   - `*.tmp` / `*.bak`: Temporary and backup files.
+   - `node_modules/` / `__pycache__/`: Development caches.
+3. Ignored folders are skipped instantly during traversal, dramatically speeding up scans.
 
 ---
 
-## License & Author
+### Weekly Scheduler Panel
 
-**Author**: Rafael Savi  
-**Project**: `fast-mirror`  
-**License**: Proprietary / Personal Project (All rights reserved).
+Set up unattended background backups:
+
+- **Days of the Week**: Check the days you want FastMirror to run (e.g. Monday, Wednesday, Friday).
+- **Execution Times**: Enter daily backup times in 24-hour format (e.g. `13:00`, `20:30`). You can add multiple times per day.
+- **Next Scheduled Run**: Displays a live countdown to the next automated backup appointment.
+- **Schedule Toggle**: Click **Enable Schedule** in the Actions panel. When enabled, FastMirror will run automatically at the scheduled times even when minimized to the Windows system tray.
+
+---
+
+### Backup Options & Comparison Modes
+
+- **Comparison Mode**:
+  - **Metadata (Default & Recommended)**: Compares file size and nanosecond modification timestamps (`mtime_ns`). Lightning fast—ideal for daily backups over Wi-Fi or network shares.
+  - **Content (Byte-by-Byte)**: Computes cryptographic hashes of file contents. Thorough, but reads every file's entire content from disk.
+- **Use Mirror Cache**: Recommended. Uses the local SQLite index to avoid repeatedly querying every file on remote network shares.
+- **Rebuild Mirror**: Forces FastMirror to scan the destination filesystem from scratch and rebuild the local index. Use this if you manually modified files on the destination outside FastMirror.
+- **Confirm Before Sync**: Recommended. Displays the interactive confirmation popup before applying changes.
+- **Save Detailed Report**: Generates a timestamped Excel (`.xlsx`) workbook auditing every compared file and operation.
+
+---
+
+### Interactive Action Confirmation Dialog
+
+When you run a comparison or click **Sync Now**, FastMirror opens a safety review window:
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ Review Synchronization Actions                                      [  X  ]     │
+│ 3 to copy (14.2 MB)  •  1 to move (520 KB)  •  2 to delete (1.1 MB)             │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ [✓] Action   Source Path                    Target Path                 Size    │
+│ ─────────────────────────────────────────────────────────────────────────────── │
+│  ☑  COPY     D:\Photos\vacation_01.jpg     \\NAS\Photos\vacation_01.jpg  4.2 MB │
+│  ☑  COPY     D:\Photos\vacation_02.jpg     \\NAS\Photos\vacation_02.jpg  5.1 MB │
+│  ☑  MOVE     D:\Photos\Trip\map.png        \\NAS\Photos\Travel\map.png 520 KB   │
+│  ☐  DELETE   (none)                        \\NAS\Photos\old_draft.txt    1.1 MB │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ [ Uncheck All Deletions ]  [ Select All ]  [ Filter: __________ ]               │
+│                                                 [ Cancel ]  [ Proceed with Sync]│
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Visual Group Badges**: Displays exact count and cumulative transfer size for each category.
+- **Uncheck Deletions Safety Button**: Click **Uncheck All Deletions** to instantly deselect all removal operations while keeping additions and moves enabled.
+- **Individual Checkboxes**: You can uncheck any specific file operation to skip it during the current run.
+- **Filter Search Bar (<kbd>Ctrl+F</kbd>)**: Quickly search for filenames or folder paths in large sync sets.
+- **Keyboard Shortcuts**: Press <kbd>Enter</kbd> to proceed with approved operations, or <kbd>Esc</kbd> to cancel.
+
+---
+
+### Windows System Tray & Notifications
+
+FastMirror integrates directly into the Windows notification area (bottom-right system tray):
+
+- **Minimize to Tray**: Click the minimize button or close the window; FastMirror will prompt to keep running silently in the background.
+- **Tray Icon**: The FastMirror icon appears in the Windows system tray. Hovering over it shows the current status and time until the next scheduled backup.
+- **Right-Click Tray Menu**:
+  - `Restore Window`: Brings FastMirror to the front.
+  - `Quick Compare Now`: Triggers an immediate comparison.
+  - `Sync Now`: Executes backup for all enabled pairs.
+  - `Exit`: Safely closes FastMirror, prompting to save if you have unsaved configuration changes.
+- **Windows Balloon / Toast Notifications**: Notifies you when scheduled backups complete, or alerts you if a target share was unreachable.
+
+---
+
+### Activity Log Panel & History Reports
+
+- **Real-Time Log Stream**: View real-time progress, file transfer speeds, and diagnostic messages.
+- **Level Filters**: Filter log messages by severity (`INFO`, `WARNING`, `ERROR`, `CRITICAL`).
+- **Open Log Folder**: Click the **📁 Folder** button in the top-right of the log panel to open the persistent log directory in Windows Explorer.
+- **Past Reports Browser**: Click **Past reports...** in the Actions toolbar to open the interactive report viewer, allowing you to open historical Excel reports or clean up old logs.
+
+---
+
+## Safety Features & Invariants
+
+FastMirror is engineered with strict data safety rules:
+
+1. **One-Way Mirroring Only**: Changes flow exclusively from Source to Destination. FastMirror **never** modifies, overwrites, or deletes files on your source computer.
+2. **Atomic Writes**: All destination file transfers write to a temporary `.tmp` file first before replacing the final destination file. If power fails or the network disconnects midway, your existing destination files remain uncorrupted.
+3. **Preserves Timestamps & Attributes**: File modification dates (`mtime_ns`) and attributes are copied accurately (`copystat`).
+4. **Safe Move Execution**: When files are renamed or moved on the source, FastMirror executes atomic moves on the target rather than re-uploading gigabytes over the network.
+5. **No Blind Deletions**: Deletions are optional, can be globally disabled in settings, and are visually highlighted in the confirmation popup.
+
+---
+
+## Frequently Asked Questions (FAQ)
+
+### What happens if my external hard drive or NAS is unplugged?
+FastMirror performs a non-blocking reachability probe before attempting any synchronization. If the destination drive is disconnected, FastMirror logs a clear warning, skips the unreachable pair safely, and proceeds with other available pairs without failing or corrupting data.
+
+### Will FastMirror ever delete files from my original Source folders?
+**No, never.** FastMirror is strictly a one-way mirror. It only ever writes to or removes obsolete files from the **Target** destination. Your Source files are treated as read-only inputs.
+
+### How do I make FastMirror start automatically when Windows boots?
+1. Press <kbd>Win</kbd> + <kbd>R</kbd>, type `shell:startup`, and press <kbd>Enter</kbd>.
+2. Copy your **FastMirror** desktop shortcut into the opened Startup folder.
+3. When Windows starts, FastMirror will launch automatically into the system tray and monitor your weekly backup schedule.
+
+### Can I back up to network shares (e.g. Synology, QNAP, TrueNAS, Windows Server)?
+**Yes.** FastMirror has native support for Windows Universal Naming Convention (UNC) paths over SMB networks (e.g. `\\192.168.1.100\Backups\Photos` or `\\mynas\share`). Its local SQLite mirror cache is specially designed to eliminate the slowdowns typical of network shares.
+
+---
+
+## Additional Guides
+
+- 💾 **[Data Storage, File Locations & Migration Guide](DATA_AND_STORAGE.md)**: Details on where configuration files and databases live, update safety, and how to migrate your settings to a new PC.
+- ⚙️ **[Advanced Configuration & Exclusions Guide](CONFIGURATION.md)**: Advanced JSON options, command-line arguments, and wildcard pattern matching.
+- 💻 **[Developer & Testing Guide](DEVELOPMENT.md)**: For developers wishing to run FastMirror from source, run tests, or contribute.

@@ -14,7 +14,7 @@ FastMirror is designed for anyone who regularly backs up important local folders
 
 ## 📥 Download & Installation (Windows 10 / 11)
 
-**No Python or programming knowledge required!** Simply download the pre-compiled executable from GitHub Releases:
+**No Python or programming knowledge required!** Pre-compiled standalone releases are available on GitHub:
 
 👉 **[Download the Latest Release on GitHub](https://github.com/rafaelsavi/fast-mirror/releases/latest)**
 
@@ -28,7 +28,7 @@ FastMirror is designed for anyone who regularly backs up important local folders
 ## 🚀 Quick Start (3 Steps)
 
 1. **Add Your Folders**:
-   - In the **Paths & Directory Pairs** panel, click **+ Add Pair** (or press `Enter` in the text field).
+   - In the **Paths & Directory Pairs** panel on the left, click **+ Add Pair** (or press `Enter` in the text field).
    - Choose your **Source** folder (e.g. `D:\Photos` or `C:\Users\Username\Documents`) and your **Target** destination (e.g. `E:\Backup` or `\\NAS\Storage\Photos`).
 2. **Review Proposed Changes**:
    - Click **Quick Compare** to see what has changed without altering any files.
@@ -36,31 +36,6 @@ FastMirror is designed for anyone who regularly backs up important local folders
 3. **Run or Schedule Backup**:
    - Click **Sync Now** to apply the approved actions.
    - *(Optional)* Check days of the week and times in the **Weekly Schedule** panel to let FastMirror mirror automatically in the background while minimized to the Windows system tray.
-
----
-
-## 💾 Where Files & Configurations Are Saved
-
-FastMirror strictly follows modern Windows application storage standards:
-
-### 1. Installed Mode (`FastMirror-Setup.exe`)
-When installed using the setup wizard, binaries reside in `%LOCALAPPDATA%\Programs\FastMirror\`, while all user data is safely stored in your Windows user profile:
-
-| Item | Location | Purpose |
-| :--- | :--- | :--- |
-| **Active Settings** | `%LOCALAPPDATA%\FastMirror\data\config.json` | Stores active directory pairs, exclusions, schedules, and preferences. |
-| **Backup Profiles** | `%LOCALAPPDATA%\FastMirror\data\profiles\<Name>.json` | Named configuration profiles (`Default`, `Work`, `NAS`, etc.). |
-| **Mirror Database** | `%LOCALAPPDATA%\FastMirror\data\local_mirror.db` | SQLite database caching target file paths and hashes for instant diffing. |
-| **Logs & Reports** | `%LOCALAPPDATA%\FastMirror\data\logs\` | Runtime diagnostic logs and optional Excel (`.xlsx`) comparison reports. |
-
-> **💡 Safe Upgrades:** Updating FastMirror to a new version never touches or overwrites your `%LOCALAPPDATA%\FastMirror\data\` directory. Your folder pairs, schedules, and mirror index are preserved permanently.
->
-> **📂 Instant Access in GUI:** You can open your profiles and logs folders at any time directly from the interface:
-> - Right-click the **Profile** dropdown in the toolbar $\rightarrow$ **Open Profiles Folder**.
-> - In the **Activity Log** panel, click the **📁 Open Log Folder** button.
-
-### 2. Portable Mode (`FastMirror-Portable.zip`)
-When running portably, all configuration, profile JSON files, the SQLite index, and logs are kept strictly inside the local `data\` subfolder next to `FastMirror.exe`.
 
 ---
 
@@ -77,9 +52,27 @@ When running portably, all configuration, profile JSON files, the SQLite index, 
 
 ---
 
+## 📚 Complete Documentation
+
+Documentation is organized by role and expertise:
+
+### 🙋‍♂️ Desktop Users (No Python Needed)
+- 📖 **[Desktop User Guide](docs/USER_GUIDE.md)** — Step-by-step visual tour of the user interface, buttons, confirmation dialog, and everyday FAQ.
+- 💾 **[Data Storage & Migration Guide](docs/DATA_AND_STORAGE.md)** — Where profiles and databases are saved, update safety, and how to migrate settings to a new PC.
+
+### ⚙️ Power Users & System Administrators
+- 🛠️ **[Configuration & Exclusions Guide](docs/CONFIGURATION.md)** — Advanced JSON schema reference, CLI launch flags (`--profile`, `--config`), and UNC network share handling.
+
+### 💻 Developers & Contributors
+- 💻 **[Development & Contribution Guide](docs/DEVELOPMENT.md)** — Developer setup with `uv`, unified verification runner (`scripts/verify.py`), packaging standalone executables, and automated CI/CD release flow.
+- 🏗️ **[System Architecture](docs/ARCHITECTURE.md)** — In-depth analysis of the comparison engine, synchronization pipeline, and SQLite WAL caching.
+- 🛡️ **[Synchronization Robustness](docs/SYNC_ROBUSTNESS.md)** — JIT self-healing mechanisms, atomic writes, Windows file lock handling, and cooperative cancellation.
+
+---
+
 ## 🛠️ Running from Source (For Developers)
 
-If you prefer to run or build FastMirror from source:
+If you are developing or contributing to FastMirror:
 
 **Requirements:** Windows 10/11, Python 3.10+, and [uv](https://docs.astral.sh/uv/).
 
@@ -95,18 +88,8 @@ uv sync
 uv run python launch.pyw
 
 # 4. Run automated verification (tests, linting, type checks)
-uv run python scripts/verify.py
+uv run python scripts/verify.py --check-version
 ```
-
----
-
-## 📚 Complete Documentation
-
-- 📖 **[User Guide](docs/USER_GUIDE.md)** — Detailed walkthrough of all interface panels, controls, and workflows.
-- ⚙️ **[Configuration & Exclusions](docs/CONFIGURATION.md)** — JSON configuration schema, UNC path handling, and pattern matching.
-- 🏗️ **[Architecture & Engine](docs/ARCHITECTURE.md)** — How the synchronization pipeline, move detector, and mirror cache work.
-- 🛡️ **[Data Integrity & Safety Rules](docs/SYNC_ROBUSTNESS.md)** — Invariants for file locks, atomic operations, and metadata preservation.
-- 💻 **[Development & Testing](docs/DEVELOPMENT.md)** — Building executables, Inno Setup compiler, and test suite execution.
 
 ---
 

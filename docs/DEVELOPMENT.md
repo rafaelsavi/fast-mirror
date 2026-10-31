@@ -1,6 +1,6 @@
-# FastMirror — Development & Testing Guide
+# FastMirror — Development & Contribution Guide
 
-This guide covers developer onboarding, environment setup, coding standards, automated testing, linting, and type checking for the **FastMirror** project.
+This guide covers developer environment setup, testing, code quality gates, Windows standalone packaging, and the automated CI/CD release workflow for the **FastMirror** project.
 
 ---
 
@@ -10,34 +10,37 @@ This guide covers developer onboarding, environment setup, coding standards, aut
    - [Prerequisites](#prerequisites)
    - [Setup with uv (Recommended)](#setup-with-uv-recommended)
    - [Setup with pip & venv](#setup-with-pip--venv)
-2. [Project Structure & Packaging](#project-structure--packaging)
-3. [Running Tests](#running-tests)
-   - [Test Directory Structure](#test-directory-structure)
-   - [Executing Tests with Pytest](#executing-tests-with-pytest)
+   - [Enabling Git Hooks](#enabling-git-hooks)
+2. [Project Layout](#project-layout)
+3. [Unified Verification Runner (`scripts/verify.py`)](#unified-verification-runner-scriptsverifypy)
+4. [Testing with Pytest](#testing-with-pytest)
+   - [Running Tests](#running-tests)
+   - [Headless Window Suppression](#headless-window-suppression)
    - [Writing New Tests](#writing-new-tests)
-4. [Code Quality & Tooling](#code-quality--tooling)
-   - [Linting with Ruff](#linting-with-ruff)
-   - [Formatting with Ruff](#formatting-with-ruff)
+5. [Code Quality & Tooling](#code-quality--tooling)
+   - [Linting & Formatting with Ruff](#linting--formatting-with-ruff)
    - [Type Checking with Mypy](#type-checking-with-mypy)
-5. [Windows-Specific Dependencies](#windows-specific-dependencies)
-   - [Pystray System Tray](#pystray-system-tray)
-   - [Windows API Calls](#windows-api-calls)
-6. [Contribution Checklist](#contribution-checklist)
+   - [Privacy Hygiene Scanner](#privacy-hygiene-scanner)
+6. [Windows Packaging & Installer Compilation](#windows-packaging--installer-compilation)
+   - [Automated Build Script (`packaging/build.py`)](#automated-build-script-packagingbuildpy)
+   - [PyInstaller Freezing (`fastmirror.spec`)](#pyinstaller-freezing-fastmirrorspec)
+   - [Inno Setup 6 Installer Wizard (`installer.iss`)](#inno-setup-6-installer-wizard-installeriss)
+7. [Zero-Effort Automated Release Flow](#zero-effort-automated-release-flow)
+   - [Single Source of Truth Versioning](#single-source-of-truth-versioning)
+   - [GitHub Actions Release Pipeline](#github-actions-release-pipeline)
+8. [Windows Platform Rules](#windows-platform-rules)
+   - [UNC & Network Path Safety](#unc--network-path-safety)
+   - [SQLite File Lock Hygiene](#sqlite-file-lock-hygiene)
+   - [Tkinter Threading Safety](#tkinter-threading-safety)
 
 ---
 
 ## Development Environment Setup
 
 ### Prerequisites
-
-- **Windows 10 / 11**: The codebase uses Windows platform libraries (`winsound`, `ctypes.windll.kernel32`).
-- **Python 3.10+**: Confirm your Python version with:
-  ```powershell
-  python --version
-  ```
-- **uv** (recommended for ultra-fast dependency management) or **pip**.
-
----
+- **Operating System**: Windows 10 or Windows 11 (requires native Windows APIs for UNC paths, `winsound`, and system tray).
+- **Python**: Version **3.10** or higher (Python 3.13 recommended).
+- **Package Manager**: [uv](https://docs.astral.sh/uv/) (recommended for instant dependency resolution) or standard `pip`.
 
 ### Setup with uv (Recommended)
 
@@ -47,231 +50,219 @@ This guide covers developer onboarding, environment setup, coding standards, aut
    cd fast-mirror
    ```
 
-2. **Initialize a virtual environment:**
+2. **Sync the virtual environment:**
    ```powershell
-   uv venv
+   uv sync
    ```
 
-3. **Activate the environment:**
+3. **Launch the application from source:**
    ```powershell
-   .\.venv\Scripts\activate
+   uv run python launch.pyw
    ```
-
-4. **Install the package in editable mode with development dependencies:**
-   ```powershell
-   uv pip install -e ".[dev]"
-   ```
-
----
 
 ### Setup with pip & venv
 
-1. **Create and activate the virtual environment:**
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\activate
-   ```
-
-2. **Install editable package and dev tools:**
-   ```powershell
-   pip install -e ".[dev]"
-   ```
-
----
-
-## Project Structure & Packaging
-
-The package is configured via [`pyproject.toml`](../pyproject.toml) using the `setuptools` build backend.
-
-```
-fast-mirror/
-├── pyproject.toml            # Dependencies, tools, and build configuration
-├── launch.pyw                # Headless launcher with auto-venv detection
-├── config.example.json       # Template configuration file (copy to data/config.json)
-├── data/                     # Runtime application data (ignored in git)
-│   ├── config.json           # Active configuration
-│   ├── local_mirror.db       # SQLite WAL target cache database
-│   └── logs/                 # Persistent logs and Excel comparison reports
-├── src/                      # Application source root (added to PYTHONPATH)
-│   ├── core/                 # Backend engines (linking, mirroring, comparing)
-│   ├── gui/                  # Tkinter interface, threads, and custom widgets
-│   └── utils/                # Helpers, constants, and logging
-├── tests/                    # Pytest test suite
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -e ".[dev]"
+python launch.pyw
 ```
 
-When installed with `-e .`, the `src` directory is linked into your virtual environment's `site-packages`, allowing absolute imports like `from core.file import CstmPath` or `from gui.gui import Gui`.
+### Enabling Git Hooks
 
----
-
-## Running Tests
-
-### Test Directory Structure
-
-```
-tests/
-├── conftest.py               # Test environment isolation fixtures
-├── test_e2e.py               # End-to-end integration workflows
-├── test_paths.py             # Path resolution, UNC share tests, and config validation
-├── test_file_ops.py          # Robust file operations, locks, and retries
-├── test_sync.py              # Directory synchronization & comparison
-├── test_mirror.py            # SQLite WAL mirror database tests
-├── test_confirmation_popup.py# Action confirmation popup & treeview
-├── test_gui.py               # GUI scheduler, settings, and TextLogger
-├── test_gui_visual_emulation.py # UI widget event flow & visual invariant tests
-├── test_logger.py            # Logging handlers and log isolation
-├── test_worker_thread.py     # Worker thread execution & cancellation tests
-└── TestData/                 # Local directory pairs for testing
-    ├── Source/
-    └── Target/
-```
-
-### Executing Tests with Pytest
-
-Run the entire test suite using `pytest`:
+FastMirror includes pre-configured Git hooks in `.githooks/` for automated privacy scanning and pre-push quality gates. Enable them with:
 
 ```powershell
-# Using uv
+git config core.hooksPath .githooks
+```
+
+- **Pre-Commit Hook**: Scans all staged files to ensure no personal machine paths (`C:\Users\Username\...`, private IPs, developer folders) are committed.
+- **Pre-Push Hook**: Runs the full verification suite (`scripts/verify.py --check-version`) before allowing pushes to remote.
+
+---
+
+## Project Layout
+
+```text
+fast-mirror/
+├── .agents/                  # Agent architecture guidelines and modular rules
+├── .github/workflows/ci.yml  # Unified CI/CD testing and automated release workflow
+├── .githooks/                # Git pre-commit (privacy) and pre-push (quality gate)
+├── data/                     # Local development data (gitignored)
+│   ├── config.json           # Active configuration mirror
+│   ├── local_mirror.db       # SQLite WAL target cache database
+│   ├── profiles/             # User configuration profiles
+│   └── logs/                 # Persistent logs and Excel comparison reports
+├── packaging/                # Freezing and installer configurations
+│   ├── build.py              # Automated PyInstaller & Inno Setup compiler
+│   ├── fastmirror.spec       # PyInstaller standalone spec
+│   └── installer.iss         # Inno Setup 6 installer wizard script
+├── scripts/
+│   └── verify.py             # Unified local & CI quality gate runner
+├── src/
+│   ├── core/                 # Backend engines (linking, mirroring, comparing, file ops)
+│   ├── gui/                  # Tkinter UI, threads, custom widgets, system tray
+│   └── utils/                # Constants, helpers, logger, profile manager
+├── tests/                    # Pytest test suite (100% headless)
+├── CHANGELOG.md              # User-facing release notes (Keep a Changelog format)
+├── launch.pyw                # DPI-aware, single-instance launcher
+└── pyproject.toml            # Single source of truth for dependencies and version
+```
+
+---
+
+## Unified Verification Runner (`scripts/verify.py`)
+
+Run the entire quality gate locally with one command:
+
+```powershell
+uv run python scripts/verify.py --check-version
+```
+
+This runner sequentially validates all six quality gates:
+1. `ruff format --check .`: Code formatting conformance (120 char limit, single quotes).
+2. `ruff check .`: Static linter with zero errors or warnings.
+3. `mypy src`: Strict static type checking.
+4. `check_privacy_and_paths()`: Scans tracked files for hardcoded personal paths.
+5. `validate_version_and_changelog()`: Ensures `pyproject.toml` version matches `CHANGELOG.md`.
+6. `pytest`: Executes the full 211-test suite.
+
+Auto-fix formatting and linting issues with:
+```powershell
+uv run python scripts/verify.py --fix
+```
+
+---
+
+## Testing with Pytest
+
+### Running Tests
+
+```powershell
+# Run the entire test suite
 uv run pytest
 
-# Or within an active virtual environment
-pytest
+# Run with verbose output and test names
+uv run pytest -v
+
+# Run a specific test module
+uv run pytest tests/test_sync.py
 ```
 
-#### Common Options:
-```powershell
-# Verbose output with individual test names
-pytest -v
+### Headless Window Suppression
 
-# Show stdout print/log output
-pytest -s
-
-# Stop on first failure
-pytest -x
-
-# Target a specific test file or function
-pytest tests/test_mirror.py::test_add_and_exists_path
-```
+FastMirror's test suite runs **100% headless and silent** via centralized hooks in `tests/conftest.py`:
+- All `tk.Tk` and `tk.Toplevel` instances are automatically placed off-screen (`+25000+25000`) and withdrawn.
+- OS-level focus stealing (`grab_set`, `focus_force`) is safely no-opped so test runs never steal keyboard focus from your active apps.
+- Windows audio chimes (`winsound.PlaySound`) are globally silenced.
+- All widget logic, geometry managers (`update_idletasks()`), treeviews, and virtual events execute with full fidelity in memory.
 
 ### Writing New Tests
 
-Tests use standard pytest fixtures. When writing tests that interact with `MirrorDatabase` or the filesystem, always use `tmp_path` to avoid mutating real data:
+Always use pytest's `tmp_path` fixture for filesystem tests:
 
 ```python
-import os
-import pytest
-from core.mirror import MirrorDatabase
-
-@pytest.fixture
-def temp_mirror(tmp_path) -> MirrorDatabase:
-    db_file = os.path.join(tmp_path, 'test_mirror.db')
-    return MirrorDatabase(path=db_file)
-
-def test_custom_mirror_operation(temp_mirror, tmp_path):
-    root = str(tmp_path / "data")
-    os.makedirs(root, exist_ok=True)
-    sample_file = os.path.join(root, "sample.txt")
-    with open(sample_file, "w") as f:
-        f.write("data")
-    
-    temp_mirror.add_path(root, sample_file)
-    assert temp_mirror.exists(root, sample_file)
+def test_custom_sync_behavior(tmp_path):
+    src = tmp_path / "source"
+    tgt = tmp_path / "target"
+    src.mkdir()
+    tgt.mkdir()
+    (src / "document.txt").write_text("content", encoding="utf-8")
+    # Execute test logic...
 ```
 
 ---
 
 ## Code Quality & Tooling
 
-Code quality rules are defined in [`pyproject.toml`](../pyproject.toml).
-
-### Linting with Ruff
-
-[Ruff](https://github.com/astral-sh/ruff) is an extremely fast Python linter replacing Flake8, Isort, and pydocstyle.
+### Linting & Formatting with Ruff
 
 ```powershell
-# Run the linter
+# Check code style and linting
 uv run ruff check .
+uv run ruff format --check .
 
-# Automatically apply fixes where safe
+# Auto-format and fix autofixable issues
+uv run ruff format .
 uv run ruff check --fix .
 ```
 
-Enabled rule categories:
-- `D`: pydocstyle docstring standards
-- `E` / `F`: Pyflakes & pycodestyle syntax and semantic errors
-- `UP`: Pyupgrade (modern Python 3.10+ idioms)
-- `B`: Flake8-bugbear (common design traps)
-- `SIM`: Flake8-simplify (streamlined code constructs)
-- `I`: Isort (deterministic import sorting)
-- `Q`: Flake8-quotes (enforces single quotes)
-
-### Formatting with Ruff
-
-The project enforces consistent formatting:
-- Line length: **120 characters**
-- Quote style: **Single quotes (`'`)**
-- Docstrings formatted automatically
-
-```powershell
-# Check formatting without modifying files
-uv run ruff format --check .
-
-# Reformat all files in place
-uv run ruff format .
-```
-
 ### Type Checking with Mypy
-
-Static type checking is enforced using [mypy](https://mypy-lang.org/):
 
 ```powershell
 uv run mypy src
 ```
 
-Configuration in `pyproject.toml`:
-```toml
-[tool.mypy]
-python_version = "3.10"
-ignore_missing_imports = true
-mypy_path = "src"
-explicit_package_bases = true
+### Privacy Hygiene Scanner
+
+FastMirror enforces strict privacy standards to prevent developer paths, personal usernames, or internal subnets from being committed to public repositories.
+
+Rules:
+- Never hardcode personal paths (`C:\Users\Username\...`, `D:\Projects\...`).
+- Use placeholders (`C:\Users\Username\...`) or relative paths in docs and tests.
+- The privacy scanner runs automatically via `.githooks/pre-commit` and `scripts/verify.py`.
+
+---
+
+## Windows Packaging & Installer Compilation
+
+### Automated Build Script (`packaging/build.py`)
+
+Compile the standalone executable, portable ZIP, and Inno Setup installer wizard in one step:
+
+```powershell
+uv run python packaging/build.py
 ```
 
----
+This automates:
+1. Freezing `FastMirror.exe` using PyInstaller (`packaging/fastmirror.spec`).
+2. Packaging `FastMirror-v<version>-Windows-Portable.zip` with `portable.txt`.
+3. Compiling `FastMirror-v<version>-Windows-Setup.exe` with Inno Setup 6 (`ISCC.exe`).
 
-## Windows-Specific Dependencies
+### Inno Setup 6 Installer Wizard (`installer.iss`)
 
-### Pystray System Tray
-
-System tray integration is implemented using `pystray` in [`src/gui/tray.py`](../src/gui/tray.py):
-1. Pure Python implementation using native Windows `Shell_NotifyIconW` via `ctypes`.
-2. Uses [`app_icon.ico`](../src/gui/app_icon.ico) directly via Pillow (`PIL.Image`).
-3. Runs detached in a background thread without blocking Tkinter's event loop.
-4. If running in a headless or test environment, system tray initialization gracefully degrades without crashing.
-
-### Windows API Calls
-
-The application utilizes Windows-specific functions:
-- **`winsound.PlaySound`**: Plays notification chime (`SystemQuestion`) when the confirmation popup opens.
-- **`ctypes.windll.kernel32.SetFileAttributesW`**: Resets read-only and locked attributes when copying files that would otherwise fail with `PermissionError`.
-- **`os.startfile`**: Launches the default spreadsheet viewer when clicking **Open last report**.
-
-### Windows UNC & SMB Network Paths Gotchas
-
-When syncing to remote NAS / SMB shares (e.g. `\\nas\share`), keep these critical platform behaviors in mind:
-- **Never use `os.path.commonpath` with UNC root shares**: Python's `ntpath.splitdrive` treats `\\server\share` as having an empty path segment, causing `ntpath.commonpath` to view it as a relative path and raise `ValueError: Can't mix absolute and relative paths` when paired with nested files.
-- **Avoid blocking network I/O (`os.path.realpath`, `Path.resolve`) during path comparisons**: These calls query the network filesystem for reparse points and can block or hang if a network destination is unreachable or asleep. Always perform lexical matching using `pathlib.Path.is_relative_to()`.
-- **Test against real configurations**: Automated tests in `tests/test_paths.py` validate all entries in `data/config.json` against `get_dirs_from_path`.
-
+- Configured for per-user installation into `%LOCALAPPDATA%\Programs\FastMirror`.
+- Requires zero UAC administrative elevation (`PrivilegesRequired=lowest`).
+- Safely excludes `portable.txt` so installed instances always use `%LOCALAPPDATA%\FastMirror\data\`.
+- Preserves all user data during updates and uninstalls.
 
 ---
 
-## Contribution Checklist
+## Zero-Effort Automated Release Flow
 
-Before submitting changes or committing code, ensure:
+FastMirror uses a fully automated CI/CD release workflow (`.github/workflows/ci.yml`):
 
-- [ ] All unit tests pass: `uv run pytest`
-- [ ] Ruff linting passes with zero errors: `uv run ruff check .`
-- [ ] Code formatting adheres to standards: `uv run ruff format .`
-- [ ] Static type checking succeeds: `uv run mypy src`
-- [ ] No regression on Windows file operations (e.g. UNC paths and attribute handling).
-- [ ] Comments and docstrings are preserved and updated for modified methods.
+### Single Source of Truth Versioning
+Application version is maintained exclusively in **`pyproject.toml`**:
+```toml
+[project]
+name = "fast-mirror"
+version = "0.1.0"
+```
+
+### Automated Release on Push
+To publish a new release:
+1. Bump `version = "X.Y.Z"` in `pyproject.toml`.
+2. Add a matching entry under `## [X.Y.Z] - YYYY-MM-DD` in `CHANGELOG.md`.
+3. Commit and push to `main`:
+   ```powershell
+   git add pyproject.toml CHANGELOG.md
+   git commit -m "chore: bump version to X.Y.Z"
+   git push origin main
+   ```
+4. **GitHub Actions automatically**:
+   - Runs the full verification suite (`scripts/verify.py --ci`).
+   - Detects the new version and creates Git tag `vX.Y.Z`.
+   - Extracts release notes directly from `CHANGELOG.md`.
+   - Compiles standalone `FastMirror.exe`, `FastMirror-Portable.zip`, and `FastMirror-Setup.exe`.
+   - Publishes the GitHub Release with attached Windows binaries!
+
+---
+
+## Windows Platform Rules
+
+1. **Never use `os.path.commonpath` with Windows UNC paths** (`\\server\share`). Python's `ntpath.splitdrive` treats root shares as relative paths, causing `ValueError`. Use purely lexical `Path.is_relative_to()`.
+2. **Never execute blocking network I/O (`os.path.realpath`, `Path.resolve`) during path comparisons**.
+3. **Always close SQLite connections explicitly** using `with contextlib.closing(sqlite3.connect(...)) as conn:` to avoid `WinError 32` file locks.
+4. **Tkinter is single-threaded**: Dispatch all background thread UI updates via `root_gui.after(0, callback)`.
