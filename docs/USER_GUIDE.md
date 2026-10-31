@@ -23,9 +23,14 @@ Unlike a sync that must walk both directory trees on every run, FastMirror can u
   - [Local SQLite Mirror Acceleration](#local-sqlite-mirror-acceleration)
 - [System Architecture](#system-architecture)
 - [Prerequisites & Installation](#prerequisites--installation)
-  - [Prerequisites](#prerequisites)
-  - [Installation with uv (Recommended)](#installation-with-uv-recommended)
-  - [Installation with pip](#installation-with-pip)
+  - [Download Standalone Windows Binaries (No Python Required)](#download-standalone-windows-binaries-no-python-required)
+  - [Installing from Source (Developers)](#installing-from-source-developers)
+- [Data Storage, Configurations & Portability](#data-storage-configurations--portability)
+  - [Storage Locations Breakdown](#storage-locations-breakdown)
+  - [Installed Mode vs. Portable Mode](#installed-mode-vs-portable-mode)
+  - [Opening Data Folders from the Interface](#opening-data-folders-from-the-interface)
+  - [Upgrades and Uninstallation Safety](#upgrades-and-uninstallation-safety)
+  - [Backup & Restore Your Settings](#backup--restore-your-settings)
 - [Usage Guide](#usage-guide)
   - [Launching the Application](#launching-the-application)
   - [Configuring Backup Pairs](#configuring-backup-pairs)
@@ -177,49 +182,114 @@ fast-mirror/
 
 ## Prerequisites & Installation
 
-### Prerequisites
+### Download Standalone Windows Binaries (No Python Required)
 
-- **Operating System**: Windows 10 or Windows 11 (uses Windows-specific APIs: `ctypes.windll.kernel32`, `winsound`).
-- **Python**: Version **3.10** or higher.
-- **Package Manager**: [uv](https://github.com/astral-sh/uv) (recommended) or standard `pip`.
+For most users and non-programmers, FastMirror provides standalone, pre-compiled Windows 64-bit releases. You **do not need Python installed** on your computer.
 
-### Installation with uv (Recommended)
+👉 **[Download the Latest Release on GitHub](https://github.com/rafaelsavi/fast-mirror/releases/latest)**
 
+#### Option 1: Windows Setup Installer (Recommended)
+- **File**: `FastMirror-v<version>-Windows-Setup.exe`
+- **Installation**: Double-click the installer. It installs per-user into `%LOCALAPPDATA%\Programs\FastMirror` without requiring administrator privileges or UAC elevation.
+- **Shortcuts**: Automatically creates Start Menu and optional Desktop shortcuts.
+- **Upgrades**: Installing a newer version automatically upgrades the application files while strictly preserving your backup profiles, folder pairs, schedules, and mirror database.
+
+#### Option 2: Portable Edition
+- **File**: `FastMirror-v<version>-Windows-Portable.zip`
+- **Installation**: Extract the ZIP file anywhere (such as a USB thumb drive, external hard drive, or desktop folder) and double-click `FastMirror.exe`.
+- **Self-Contained**: Operates in standalone portable mode. All configuration profiles, database caches, and log files are stored strictly inside the local `data/` folder next to `FastMirror.exe`. No data is written to your Windows user profile or registry.
+
+---
+
+### Installing from Source (Developers)
+
+If you are developing or contributing to FastMirror:
+
+#### Prerequisites
+- **Operating System**: Windows 10 or Windows 11 (requires native Windows APIs for UNC networking and audio alerts).
+- **Python**: Version **3.10** or higher (Python 3.13 tested).
+- **Package Manager**: [uv](https://docs.astral.sh/uv/) (recommended) or standard `pip`.
+
+#### Installation with uv (Recommended)
 1. **Clone the repository:**
    ```powershell
    git clone https://github.com/rafaelsavi/fast-mirror.git
    cd fast-mirror
    ```
-
-2. **Create the virtual environment and install dependencies:**
+2. **Sync virtual environment and dependencies:**
    ```powershell
-   uv venv
-   .\.venv\Scripts\activate
-   uv pip install -e .
+   uv sync
+   ```
+3. **Launch application:**
+   ```powershell
+   uv run python launch.pyw
    ```
 
-3. **Install development dependencies (optional):**
-   ```powershell
-   uv pip install -e ".[dev]"
-   ```
-
-### Installation with pip
-
+#### Installation with standard pip
 1. **Create and activate a virtual environment:**
    ```powershell
    python -m venv .venv
    .\.venv\Scripts\activate
    ```
-
 2. **Install the package in editable mode:**
-   ```powershell
-   pip install -e .
-   ```
-
-3. **Install dev dependencies:**
    ```powershell
    pip install -e ".[dev]"
    ```
+3. **Launch application:**
+   ```powershell
+   python launch.pyw
+   ```
+
+---
+
+## Data Storage, Configurations & Portability
+
+FastMirror strictly adheres to modern Windows filesystem conventions, ensuring safety, non-destructive updates, and complete data isolation.
+
+### Storage Locations Breakdown
+
+| Component | Installed Mode Path | Portable Mode Path | Description |
+| :--- | :--- | :--- | :--- |
+| **Global Config** | `%LOCALAPPDATA%\FastMirror\data\config.json` | `<app_dir>\data\config.json` | Mirror of the currently active configuration for backward compatibility. |
+| **Backup Profiles** | `%LOCALAPPDATA%\FastMirror\data\profiles\<name>.json` | `<app_dir>\data\profiles\<name>.json` | Named configuration profiles (`Default.json`, `NAS.json`, etc.). |
+| **Mirror Database** | `%LOCALAPPDATA%\FastMirror\data\local_mirror.db` | `<app_dir>\data\local_mirror.db` | SQLite database (WAL mode) caching target file paths and blake2b hashes. |
+| **Database WAL/SHM** | `%LOCALAPPDATA%\FastMirror\data\local_mirror.db-wal` | `<app_dir>\data\local_mirror.db-wal` | High-performance write-ahead log for non-blocking concurrent SQLite transactions. |
+| **Runtime Logs** | `%LOCALAPPDATA%\FastMirror\data\logs\log_*.txt` | `<app_dir>\data\logs\log_*.txt` | Timestamped human-readable execution and audit logs. |
+| **Excel Reports** | `%LOCALAPPDATA%\FastMirror\data\logs\compare_report_*.xlsx` | `<app_dir>\data\logs\compare_report_*.xlsx` | Generated Excel spreadsheets when "Save detailed report" is checked. |
+
+*(Note: `%LOCALAPPDATA%` defaults to `C:\Users\Username\AppData\Local` on standard Windows installations).*
+
+### Installed Mode vs. Portable Mode
+
+1. **Installed Mode**:
+   - Binaries reside in `%LOCALAPPDATA%\Programs\FastMirror\`.
+   - Data is stored in `%LOCALAPPDATA%\FastMirror\data\`.
+   - **Why this separation matters**: In Windows, application binaries and user data should never share the same folder. When you run an installer update (e.g. from `v0.1.0` to `v0.2.0`), Inno Setup cleanly updates the executable files in `Programs\FastMirror`, leaving your `data\` folder completely untouched. You will never lose your directory pairs, exclusion lists, or SQLite index when upgrading.
+   - **Multi-User Isolation**: If multiple users share the same Windows PC, each user gets their own separate `%LOCALAPPDATA%\FastMirror\data\` directory.
+
+2. **Portable Mode**:
+   - FastMirror detects portable mode when `portable.txt` or a `data/` folder exists alongside `FastMirror.exe`.
+   - All state is confined to `<exe_dir>\data\`.
+   - Ideal for running directly off an external backup hard drive or USB thumb drive.
+
+### Opening Data Folders from the Interface
+
+You do not need to manually navigate through hidden Windows AppData folders to inspect your configuration or logs:
+- **Profiles Folder**: Right-click the **Profile** selector dropdown in the top toolbar -> click **📂 Open Profiles Folder**.
+- **Logs & Reports Folder**: In the bottom-right **Activity Log** panel, click the **📁 Open Log Folder** button.
+- **Past Reports Browser**: Click **Past reports...** in the Actions toolbar to browse, open, or delete previous Excel audit reports.
+
+### Upgrades and Uninstallation Safety
+
+- **Updating FastMirror**: Download and run the new `FastMirror-Setup.exe`. The installer updates the program files; your existing profiles, directory pairs, and cache database are recognized immediately upon the next launch.
+- **Uninstalling FastMirror**: If you uninstall FastMirror via Windows **Settings -> Installed apps**, Windows removes the program files in `%LOCALAPPDATA%\Programs\FastMirror`. Your `%LOCALAPPDATA%\FastMirror\data\` folder is intentionally preserved to prevent accidental data loss. To perform a complete clean removal, simply delete the `%LOCALAPPDATA%\FastMirror` folder manually.
+
+### Backup & Restore Your Settings
+
+To back up your FastMirror configuration (e.g. when moving to a new computer):
+1. Copy the `%LOCALAPPDATA%\FastMirror\data\profiles\` folder (or your portable `data\profiles\` folder).
+2. On the new computer, paste the profile JSON files into `%LOCALAPPDATA%\FastMirror\data\profiles\`.
+3. Launch FastMirror—all your directory pairs, exclusions, schedules, and profile names will appear automatically!
 
 ---
 

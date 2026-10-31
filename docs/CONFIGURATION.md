@@ -30,7 +30,7 @@ This guide details all configuration options for **FastMirror**, including direc
 
 ## Configuration & Profile Overview
 
-FastMirror supports **Multiple Configuration Profiles** stored in `data/profiles/<profile_name>.json`, with active settings mirrored in `data/config.json` for full backward compatibility.
+FastMirror supports **Multiple Configuration Profiles** stored in `profiles/<profile_name>.json` (located in `%LOCALAPPDATA%\FastMirror\data\profiles\` when installed via Setup, or `<app_dir>\data\profiles\` in portable mode), with active settings mirrored in `config.json` for full backward compatibility.
 
 ### Toolbar Controls
 - **Profile Selector**: A dropdown combobox (`Profile: [ Default ▾ ]`) directly in the toolbar. Selecting any profile immediately loads its directory pairs, exclusions, schedules, comparison method, and preferences into the GUI.

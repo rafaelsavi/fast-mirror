@@ -81,6 +81,10 @@ def main() -> None:
                 zf.write(full_path, rel_path)
     print(f'Portable archive ready: {zip_path}')
 
+    # Remove portable marker from dist directory before building setup installer
+    if os.path.isfile(portable_marker):
+        os.remove(portable_marker)
+
     # 3. Compile Inno Setup installer if iscc is found
     print('\n[3/3] Checking for Inno Setup compiler (ISCC)...')
     iscc_path = find_iscc()
