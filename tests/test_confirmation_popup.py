@@ -1929,8 +1929,7 @@ def test_deletion_unknown_sizes_and_dash_source_display(tmp_path):
     try:
         # Remote UNC paths without cached stats
         unc_files = [
-            CstmPath(f'\\\\192.168.1.100\\Share\\file_{i}.txt', root_dir='\\\\192.168.1.100\\Share')
-            for i in range(3)
+            CstmPath(f'\\\\192.168.1.100\\Share\\file_{i}.txt', root_dir='\\\\192.168.1.100\\Share') for i in range(3)
         ]
 
         popup = ActionSelection(
