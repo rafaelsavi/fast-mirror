@@ -9,11 +9,13 @@ Welcome to the **FastMirror** codebase. This repository provides automated, mult
 - **Python**: Python 3.10+ (tested with 3.13) managed via `uv`.
 - **GUI**: Tkinter / `sv-ttk` (Sun Valley theme) / `ttkwidgets` with custom worker threads.
 - **Database**: SQLite3 (`data/local_mirror.db`) operating in WAL (`Write-Ahead Logging`) mode for lightning-fast hash caching and path tracking.
+- **Packaging & Installer**: PyInstaller (`packaging/fastmirror.spec`, `packaging/build.py`) and Inno Setup 6 (`packaging/installer.iss`).
 - **Tooling**:
   - Package manager: `uv`
+  - Unified verification: `uv run python scripts/verify.py`
   - Test runner: `pytest` (`uv run pytest`)
   - Linter & Formatter: `ruff` (`uv run ruff check .` / `uv run ruff format .`)
-  - Type checker: `mypy` (`uv run mypy src`)
+  - Type checker: `mypy` (`uv run python -m mypy src`)
 
 ---
 
@@ -46,19 +48,47 @@ Welcome to the **FastMirror** codebase. This repository provides automated, mult
 1. **Always use the `scratch/` directory**: Never create temporary scripts, test snippets, debug dumps, or experimental benchmarks in the workspace root (e.g. `scratch_*.py`).
 2. **Confine all exploratory code**: All agent-created temporary files must strictly reside in `scratch/` to keep the root directory clean and prevent accidental repository clutter.
 
+### G. Single Source of Truth Versioning & CHANGELOG
+1. **Single Source of Truth**: Application version is maintained exclusively in [`pyproject.toml`](../pyproject.toml) (`version = "X.Y.Z"`). It is dynamically resolved at runtime in `src.utils.constants.APP_VERSION`.
+2. **Changelog Parity**: Whenever `version` is bumped in `pyproject.toml`, document user-facing release notes under `## [X.Y.Z] - YYYY-MM-DD` in `CHANGELOG.md`.
+
+### H. Automated Zero-Effort CI/CD Release Flow
+1. **Zero Manual Tagging**: Never manually run `git tag` or create GitHub releases by hand.
+2. **Automated Release on Push**: Pushing to `main` with a bumped `version` in `pyproject.toml` automatically causes GitHub Actions to:
+   - Run the unified verification suite (`scripts/verify.py --ci`).
+   - Detect that remote tag `v<version>` does not exist yet.
+   - Automatically create and push Git tag `v<version>`.
+   - Automatically extract release notes from `CHANGELOG.md`.
+   - Compile standalone Windows executable (`FastMirror.exe`), Portable ZIP (`FastMirror-Portable.zip`), and Inno Setup Windows installer (`FastMirror-Setup.exe`).
+   - Automatically publish the GitHub Release with binary assets attached.
+
+### I. Privacy Hygiene & Path Leak Prevention
+1. **Never Hardcode Personal Paths**: Never commit personal user profile paths (`C:\Users\Username\...`), personal developer folders, private network shares, or AI assistant paths.
+2. **Git Hook Enforcement**: Run `git config core.hooksPath .githooks` to enable the pre-commit privacy scanner and pre-push verification.
+
 ---
 
 ## 3. Directory Layout
 ```
 fast-mirror/
 ├── .agents/                  # Agent rules and skills
-│   ├── rules/                # Modular domain rules (network paths, GUI, SQLite, safety)
+│   ├── rules/                # Modular domain rules (network paths, GUI, SQLite, safety, release flow)
 │   └── skills/               # Runbooks (verification, diagnostics, testing)
+├── .github/
+│   └── workflows/
+│       └── ci.yml            # Unified CI/CD testing and automated Windows release workflow
+├── .githooks/                # Git pre-commit (privacy scanner) and pre-push (quality gate)
 ├── data/                     # Runtime application data (ignored in git)
 │   ├── config.json           # Active configuration
 │   ├── local_mirror.db       # SQLite WAL target cache database
 │   └── logs/                 # Persistent logs and Excel comparison reports
-├── scratch/                  # Agent exploratory scripts, scratch tools, and benchmarks (gitignored)
+├── packaging/                # Build and distribution packaging
+│   ├── build.py              # Automated PyInstaller & Inno Setup compiler
+│   ├── fastmirror.spec       # PyInstaller standalone freezing specification
+│   └── installer.iss         # Inno Setup 6 per-user setup wizard script
+├── scratch/                  # Agent exploratory scripts and scratch tools (gitignored)
+├── scripts/
+│   └── verify.py             # Unified local & CI verification runner
 ├── src/
 │   ├── core/
 │   │   ├── backend.py        # Core synchronization engine (SyncDirs, CompareDirs)
@@ -78,7 +108,7 @@ fast-mirror/
 │   │   ├── assets/icons/     # Modern 16x16 PNG icons
 │   │   └── components/       # Modular GUI panels (Actions, Log, Paths, Schedule, Status, Telemetry, Modals)
 │   └── utils/
-│       ├── constants.py      # ROOT_DIR locator and data folder paths
+│       ├── constants.py      # ROOT_DIR locator, APP_VERSION, and data folder paths
 │       ├── utils.py          # DirectoryPair, byte conversion, path sanitizers
 │       └── logger.py         # Context-aware logging configuration and formatting
 ├── tests/
@@ -93,16 +123,24 @@ fast-mirror/
 │   ├── test_gui_visual_emulation.py # UI widget event flow & visual invariant tests
 │   ├── test_logger.py        # Logging handlers and log isolation
 │   └── test_worker_thread.py # Worker thread execution & cancellation tests
+├── CHANGELOG.md              # Keep a Changelog user-facing release notes
+├── LICENSE                   # MIT License
 ├── config.example.json       # Template configuration file (copy to data/config.json)
-├── pyproject.toml            # Dependencies, Ruff rules, and Mypy settings
-└── docs/                     # Architecture, Development, and Configuration guides
+├── launch.pyw                # Standalone GUI launcher (DPI-aware, single-instance mutex)
+└── pyproject.toml            # Single source of truth for version and dependencies
 ```
 
 ---
 
 ## 4. Mandatory Verification Checklist
-Before submitting any changes or completing a task:
-1. `uv run pytest` — All tests must pass (100% pass rate).
-2. `uv run ruff check .` — Zero linting errors or warnings.
-3. `uv run ruff format --check .` — Formatting conforms to repository style.
-4. `test_config_json_entry_paths_resolution` must succeed against the real `data/config.json` (or skip if not present).
+Before submitting any changes or completing a task, run the unified verification runner:
+```powershell
+uv run python scripts/verify.py --check-version
+```
+All six quality gates must pass:
+1. `ruff format --check .` — Formatting conforms to repository style (single quotes, 120 line length).
+2. `ruff check .` — Zero linting errors or warnings.
+3. `mypy src` — Zero type checking errors.
+4. `check_privacy_and_paths()` — Zero hardcoded local machine paths or private network shares.
+5. `validate_version_and_changelog()` — `pyproject.toml` version matches `CHANGELOG.md`.
+6. `pytest` — All test suites pass (100% pass rate).

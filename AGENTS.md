@@ -8,6 +8,7 @@ Please refer to the detailed guidelines and modular rules in [`.agents/`](.agent
   - [GUI & Threading Safety Rules](.agents/rules/gui_and_threading.md)
   - [SQLite & File Lock Rules on Windows](.agents/rules/sqlite_and_file_locks.md)
   - [Data Integrity & Safety Rules](.agents/rules/data_integrity_and_safety.md)
+  - [Versioning & Automated Release Flow](.agents/rules/versioning_and_release_flow.md)
 - **Skills**:
   - [Codebase Verification](.agents/skills/verify-codebase/SKILL.md)
   - [UNC & Network Path Handling](.agents/skills/unc-path-handling/SKILL.md)
@@ -22,4 +23,6 @@ Please refer to the detailed guidelines and modular rules in [`.agents/`](.agent
 4. **Always close SQLite connections on Windows** using `contextlib.closing(sqlite3.connect(...))` to prevent `WinError 32` file locks.
 5. **Never write test or agent logs to production `data/logs/`**: All test runs and automated agent executions are isolated via `tests/conftest.py` and `is_test_or_agent_mode()`.
 6. **Always use `scratch/` for temporary agent scripts and artifacts**: Never create temporary or scratch files (e.g. `scratch_*.py`) in the repository root; all temporary exploratory scripts, benchmarks, and debug dumps must be placed inside the `scratch/` directory.
-7. **Always verify changes** with `uv run pytest` and `uv run ruff check .`.
+7. **Version in `pyproject.toml` is the single source of truth**: Bumping `version` in `pyproject.toml` and documenting under `## [X.Y.Z]` in `CHANGELOG.md` automatically triggers the GitHub Actions release build on push to `main`. Never manually create Git tags.
+8. **Strict privacy hygiene**: Never hardcode personal paths (`C:\Users\Username\...`, `D:\Projects\...`), personal network shares, or private subnets. Enforced by `.githooks/pre-commit` and `scripts/verify.py`.
+9. **Always verify changes** using the unified verification runner: `uv run python scripts/verify.py --check-version` (or `uv run python scripts/verify.py --fix` to auto-format and fix lint).
