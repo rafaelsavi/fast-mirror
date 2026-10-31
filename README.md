@@ -40,4 +40,4 @@ FastMirror mirrors in one direction—from source to target. It does not merge c
 
 ---
 
-Personal project by Rafael Savi. All rights reserved.
+Personal project by Rafael Savi. Licensed under the [MIT License](LICENSE).
