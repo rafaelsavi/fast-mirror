@@ -22,6 +22,11 @@ The version is centrally maintained in `pyproject.toml`.
   - Provides direct one-click download buttons for the Windows Setup installer (`.exe`) and Portable edition (`.zip`) along with GitHub release links.
   - Offline-safe and rate-limit resilient: fails silently during startup or offline conditions with zero unhandled exceptions or UI disruption.
 
+### Fixed
+- **Installer Upgrade Stale Metadata & Orphaned Binary Purge**:
+  - Configured Inno Setup `[InstallDelete]` to purge `{app}\_internal` prior to extracting new files during in-place upgrades, preventing stale `.dist-info` directories and orphaned DLLs from previous installations.
+  - Enhanced `_read_app_version()` to prioritize `pyproject.toml` (bundled directly into the application package via PyInstaller `datas`) and select the highest SemVer from available distribution metadata if multiple dist-info folders exist, eliminating version reporting regressions after updates.
+
 ## [1.1.1] - 2026-10-31
 
 ### Fixed

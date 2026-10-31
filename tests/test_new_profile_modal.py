@@ -1,22 +1,32 @@
 """Tests for the NewProfileModal component and prompt_new_profile function."""
 
+import contextlib
 import tkinter as tk
+
+import pytest
 
 from gui.components.new_profile_modal import NewProfileModal, prompt_new_profile
 
 
-def test_new_profile_modal_initial_state():
-    """Verify default widget state and variables on modal creation."""
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        modal = NewProfileModal(
-            parent=root,
-            active_profile_name='PhotoBackup',
-            existing_profiles=['Default', 'PhotoBackup'],
-            wait=False,
-        )
+@pytest.fixture(scope='module')
+def root():
+    """Module-scoped root window to avoid repeated Tcl interpreter teardown/recreation churn."""
+    r = tk.Tk()
+    r.withdraw()
+    yield r
+    with contextlib.suppress(Exception):
+        r.destroy()
 
+
+def test_new_profile_modal_initial_state(root):
+    """Verify default widget state and variables on modal creation."""
+    modal = NewProfileModal(
+        parent=root,
+        active_profile_name='PhotoBackup',
+        existing_profiles=['Default', 'PhotoBackup'],
+        wait=False,
+    )
+    try:
         assert modal.var_name.get() == ''
         assert modal.var_template.get() == 'current'
         assert modal.active_profile_name == 'PhotoBackup'
@@ -25,48 +35,44 @@ def test_new_profile_modal_initial_state():
         assert modal.result is None
     finally:
         modal.window.destroy()
-        root.destroy()
 
 
-def test_new_profile_modal_create_success():
+def test_new_profile_modal_create_success(root):
     """Verify creating a profile sets sanitized name and template in result."""
-    root = tk.Tk()
-    root.withdraw()
+    # 1. Based on current profile
+    modal = NewProfileModal(root, active_profile_name='Default', wait=False)
     try:
-        # 1. Based on current profile
-        modal = NewProfileModal(root, active_profile_name='Default', wait=False)
         modal.var_name.set('  My Work Profile  ')
         modal.var_template.set('current')
         modal._on_create()
         assert modal.result == ('My Work Profile', 'current')
+    finally:
+        modal.window.destroy()
 
-        # 2. Blank profile
-        modal2 = NewProfileModal(root, active_profile_name='Default', wait=False)
+    # 2. Blank profile
+    modal2 = NewProfileModal(root, active_profile_name='Default', wait=False)
+    try:
         modal2.var_name.set('Fresh-Clean')
         modal2.var_template.set('blank')
         modal2._on_create()
         assert modal2.result == ('Fresh-Clean', 'blank')
     finally:
-        root.destroy()
+        modal2.window.destroy()
 
 
-def test_new_profile_modal_cancel():
+def test_new_profile_modal_cancel(root):
     """Verify cancelling resets result to None."""
-    root = tk.Tk()
-    root.withdraw()
+    modal = NewProfileModal(root, wait=False)
     try:
-        modal = NewProfileModal(root, wait=False)
         modal.var_name.set('ShouldCancel')
         modal._on_cancel()
         assert modal.result is None
     finally:
-        root.destroy()
+        modal.window.destroy()
 
 
-def test_new_profile_modal_empty_name_validation(monkeypatch):
+def test_new_profile_modal_empty_name_validation(root, monkeypatch):
     """Verify empty name triggers a warning and does not complete."""
-    root = tk.Tk()
-    root.withdraw()
     warning_called = False
 
     def mock_showwarning(title, message, parent=None):
@@ -75,21 +81,18 @@ def test_new_profile_modal_empty_name_validation(monkeypatch):
 
     monkeypatch.setattr('tkinter.messagebox.showwarning', mock_showwarning)
 
+    modal = NewProfileModal(root, wait=False)
     try:
-        modal = NewProfileModal(root, wait=False)
         modal.var_name.set('   ')
         modal._on_create()
         assert warning_called is True
         assert modal.result is None
     finally:
         modal.window.destroy()
-        root.destroy()
 
 
-def test_new_profile_modal_invalid_name_validation(monkeypatch):
+def test_new_profile_modal_invalid_name_validation(root, monkeypatch):
     """Verify invalid name characters trigger a warning."""
-    root = tk.Tk()
-    root.withdraw()
     warning_called = False
 
     def mock_showwarning(title, message, parent=None):
@@ -98,22 +101,18 @@ def test_new_profile_modal_invalid_name_validation(monkeypatch):
 
     monkeypatch.setattr('tkinter.messagebox.showwarning', mock_showwarning)
 
+    modal = NewProfileModal(root, wait=False)
     try:
-        modal = NewProfileModal(root, wait=False)
         modal.var_name.set(':::***???')
         modal._on_create()
         assert warning_called is True
         assert modal.result is None
     finally:
         modal.window.destroy()
-        root.destroy()
 
 
-def test_new_profile_modal_duplicate_overwrite(monkeypatch):
+def test_new_profile_modal_duplicate_overwrite(root, monkeypatch):
     """Verify existing profile prompts for overwrite confirmation."""
-    root = tk.Tk()
-    root.withdraw()
-
     askyesno_response = False
 
     def mock_askyesno(title, message, parent=None):
@@ -121,8 +120,8 @@ def test_new_profile_modal_duplicate_overwrite(monkeypatch):
 
     monkeypatch.setattr('tkinter.messagebox.askyesno', mock_askyesno)
 
+    modal = NewProfileModal(root, existing_profiles=['work', 'default'], wait=False)
     try:
-        modal = NewProfileModal(root, existing_profiles=['work', 'default'], wait=False)
         modal.var_name.set('Work')
 
         # User refuses overwrite
@@ -135,7 +134,7 @@ def test_new_profile_modal_duplicate_overwrite(monkeypatch):
         modal._on_create()
         assert modal.result == ('Work', 'current')
     finally:
-        root.destroy()
+        modal.window.destroy()
 
 
 def test_prompt_new_profile_mocked(monkeypatch):

@@ -11,6 +11,7 @@ datas = [
     (os.path.join(ROOT_DIR, 'src', 'gui', 'app_icon.ico'), 'gui'),
     (os.path.join(ROOT_DIR, 'src', 'gui', 'assets', 'icons'), 'gui/assets/icons'),
     (os.path.join(ROOT_DIR, 'config.example.json'), '.'),
+    (os.path.join(ROOT_DIR, 'pyproject.toml'), '.'),
 ]
 
 # Collect package data and submodules for dynamic Tkinter and tray dependencies

@@ -180,3 +180,21 @@ def test_status_bar_show_update_button():
         bar.hide_update_button()
     finally:
         root.destroy()
+
+
+def test_read_app_version_resolves_highest_semver():
+    """Verify _read_app_version selects the latest SemVer when multiple distribution metadata folders exist."""
+    from utils.constants import _read_app_version
+
+    mock_dists = [
+        MagicMock(metadata={'Name': 'fast-mirror'}, version='0.1.0'),
+        MagicMock(metadata={'Name': 'fast-mirror'}, version='1.2.0'),
+        MagicMock(metadata={'Name': 'other-pkg'}, version='3.0.0'),
+    ]
+
+    with (
+        patch('importlib.metadata.distributions', return_value=mock_dists),
+        patch('os.path.isfile', return_value=False),
+    ):
+        ver = _read_app_version()
+        assert ver == '1.2.0'

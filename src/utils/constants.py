@@ -29,26 +29,46 @@ LOGS_DIR = os.path.join(DATA_DIR, 'logs')
 
 
 def _read_app_version() -> str:
-    """Read version directly from package metadata or pyproject.toml."""
-    try:
-        from importlib.metadata import version
+    """Read version directly from pyproject.toml or installed package distribution metadata."""
+    # 1. Single source of truth: check pyproject.toml if present (source repository / bundled)
+    for base in (ROOT_DIR, BUNDLE_DIR):
+        pyproject_path = os.path.join(base, 'pyproject.toml')
+        if os.path.isfile(pyproject_path):
+            try:
+                with open(pyproject_path, encoding='utf-8') as f:
+                    for line in f:
+                        stripped = line.strip()
+                        if stripped.startswith('version'):
+                            match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', stripped)
+                            if match:
+                                return match.group(1)
+            except Exception:
+                pass
 
-        return version('fast-mirror')
+    # 2. Check installed/bundled distribution metadata, selecting the highest valid SemVer
+    try:
+        from importlib.metadata import distributions
+
+        found_versions: list[str] = []
+        for dist in distributions():
+            dist_name = getattr(dist, 'name', None) or (
+                dist.metadata['Name'] if dist.metadata and 'Name' in dist.metadata else None
+            )
+            if dist_name and dist_name.lower() == 'fast-mirror':
+                ver = dist.version
+                if ver:
+                    found_versions.append(ver)
+
+        if found_versions:
+
+            def _ver_key(v: str) -> tuple[int, ...]:
+                nums = re.findall(r'\d+', v)
+                return tuple(int(n) for n in nums) if nums else (0,)
+
+            found_versions.sort(key=_ver_key)
+            return found_versions[-1]
     except Exception:
         pass
-
-    pyproject_path = os.path.join(ROOT_DIR, 'pyproject.toml')
-    if os.path.isfile(pyproject_path):
-        try:
-            with open(pyproject_path, encoding='utf-8') as f:
-                for line in f:
-                    stripped = line.strip()
-                    if stripped.startswith('version'):
-                        match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', stripped)
-                        if match:
-                            return match.group(1)
-        except Exception:
-            pass
 
     return '1.2.0'
 

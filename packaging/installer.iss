@@ -41,6 +41,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
+[InstallDelete]
+; Purge previous Python runtime binaries and distribution metadata on update to prevent stale file conflicts
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
 Source: "..\dist\FastMirror\*"; DestDir: "{app}"; Excludes: "portable.txt"; Flags: ignoreversion recursesubdirs createallsubdirs
 
