@@ -1,19 +1,32 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  test:
-    name: Test & Lint
+  # ============================================================================
+  # STAGE 1: VALIDATE (Runs on EVERY PR and EVERY push to main)
+  # ============================================================================
+  validate:
+    name: Validate (Format, Lint, Types, Tests & Version)
     runs-on: windows-latest
-
+    outputs:
+      should_release: ${{ steps.check_release.outputs.should_release }}
+      version: ${{ steps.check_release.outputs.version }}
+      tag: ${{ steps.check_release.outputs.tag }}
+      is_official: ${{ steps.check_release.outputs.is_official }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -28,12 +41,121 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-groups
 
-      - name: Run Ruff Lint Check
-        run: uv run ruff check .
+      - name: Run Unified Verification Suite
+        run: uv run python scripts/verify.py --ci
 
-      - name: Run Ruff Format Check
-        run: uv run ruff format --check .
+      - name: Evaluate Release Readiness
+        id: check_release
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        run: |
+          uv run python -c "
+          import os, re, subprocess, tomllib
 
-      - name: Run Pytest Suite
-        run: uv run pytest
+          version = tomllib.load(open('pyproject.toml', 'rb'))['project']['version']
+          tag = f'v{version}'
+          is_official = 'true' if re.match(r'^[0-9]+\.[0-9]+\.[0-9]+$', version) else 'false'
 
+          # Check if tag already exists on remote origin
+          result = subprocess.run(['git', 'ls-remote', '--tags', 'origin', f'refs/tags/{tag}'], capture_output=True, text=True)
+          tag_exists = bool(result.stdout.strip())
+
+          # Only release if tag does not exist yet on remote
+          should_release = 'true' if not tag_exists else 'false'
+          print(f'Version: {version}, Tag: {tag}, Remote Tag Exists: {tag_exists}, Should Release: {should_release}')
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'version={version}\n')
+              f.write(f'tag={tag}\n')
+              f.write(f'is_official={is_official}\n')
+              f.write(f'should_release={should_release}\n')
+          "
+
+  # ============================================================================
+  # STAGE 2: RELEASE (Runs ONLY if validate succeeded, on main, and version is new)
+  # ============================================================================
+  release:
+    name: Build & Publish Windows Release
+    needs: validate
+    if: needs.validate.outputs.should_release == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Extract Release Notes from CHANGELOG.md
+        run: |
+          python -c "
+          import os, re
+          from pathlib import Path
+
+          content = Path('CHANGELOG.md').read_text(encoding='utf-8')
+          version = os.environ['VERSION']
+          pattern = rf'##\s*\[?v?{re.escape(version)}\]?[^\n]*\n(.*?)(?=\n##\s*\[|\Z)'
+          match = re.search(pattern, content, re.DOTALL)
+          notes = match.group(1).strip() if match else f'Release v{version}'
+
+          # Append standard installation and SmartScreen guidance
+          appendix = '''
+
+          ---
+          ### Downloads
+          - **Setup Wizard (Recommended)**: Download `FastMirror-v{version}-Windows-Setup.exe` for a standard installer with Desktop and Start Menu shortcuts.
+          - **Portable ZIP**: Download `FastMirror-v{version}-Windows-Portable.zip`, extract to any folder, and double-click `FastMirror.exe`.
+
+          ### Windows SmartScreen Notice
+          FastMirror is an open-source tool without an expensive commercial code-signing certificate. If Windows SmartScreen shows a prompt:
+          1. Click **More info**.
+          2. Click **Run anyway**.
+          '''.replace('{version}', version)
+
+          Path('release_notes.md').write_text(notes + appendix, encoding='utf-8')
+          "
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+
+      - name: Create Git Tag
+        run: |
+          $tag = "${{ needs.validate.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "Release $tag"
+          git push origin "$tag"
+        continue-on-error: true
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress
+
+      - name: Build Executable, Portable ZIP, and Setup Wizard
+        run: uv run python packaging/build.py
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.tag }}
+          name: FastMirror ${{ needs.validate.outputs.tag }}
+          body_path: release_notes.md
+          prerelease: ${{ needs.validate.outputs.is_official == 'false' }}
+          make_latest: ${{ needs.validate.outputs.is_official == 'true' }}
+          generate_release_notes: false
+          files: |
+            dist/*-Windows-Setup.exe
+            dist/*-Windows-Portable.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
