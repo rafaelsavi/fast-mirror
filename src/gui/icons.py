@@ -76,7 +76,11 @@ def reveal_window(window: tk.Tk | tk.Toplevel) -> None:
             if not window.tk.dooneevent(flags):
                 break
         window.update_idletasks()
-        if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'):
+        if (
+            os.environ.get('AUTOMATIC_BACKUP_TESTING') != '1'
+            and hasattr(ctypes, 'windll')
+            and hasattr(ctypes.windll, 'user32')
+        ):
             hwnd = window.winfo_id()
             top_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
             ctypes.windll.user32.UpdateWindow(top_hwnd)

@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 import pytest
 
-from core.file import CstmPath
+from core.file import CstmPath, Stats, StatsHash
 from core.mirror import MirrorDatabase
 
 
@@ -131,7 +131,9 @@ def test_unc_path_support(tmp_path):
     file_path = r'\\192.168.1.100\Share\sub\doc.pdf'
 
     # Inject path using CstmPath with pre-computed hash
-    cstm = CstmPath(file_path, root_dir=root_dir, stats_hash='feedface12345678')
+    cstm = CstmPath(
+        file_path, root_dir=root_dir, stats_hash=StatsHash('feedface12345678'), stats=Stats(1024, 1700000000.0)
+    )
     mirror.add_path(root_dir, cstm)
 
     assert mirror.exists(root_dir, file_path) is True

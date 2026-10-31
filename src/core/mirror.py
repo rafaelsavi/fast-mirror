@@ -248,10 +248,11 @@ class MirrorDatabase:
                 if not stats_hash:
                     stats_hash = get_stats_hash(p)
                 st = getattr(p, 'cached_stats', getattr(p, '_stats', None))
-                if st is None:
+                is_unc = str(p).startswith('\\\\') or root_str.startswith('\\\\')
+                if st is None and not is_unc:
                     with contextlib.suppress(Exception):
                         st = getattr(p, 'stats', None)
-                if st is None:
+                if st is None and not is_unc:
                     with contextlib.suppress(Exception):
                         os_st = os.stat(str(p))
                         st = Stats(os_st.st_size, os_st.st_mtime)

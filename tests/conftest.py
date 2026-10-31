@@ -11,17 +11,18 @@ if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 _TEST_LOG_DIR = os.path.join(tempfile.gettempdir(), 'autobackup_pytest_logs')
-_OFFSCREEN_COORDS = '+25000+25000'
+_OFFSCREEN_COORDS = '-32000-32000'
 
 
 def _suppress_window_flashing() -> None:
     """
-    Abstract and suppress all GUI window mapping, taskbar flashing, and focus stealing during tests.
+    Abstract and suppress all GUI window mapping, taskbar flashing, clipboard locking, and focus stealing during tests.
 
     Tkinter/Tcl widget logic, layout calculations (update_idletasks), Treeviews, and virtual
-    events operate fully in-memory. By forcing windows to remain off-screen (+25000+25000),
-    suppressing OS-level grab_set/focus_force, and silencing winsound.PlaySound, the test suite
-    executes 100% silently and invisibly in the background without disturbing the user.
+    events operate fully in-memory. By forcing windows to remain at standard Win32 minimized/parked
+    coordinates (-32000-32000), isolating the clipboard in-memory, suppressing OS-level grab/focus,
+    and silencing winsound.PlaySound, the test suite executes 100% silently and invisibly in the
+    background without disturbing or freezing the user's desktop.
     """
     # 1. Silence all system sound chimes during test execution
     winsound.PlaySound = lambda *args, **kwargs: None
@@ -37,7 +38,7 @@ def _suppress_window_flashing() -> None:
 
     tk.Tk._loadtk = headless_loadtk
 
-    # 3. Hook geometry / wm_geometry so any positioning remains off-screen (+25000+25000)
+    # 3. Hook geometry / wm_geometry so any positioning remains off-screen (-32000-32000)
     orig_wm_geometry = tk.Wm.wm_geometry
 
     def headless_geometry(self: tk.Wm, newGeometry: str | None = None) -> str | None:
@@ -68,6 +69,24 @@ def _suppress_window_flashing() -> None:
     tk.Wm.grab_set = lambda self: None  # type: ignore[assignment]
     tk.Wm.grab_set_global = lambda self: None  # type: ignore[assignment]
     tk.Wm.focus_force = lambda self: None  # type: ignore[assignment]
+    tk.Misc.focus_set = lambda self: None  # type: ignore[assignment]
+    tk.Misc.focus_force = lambda self: None  # type: ignore[assignment]
+
+    # 6. Mock global Windows clipboard in memory to avoid OS-wide locking and WM_CLIPBOARDUPDATE
+    _in_memory_clip: list[str] = ['']
+
+    def _mock_clipboard_clear(self: tk.Misc) -> None:
+        _in_memory_clip[0] = ''
+
+    def _mock_clipboard_append(self: tk.Misc, text: str, **kwargs: object) -> None:
+        _in_memory_clip[0] += str(text)
+
+    def _mock_clipboard_get(self: tk.Misc, **kwargs: object) -> str:
+        return _in_memory_clip[0]
+
+    tk.Misc.clipboard_clear = _mock_clipboard_clear  # type: ignore[assignment]
+    tk.Misc.clipboard_append = _mock_clipboard_append  # type: ignore[assignment]
+    tk.Misc.clipboard_get = _mock_clipboard_get  # type: ignore[assignment]
 
 
 def pytest_configure(config: object) -> None:
