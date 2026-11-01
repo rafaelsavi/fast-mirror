@@ -11,6 +11,12 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [1.2.3] - 2026-11-01
 
+### Added
+- **Multi-Version Changelog Aggregation (`updater.py`)**:
+  - Automatically queries the GitHub Releases list and aggregates release notes across all intermediate versions when jumping across versions (e.g. v1.0.0 $\rightarrow$ v1.2.3).
+  - Automatically sanitizes redundant download footers and SmartScreen notices, presenting a unified, chronological changelog in the update dialog.
+  - Implemented automatic fallback from the releases list endpoint to the single latest release endpoint if needed.
+
 ### Documentation
 - **Architecture & User Flow Alignment**:
   - Synchronized User Guide, Data Storage & Migration Guide, and System Architecture specifications with the seamless 1-click update flow, live chunked progress tracking, and Win32 named mutex concurrency lifecycle.

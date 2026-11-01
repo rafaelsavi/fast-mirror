@@ -20,7 +20,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from utils.constants import APP_VERSION, GITHUB_API_LATEST_RELEASE, GITHUB_RELEASES_URL
+from utils.constants import (
+    APP_VERSION,
+    GITHUB_API_LATEST_RELEASE,
+    GITHUB_API_RELEASES_LIST,
+    GITHUB_RELEASES_URL,
+)
 from utils.logger import logger
 
 
@@ -102,15 +107,88 @@ def parse_release_payload(data: dict[str, Any], current_version: str = APP_VERSI
     )
 
 
+def clean_release_body(body: str) -> str:
+    """Extract release notes while omitting redundant download links and smartscreen footers."""
+    # Split on markdown horizontal rule if present
+    parts = re.split(r'\n\s*---\s*\n', body)
+    clean = parts[0].strip() if parts else body.strip()
+    # Remove any trailing "### Downloads" section if no delimiter was used
+    dl_match = re.search(r'\n\s*###\s+Downloads', clean, re.IGNORECASE)
+    if dl_match:
+        clean = clean[: dl_match.start()].strip()
+    return clean
+
+
+def aggregate_releases_payload(
+    releases: list[dict[str, Any]], current_version: str = APP_VERSION
+) -> ReleaseInfo | None:
+    """
+    Parse a list of releases from GitHub API and aggregate changelogs for all intermediate versions.
+
+    If candidate versions exceed current_version by multiple releases (e.g. updating from 1.0.0
+    to 1.2.3), the release notes of all newer intermediate versions are aggregated chronologically,
+    ensuring the user sees the complete history of changes.
+    """
+    if not releases:
+        return None
+
+    parsed_candidates: list[ReleaseInfo] = []
+    for item in releases:
+        if not isinstance(item, dict) or item.get('draft'):
+            continue
+        parsed_candidates.append(parse_release_payload(item, current_version=current_version))
+
+    if not parsed_candidates:
+        return None
+
+    # Sort descending by SemVer
+    parsed_candidates.sort(key=lambda r: parse_version(r.version), reverse=True)
+    latest = parsed_candidates[0]
+
+    # Filter all newer releases
+    newer = [r for r in parsed_candidates if is_newer_version(r.version, current_version)]
+
+    if not newer:
+        return latest
+
+    if len(newer) == 1:
+        return newer[0]
+
+    # Multiple intermediate versions exist: aggregate changelogs chronologically
+    sections: list[str] = []
+    for idx, rel in enumerate(newer):
+        header = f'### What’s New in v{rel.version}'
+        if idx == 0:
+            header += ' (Latest)'
+        clean_notes = clean_release_body(rel.body) or 'General performance improvements and bug fixes.'
+        sections.append(f'{header}\n\n{clean_notes}')
+
+    combined_body = '\n\n---\n\n'.join(sections)
+
+    return ReleaseInfo(
+        version=latest.version,
+        tag_name=latest.tag_name,
+        title=f'FastMirror v{latest.version} ({len(newer)} updates)',
+        html_url=latest.html_url,
+        body=combined_body,
+        published_at=latest.published_at,
+        setup_download_url=latest.setup_download_url,
+        portable_download_url=latest.portable_download_url,
+        is_newer=True,
+    )
+
+
 def fetch_latest_release(
-    url: str = GITHUB_API_LATEST_RELEASE,
+    url: str = GITHUB_API_RELEASES_LIST,
     timeout: float = 4.0,
     current_version: str = APP_VERSION,
 ) -> ReleaseInfo | None:
     """
-    Fetch the latest release descriptor from GitHub API synchronously with timeout.
+    Fetch release metadata from GitHub API synchronously with timeout.
 
-    Returns ReleaseInfo on success, or None if response is non-200.
+    Supports both:
+    1. GitHub Releases List (JSON array), aggregating changelogs across multiple version jumps.
+    2. GitHub Latest Release (JSON dict), parsing the single latest release.
     """
     req = urllib.request.Request(
         url,
@@ -123,14 +201,18 @@ def fetch_latest_release(
         if response.status != 200:
             return None
         payload = json.loads(response.read().decode('utf-8'))
-        return parse_release_payload(payload, current_version=current_version)
+        if isinstance(payload, list):
+            return aggregate_releases_payload(payload, current_version=current_version)
+        if isinstance(payload, dict):
+            return parse_release_payload(payload, current_version=current_version)
+        return None
 
 
 def check_for_updates_async(
     callback: Callable[[ReleaseInfo | None, str | None], None],
     current_version: str = APP_VERSION,
     timeout: float = 4.0,
-    url: str = GITHUB_API_LATEST_RELEASE,
+    url: str = GITHUB_API_RELEASES_LIST,
 ) -> threading.Thread:
     """
     Check for updates asynchronously in a daemon background thread.
@@ -143,6 +225,18 @@ def check_for_updates_async(
             info = fetch_latest_release(url=url, timeout=timeout, current_version=current_version)
             callback(info, None)
         except urllib.error.HTTPError as ex:
+            # Fallback to single latest release if full list endpoint is blocked or non-standard
+            if url == GITHUB_API_RELEASES_LIST:
+                try:
+                    fallback_info = fetch_latest_release(
+                        url=GITHUB_API_LATEST_RELEASE,
+                        timeout=timeout,
+                        current_version=current_version,
+                    )
+                    callback(fallback_info, None)
+                    return
+                except Exception:
+                    pass
             logger.debug(f'Update check HTTP error: {ex.code} {ex.reason}')
             callback(None, f'GitHub API error ({ex.code})')
         except urllib.error.URLError as ex:

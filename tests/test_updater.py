@@ -331,3 +331,117 @@ def test_update_modal_in_app_download_and_browser_guidance():
         modal.destroy()
     finally:
         root.destroy()
+
+
+def test_clean_release_body():
+    """Verify clean_release_body strips out download links and smartscreen footers."""
+    from utils.updater import clean_release_body
+
+    body = """### Added
+- Feature A
+- Feature B
+
+---
+### Downloads
+- Setup Wizard: FastMirror.exe
+
+### Windows SmartScreen Notice
+Notice text
+"""
+    cleaned = clean_release_body(body)
+    assert 'Feature A' in cleaned
+    assert 'Feature B' in cleaned
+    assert 'Downloads' not in cleaned
+    assert 'SmartScreen' not in cleaned
+
+
+def test_aggregate_releases_payload_multiple_versions():
+    """Verify aggregating release notes when multiple version updates are available."""
+    from utils.updater import aggregate_releases_payload
+
+    releases = [
+        {
+            'tag_name': 'v1.2.3',
+            'name': 'FastMirror v1.2.3',
+            'html_url': 'https://github.com/releases/1.2.3',
+            'published_at': '2026-11-01',
+            'body': '- Bugfix in updater\n\n---\n### Downloads\nSetup link',
+            'assets': [
+                {'name': 'FastMirror-v1.2.3-Windows-Setup.exe', 'browser_download_url': 'https://setup-1.2.3.exe'}
+            ],
+        },
+        {
+            'tag_name': 'v1.2.2',
+            'name': 'FastMirror v1.2.2',
+            'html_url': 'https://github.com/releases/1.2.2',
+            'published_at': '2026-11-01',
+            'body': '- Mutex handling\n- 1-click update flow',
+            'assets': [],
+        },
+        {
+            'tag_name': 'v1.2.1',
+            'name': 'FastMirror v1.2.1',
+            'html_url': 'https://github.com/releases/1.2.1',
+            'published_at': '2026-10-31',
+            'body': '- Icon rendering fix',
+            'assets': [],
+        },
+        {
+            'tag_name': 'v1.2.0',
+            'name': 'FastMirror v1.2.0',
+            'html_url': 'https://github.com/releases/1.2.0',
+            'published_at': '2026-10-31',
+            'body': '- Initial updater launch',
+            'assets': [],
+        },
+    ]
+
+    info = aggregate_releases_payload(releases, current_version='1.2.0')
+    assert info is not None
+    assert info.version == '1.2.3'
+    assert info.is_newer is True
+    assert info.setup_download_url == 'https://setup-1.2.3.exe'
+
+    # Verify changelog includes notes from 1.2.3, 1.2.2, and 1.2.1
+    assert 'What’s New in v1.2.3 (Latest)' in info.body
+    assert 'Bugfix in updater' in info.body
+    assert 'What’s New in v1.2.2' in info.body
+    assert 'Mutex handling' in info.body
+    assert 'What’s New in v1.2.1' in info.body
+    assert 'Icon rendering fix' in info.body
+
+    # Should NOT include 1.2.0 because 1.2.0 is already installed
+    assert 'What’s New in v1.2.0' not in info.body
+
+
+def test_fetch_latest_release_list_payload():
+    """Verify fetch_latest_release parses a JSON list of releases successfully."""
+    from utils.updater import fetch_latest_release
+
+    releases = [
+        {
+            'tag_name': 'v1.2.2',
+            'name': 'FastMirror v1.2.2',
+            'body': 'Notes v1.2.2',
+            'assets': [],
+        },
+        {
+            'tag_name': 'v1.2.1',
+            'name': 'FastMirror v1.2.1',
+            'body': 'Notes v1.2.1',
+            'assets': [],
+        },
+    ]
+
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.read.return_value = json.dumps(releases).encode('utf-8')
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch('urllib.request.urlopen', return_value=mock_resp):
+        info = fetch_latest_release(current_version='1.2.0')
+        assert info is not None
+        assert info.version == '1.2.2'
+        assert info.is_newer is True
+        assert 'Notes v1.2.2' in info.body
+        assert 'Notes v1.2.1' in info.body
