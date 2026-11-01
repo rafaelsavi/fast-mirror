@@ -678,3 +678,180 @@ def test_compare_dirs_scan_progress_callback(tmp_path):
         ('Scanning', 4, 4, str(tgt2)),
         ('Comparing', 4, 4, ''),
     ]
+
+
+def test_sync_case_rename_directory_reconciles_target_disk_and_mirror(tmp_path):
+    """Verify that case rename of a parent directory reconciles physical disk casing on target and mirror DB."""
+    from gui.confirmation_popup import _format_move_origin
+
+    source = tmp_path / 'Source'
+    target = tmp_path / 'Target'
+    source.mkdir()
+    target.mkdir()
+
+    # Target currently has lowercase 'vendraminis'
+    tgt_folder = target / '04 - Encontro vendraminis Caeté' / 'RAW'
+    tgt_folder.mkdir(parents=True)
+    filenames = [
+        '20160402_194733 Encontro Vendraminis Caeté.JPG',
+        '20160402_194733 Encontro Vendraminis Caeté.RW2',
+        '20160402_194733 Encontro Vendraminis Caeté.xmp',
+    ]
+    for fn in filenames:
+        (tgt_folder / fn).write_text(f'data for {fn}')
+
+    # Source has uppercase 'Vendraminis'
+    src_folder = source / '04 - Encontro Vendraminis Caeté' / 'RAW'
+    src_folder.mkdir(parents=True)
+    for fn in filenames:
+        (src_folder / fn).write_text(f'data for {fn}')
+        shutil.copystat(src_folder / fn, tgt_folder / fn)
+
+    db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=db_path)
+    dirs = [DirectoryPair(str(source), str(target))]
+
+    # Compare
+    compare = CompareDirs(mirror=mirror, dirs=dirs, exclusions=[])
+    assert len(compare.files_to_move) == 3
+    assert len(compare.files_to_copy) == 0
+    assert len(compare.files_to_delete) == 0
+
+    for src_path, tgt_path in compare.files_to_move:
+        reason = _format_move_origin(str(src_path), str(tgt_path))
+        assert reason == 'Case rename: 04 - Encontro vendraminis Caeté → 04 - Encontro Vendraminis Caeté'
+
+    # Sync
+    sync = SyncDirs(
+        files_to_copy=compare.files_to_copy,
+        files_to_move=compare.files_to_move,
+        files_to_delete=compare.files_to_delete,
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        default_actions=[Action.COPY, Action.MOVE, Action.DELETE],
+        confirm_sync=False,
+    )
+
+    assert len(sync.files_moved) == 3
+    assert all(success for _, success in sync.files_moved)
+
+    # Verify physical disk directory on target has uppercase 'Vendraminis'
+    target_entries = os.listdir(target)
+    assert '04 - Encontro Vendraminis Caeté' in target_entries
+    assert '04 - Encontro vendraminis Caeté' not in target_entries
+
+    # Verify all files exist in the renamed folder
+    new_tgt_folder = target / '04 - Encontro Vendraminis Caeté' / 'RAW'
+    assert new_tgt_folder.is_dir()
+    for fn in filenames:
+        assert (new_tgt_folder / fn).is_file()
+        assert (new_tgt_folder / fn).read_text() == f'data for {fn}'
+        assert mirror.exists(str(target), str(new_tgt_folder / fn))
+
+    # Rescan / Re-compare should find zero pending changes
+    compare2 = CompareDirs(mirror=mirror, dirs=dirs, exclusions=[])
+    assert len(compare2.files_to_move) == 0
+    assert len(compare2.files_to_copy) == 0
+    assert len(compare2.files_to_delete) == 0
+
+
+def test_sync_case_rename_file_reconciles_target_disk_and_mirror(tmp_path):
+    """Verify that case rename of a single file reconciles physical disk casing on target and mirror DB."""
+    source = tmp_path / 'Source'
+    target = tmp_path / 'Target'
+    source.mkdir()
+    target.mkdir()
+
+    (source / 'IMAGE.JPG').write_text('pixels')
+    (target / 'image.jpg').write_text('pixels')
+    shutil.copystat(source / 'IMAGE.JPG', target / 'image.jpg')
+
+    db_path = str(tmp_path / 'mirror.db')
+    mirror = MirrorDatabase(path=db_path)
+    dirs = [DirectoryPair(str(source), str(target))]
+
+    compare = CompareDirs(mirror=mirror, dirs=dirs, exclusions=[])
+    assert len(compare.files_to_move) == 1
+    assert len(compare.files_to_copy) == 0
+    assert len(compare.files_to_delete) == 0
+
+    sync = SyncDirs(
+        files_to_copy=compare.files_to_copy,
+        files_to_move=compare.files_to_move,
+        files_to_delete=compare.files_to_delete,
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        default_actions=[Action.COPY, Action.MOVE, Action.DELETE],
+        confirm_sync=False,
+    )
+
+    assert len(sync.files_moved) == 1
+    assert 'IMAGE.JPG' in os.listdir(target)
+    assert 'image.jpg' not in os.listdir(target)
+    assert (target / 'IMAGE.JPG').read_text() == 'pixels'
+    assert mirror.exists(str(target), str(target / 'IMAGE.JPG'))
+
+
+def test_full_roundtrip_sync_multiple_folders_mixed(tmp_path):
+    """Test full CompareDirs + SyncDirs workflow with multiple folders: one renamed case-only, one normal."""
+    source = tmp_path / 'Source'
+    target = tmp_path / 'Target'
+    source.mkdir()
+    target.mkdir()
+
+    # Folder 1: Case rename
+    (source / 'Album_One').mkdir()
+    (target / 'album_one').mkdir()
+    for i in range(5):
+        (source / 'Album_One' / f'img_{i}.jpg').write_text(f'img {i}')
+        (target / 'album_one' / f'img_{i}.jpg').write_text(f'img {i}')
+        shutil.copystat(source / 'Album_One' / f'img_{i}.jpg', target / 'album_one' / f'img_{i}.jpg')
+
+    # Folder 2: Normal new file to copy
+    (source / 'Album_Two').mkdir()
+    (source / 'Album_Two' / 'new.txt').write_text('new text')
+
+    # Folder 3: Normal delete
+    (target / 'Album_Old').mkdir()
+    (target / 'Album_Old' / 'stale.txt').write_text('stale')
+
+    mirror = MirrorDatabase(path=str(tmp_path / 'mirror.db'))
+    dirs = [DirectoryPair(str(source), str(target))]
+
+    compare = CompareDirs(mirror=mirror, dirs=dirs, exclusions=[])
+    assert len(compare.files_to_move) == 5
+    assert len(compare.files_to_copy) == 1
+    assert len(compare.files_to_delete) == 1
+
+    sync = SyncDirs(
+        files_to_copy=compare.files_to_copy,
+        files_to_move=compare.files_to_move,
+        files_to_delete=compare.files_to_delete,
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        default_actions=[Action.COPY, Action.MOVE, Action.DELETE],
+        confirm_sync=False,
+    )
+
+    assert len(sync.files_moved) == 5
+    assert len(sync.files_copied) == 1
+    assert len(sync.files_deleted) == 1
+
+    # Verify Folder 1 is now uppercase on disk
+    assert 'Album_One' in os.listdir(target)
+    assert 'album_one' not in os.listdir(target)
+
+    # Verify Folder 2 was copied
+    assert (target / 'Album_Two' / 'new.txt').read_text() == 'new text'
+
+    # Verify Folder 3 was deleted
+    assert not (target / 'Album_Old').exists()
+
+    # Re-compare should be completely clean
+    compare2 = CompareDirs(mirror=mirror, dirs=dirs, exclusions=[])
+    assert len(compare2.files_to_move) == 0
+    assert len(compare2.files_to_copy) == 0
+    assert len(compare2.files_to_delete) == 0

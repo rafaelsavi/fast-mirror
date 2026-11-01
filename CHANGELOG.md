@@ -9,6 +9,15 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [1.2.5] - 2026-11-01
+
+### Fixed
+- **Physical Disk Casing Reconciliation for Case Renames (`file_ops.py`, `backend.py`)**:
+  - Implemented `ensure_directory_case()` and `rename_case_safe()` to ensure that when folders or files undergo case-only renames (e.g. `04 - Encontro vendraminis Caeté` → `04 - Encontro Vendraminis Caeté`), the physical directory structure and filenames on the target disk are actually updated in-place on Windows filesystems.
+  - Added collision-proof two-step rename fallback (`.__fm_case_<pid>_<nanoseconds>__`) with automatic rollback for SMB network shares, Samba, and FAT/exFAT volumes that reject direct case replacement with `ERROR_ALREADY_EXISTS`.
+  - Added session-wide in-memory directory verification cache (`_verified_dir_cache`) in `SyncDirs`, ensuring $O(1)$ fast paths for bulk file moves within the same directory.
+  - Enhanced `CompareDirs.link_files()` to recognize case-only path changes directly, preventing unnecessary deletion and re-copy cycles even when file names are not globally unique across the directory tree.
+
 ## [1.2.4] - 2026-11-01
 
 ### Added

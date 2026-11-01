@@ -7,7 +7,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 import pytest
 
-from core.file_ops import robust_copy, robust_delete, robust_move, unlock_file_attributes
+from core.file_ops import (
+    ensure_directory_case,
+    get_actual_case_name,
+    rename_case_safe,
+    robust_copy,
+    robust_delete,
+    robust_move,
+    unlock_file_attributes,
+)
 
 
 def test_robust_copy_success(tmp_path):
@@ -256,3 +264,148 @@ def test_cstmpath_stats_encapsulation_and_copy(tmp_path):
     p2.copy_stats_from(p1)
     assert p2.has_cached_stats is True
     assert p2.cached_stats == st
+
+
+def test_get_actual_case_name_and_rename_case_safe(tmp_path):
+    d = tmp_path / 'folder_lower'
+    d.mkdir()
+    f = d / 'file_lower.txt'
+    f.write_text('content')
+
+    assert get_actual_case_name(d) == 'folder_lower'
+    assert get_actual_case_name(f) == 'file_lower.txt'
+
+    # Case rename folder
+    d_upper = tmp_path / 'Folder_Upper'
+    rename_case_safe(d, d_upper)
+    assert get_actual_case_name(d_upper) == 'Folder_Upper'
+    assert 'Folder_Upper' in os.listdir(tmp_path)
+
+    # Case rename file
+    f_upper = d_upper / 'FILE_LOWER.TXT'
+    rename_case_safe(d_upper / 'file_lower.txt', f_upper)
+    assert get_actual_case_name(f_upper) == 'FILE_LOWER.TXT'
+    assert 'FILE_LOWER.TXT' in os.listdir(d_upper)
+
+
+def test_ensure_directory_case_nested(tmp_path):
+    root = tmp_path / 'root'
+    sub1 = root / '04 - encontro vendraminis'
+    sub2 = sub1 / 'raw'
+    sub2.mkdir(parents=True)
+    (sub2 / 'photo.jpg').write_text('img')
+
+    assert get_actual_case_name(sub1) == '04 - encontro vendraminis'
+    assert get_actual_case_name(sub2) == 'raw'
+
+    target_sub2 = root / '04 - Encontro Vendraminis' / 'RAW'
+    cache = set()
+    ensure_directory_case(target_sub2, verified_cache=cache)
+
+    assert get_actual_case_name(root / '04 - Encontro Vendraminis') == '04 - Encontro Vendraminis'
+    assert get_actual_case_name(target_sub2) == 'RAW'
+    assert (target_sub2 / 'photo.jpg').is_file()
+    assert str(target_sub2) in cache
+
+
+def test_robust_move_parent_dir_and_file_case_rename(tmp_path):
+    d_old = tmp_path / 'folder_old'
+    d_old.mkdir()
+    src_file = d_old / 'image.jpg'
+    src_file.write_text('pixels')
+
+    d_new = tmp_path / 'Folder_Old'
+    dst_file = d_new / 'IMAGE.JPG'
+
+    cache = set()
+    robust_move(src_file, dst_file, verified_dir_cache=cache)
+
+    assert 'Folder_Old' in os.listdir(tmp_path)
+    assert 'folder_old' not in os.listdir(tmp_path)
+    assert 'IMAGE.JPG' in os.listdir(d_new)
+    assert dst_file.is_file()
+    assert dst_file.read_text() == 'pixels'
+
+
+def test_deep_mixed_case_renames(tmp_path):
+    """Test simultaneous case changes at grandparent, parent, and file levels."""
+    root = tmp_path / 'deep_root'
+    old_dir = root / '01 - Vacation Trip' / 'SubFolder' / 'raw'
+    old_dir.mkdir(parents=True)
+    f = old_dir / 'image_one.jpg'
+    f.write_text('deep content')
+
+    new_dir = root / '01 - VACATION TRIP' / 'subfolder' / 'RAW'
+    new_f = new_dir / 'IMAGE_ONE.JPG'
+
+    cache: set[str] = set()
+    robust_move(f, new_f, verified_dir_cache=cache)
+
+    assert '01 - VACATION TRIP' in os.listdir(root)
+    assert '01 - Vacation Trip' not in os.listdir(root)
+    assert 'subfolder' in os.listdir(root / '01 - VACATION TRIP')
+    assert 'RAW' in os.listdir(root / '01 - VACATION TRIP' / 'subfolder')
+    assert 'IMAGE_ONE.JPG' in os.listdir(new_dir)
+    assert new_f.read_text() == 'deep content'
+
+
+def test_two_step_rename_fallback_on_oserror(tmp_path, monkeypatch):
+    """Simulate SMB/FAT collision where os.replace raises OSError initially."""
+    d = tmp_path / 'folder_case'
+    d.mkdir()
+    d_upper = tmp_path / 'Folder_Case'
+
+    real_replace = os.replace
+    calls: list[tuple[str, str]] = []
+
+    def mock_replace(src: str, dst: str) -> None:
+        calls.append((src, dst))
+        if src.lower() == dst.lower() and '__fm_case_' not in dst and '__fm_case_' not in src:
+            raise OSError(183, 'Cannot create a file when that file already exists')
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, 'replace', mock_replace)
+    rename_case_safe(d, d_upper)
+
+    assert get_actual_case_name(d_upper) == 'Folder_Case'
+    assert 'Folder_Case' in os.listdir(tmp_path)
+    assert any('__fm_case_' in dst for _, dst in calls)
+
+
+def test_special_characters_and_accents(tmp_path):
+    """Verify case renames handle Portuguese / Unicode accents and special characters."""
+    old_folder = tmp_path / '04 - Encontro vendraminis Caeté (São Paulo)'
+    old_folder.mkdir()
+    f = old_folder / 'foto_família.jpg'
+    f.write_text('familia')
+
+    new_folder = tmp_path / '04 - Encontro Vendraminis Caeté (São Paulo)'
+    new_f = new_folder / 'Foto_Família.JPG'
+
+    cache: set[str] = set()
+    robust_move(f, new_f, verified_dir_cache=cache)
+
+    entries = os.listdir(tmp_path)
+    assert '04 - Encontro Vendraminis Caeté (São Paulo)' in entries
+    assert '04 - Encontro vendraminis Caeté (São Paulo)' not in entries
+    assert 'Foto_Família.JPG' in os.listdir(new_folder)
+    assert new_f.read_text() == 'familia'
+
+
+def test_robust_copy_reconciles_existing_target_dir_case(tmp_path):
+    """When copying a new file to a target whose directory exists with different case, reconcile it."""
+    src_dir = tmp_path / 'Src' / 'MyPhotos'
+    src_dir.mkdir(parents=True)
+    (src_dir / 'pic.jpg').write_text('pic data')
+
+    tgt_dir = tmp_path / 'Tgt' / 'myphotos'
+    tgt_dir.mkdir(parents=True)
+
+    desired_tgt_file = tmp_path / 'Tgt' / 'MyPhotos' / 'pic.jpg'
+    cache: set[str] = set()
+    robust_copy(src_dir / 'pic.jpg', desired_tgt_file, verified_dir_cache=cache)
+
+    assert 'MyPhotos' in os.listdir(tmp_path / 'Tgt')
+    assert 'myphotos' not in os.listdir(tmp_path / 'Tgt')
+    assert desired_tgt_file.is_file()
+    assert desired_tgt_file.read_text() == 'pic data'

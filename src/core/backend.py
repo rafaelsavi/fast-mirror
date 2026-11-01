@@ -217,6 +217,35 @@ class CompareDirs:
             self.linked_files += linked_files
 
             ################################
+            logger.info('Searching for files that share the same relative path case-insensitively (case renames)')
+            start_time = time.time()
+            case_linked_files: list[File] = []
+            target_rel_paths_lower = {f.rel_to_root.lower(): f for f in files_in_target}
+
+            n_files = len(files_in_source)
+            for i, source_file in enumerate(copy(files_in_source), 1):
+                if self.cancel_requested and self.cancel_requested.is_set():
+                    break
+                log_progress('Linked case renames', i, n_files, start_time, interval=10_000)
+                source_rel_lower = source_file.rel_to_root.lower()
+                target_file = target_rel_paths_lower.get(source_rel_lower)
+                if target_file is not None:
+                    success, same = compare_files(source_file, target_file, comparison_method=self.comparison_method)
+                    if success and same:
+                        if not target_file.has_cached_stats and source_file.has_cached_stats:
+                            target_file.copy_stats_from(source_file)
+                        case_linked_files.append(
+                            File(source=source_file, target=target_file, compare_success=success, same=same)
+                        )
+                        files_in_source.remove(source_file)
+                        files_in_target.remove(target_file)
+                        target_rel_paths_lower.pop(source_rel_lower, None)
+
+            if case_linked_files:
+                logger.info(f'Found {len(case_linked_files):,} files that share the same path with case renames')
+                self.linked_files += case_linked_files
+
+            ################################
             logger.info('Searching for files that share the same name and are the same, but have different paths')
             start_time = time.time()
             linked_files: list[File] = []
@@ -437,6 +466,7 @@ class SyncDirs:
         self.files_copied: list[tuple[tuple[str, str], bool]] = list()
         self.files_moved: list[tuple[tuple[str, str], bool]] = list()
         self.files_deleted: list[tuple[str, bool]] = list()
+        self._verified_dir_cache: set[str] = set()
 
         if not self.files_available_to_copy and not self.files_available_to_move and not self.files_available_to_delete:
             logger.info('No files to synchronize')
@@ -639,6 +669,7 @@ class SyncDirs:
             max_retries=self.max_retries,
             initial_delay=self.retry_delay,
             backoff_factor=self.backoff_factor,
+            verified_dir_cache=self._verified_dir_cache,
         )
         if isinstance(target, CstmPath):
             with contextlib.suppress(Exception):
@@ -687,6 +718,7 @@ class SyncDirs:
             max_retries=self.max_retries,
             initial_delay=self.retry_delay,
             backoff_factor=self.backoff_factor,
+            verified_dir_cache=self._verified_dir_cache,
         )
         if isinstance(target, CstmPath):
             with contextlib.suppress(Exception):
