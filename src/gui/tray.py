@@ -9,6 +9,7 @@ from PIL import Image
 
 from gui.icons import apply_window_icon, conceal_window, get_app_icon_path, reveal_window
 from utils.logger import is_test_or_agent_mode, logger
+from utils.single_instance import release_single_instance
 
 # Win32 Shell_NotifyIcon balloon / toast click notification code (WM_USER + 5 = 0x0405)
 NIN_BALLOONUSERCLICK = 0x0405
@@ -235,6 +236,7 @@ class TrayableTk(tk.Tk):
             with contextlib.suppress(Exception):
                 self._tray_icon.stop()
             self._tray_icon = None
+        release_single_instance()
         super().destroy()
 
     def finalize_quit(self, force: bool = False):
@@ -251,6 +253,7 @@ class TrayableTk(tk.Tk):
             with contextlib.suppress(Exception):
                 self._tray_icon.stop()
             self._tray_icon = None
+        release_single_instance()
         with contextlib.suppress(Exception):
             self.destroy()
 

@@ -9,6 +9,21 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-01
+
+### Added
+- **Seamless 1-Click Update & Restart (`UpdateModal`)**:
+  - Implemented background chunked downloading (`download_installer_chunked`) with real-time download progress tracking directly within the update dialog.
+  - Added "Restart & Install Now" action that spawns the downloaded setup wizard and cleanly shuts down FastMirror (`finalize_quit(force=True)`), preventing locked file collisions (`WinError 32`).
+  - Added browser download guidance banner with a dedicated 1-click "Close FastMirror Now" action to ensure clean upgrades when downloading via external browsers.
+- **Dedicated Single-Instance Mutex Management (`single_instance.py`)**:
+  - Encapsulated Win32 Named Mutex lifecycle (`Local\FastMirror_SingleInstance`) with explicit kernel cleanup (`release_single_instance()`), releasing mutex handles immediately upon application shutdown or update handoff.
+
+### Fixed
+- **Installer Running Instance Gatekeeping**:
+  - Configured `AppMutex=Local\FastMirror_SingleInstance,FastMirror_SingleInstance` in `packaging/installer.iss` to immediately detect running instances at setup launch, preventing users from advancing to installation while the previous version is active.
+  - Added `CloseApplicationsFilter=FastMirror.exe,*` for Windows Restart Manager.
+
 ## [1.2.1] - 2026-10-31
 
 ### Fixed

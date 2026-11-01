@@ -8,8 +8,11 @@ for Setup and Portable packages without blocking the UI thread.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
+import tempfile
 import threading
 import urllib.error
 import urllib.request
@@ -150,5 +153,98 @@ def check_for_updates_async(
             callback(None, str(ex))
 
     thread = threading.Thread(target=_worker, name='UpdateCheckerThread', daemon=True)
+    thread.start()
+    return thread
+
+
+def get_default_installer_download_path(version: str) -> str:
+    """Return the destination filesystem path in %TEMP% for a downloaded installer executable."""
+    clean_ver = version.lstrip('vV').strip()
+    return os.path.join(tempfile.gettempdir(), f'FastMirror-v{clean_ver}-Windows-Setup.exe')
+
+
+def download_installer_chunked(
+    url: str,
+    target_path: str,
+    progress_callback: Callable[[int, int | None], None] | None = None,
+    cancel_event: threading.Event | None = None,
+    timeout: float = 30.0,
+) -> str:
+    """
+    Download the installer executable from url to target_path in 64 KB chunks.
+
+    Writes to a temporary .part file first and renames upon full download to avoid
+    corrupted or partially downloaded binaries.
+    """
+    req = urllib.request.Request(
+        url,
+        headers={
+            'Accept': 'application/octet-stream,*/*',
+            'User-Agent': f'FastMirror-App/{APP_VERSION}',
+        },
+    )
+    part_path = target_path + '.part'
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        content_length_str = response.headers.get('Content-Length')
+        total_bytes = int(content_length_str) if content_length_str and content_length_str.isdigit() else None
+        downloaded = 0
+        chunk_size = 64 * 1024
+
+        with open(part_path, 'wb') as f:
+            while True:
+                if cancel_event and cancel_event.is_set():
+                    f.close()
+                    with contextlib.suppress(Exception):
+                        os.remove(part_path)
+                    raise InterruptedError('Download cancelled by user')
+
+                chunk = response.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if progress_callback:
+                    progress_callback(downloaded, total_bytes)
+
+    if os.path.exists(target_path):
+        with contextlib.suppress(Exception):
+            os.remove(target_path)
+    os.replace(part_path, target_path)
+    return target_path
+
+
+def download_installer_async(
+    url: str,
+    target_path: str,
+    on_progress: Callable[[int, int | None], None],
+    on_complete: Callable[[str | None, str | None], None],
+    cancel_event: threading.Event | None = None,
+) -> threading.Thread:
+    """
+    Download the installer asynchronously in a background worker thread.
+
+    Invokes on_progress(bytes_downloaded, total_bytes) periodically and
+    on_complete(target_path_or_none, error_message_or_none) upon completion.
+    """
+
+    def _worker():
+        try:
+            path = download_installer_chunked(
+                url=url,
+                target_path=target_path,
+                progress_callback=on_progress,
+                cancel_event=cancel_event,
+            )
+            on_complete(path, None)
+        except InterruptedError:
+            on_complete(None, 'Download cancelled')
+        except urllib.error.URLError as ex:
+            logger.warning(f'Installer download network error: {ex.reason}')
+            on_complete(None, f'Network error: {ex.reason}')
+        except Exception as ex:
+            logger.warning(f'Installer download failed: {ex}')
+            on_complete(None, str(ex))
+
+    thread = threading.Thread(target=_worker, name='InstallerDownloaderThread', daemon=True)
     thread.start()
     return thread

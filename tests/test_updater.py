@@ -198,3 +198,136 @@ def test_read_app_version_resolves_highest_semver():
     ):
         ver = _read_app_version()
         assert ver == '1.2.0'
+
+
+def test_get_default_installer_download_path():
+    """Verify default download destination path in %TEMP%."""
+    from utils.updater import get_default_installer_download_path
+
+    path = get_default_installer_download_path('1.2.1')
+    assert path.endswith('FastMirror-v1.2.1-Windows-Setup.exe')
+    path_v = get_default_installer_download_path('v1.2.1')
+    assert path_v.endswith('FastMirror-v1.2.1-Windows-Setup.exe')
+
+
+def test_download_installer_chunked_success(tmp_path):
+    """Verify chunked downloading and atomic file renaming upon completion."""
+    from utils.updater import download_installer_chunked
+
+    dest = str(tmp_path / 'Setup.exe')
+    mock_payload = b'InstallerBinaryData' * 1024
+    progress_calls = []
+
+    mock_resp = MagicMock()
+    mock_resp.headers.get.return_value = str(len(mock_payload))
+    mock_resp.read.side_effect = [mock_payload[:1024], mock_payload[1024:], b'']
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch('urllib.request.urlopen', return_value=mock_resp):
+        result = download_installer_chunked(
+            url='https://example.com/setup.exe',
+            target_path=dest,
+            progress_callback=lambda down, tot: progress_calls.append((down, tot)),
+        )
+
+        assert result == dest
+        assert (tmp_path / 'Setup.exe').is_file()
+        assert (tmp_path / 'Setup.exe').stat().st_size == len(mock_payload)
+        assert len(progress_calls) >= 2
+        assert progress_calls[-1] == (len(mock_payload), len(mock_payload))
+
+
+def test_download_installer_chunked_cancellation(tmp_path):
+    """Verify download cancellation cleans up temporary partial files."""
+    import threading
+
+    import pytest
+
+    from utils.updater import download_installer_chunked
+
+    dest = str(tmp_path / 'Setup.exe')
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    mock_resp = MagicMock()
+    mock_resp.headers.get.return_value = '2048'
+    mock_resp.read.return_value = b'chunk'
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch('urllib.request.urlopen', return_value=mock_resp):
+        with pytest.raises(InterruptedError):
+            download_installer_chunked(
+                url='https://example.com/setup.exe',
+                target_path=dest,
+                cancel_event=cancel_event,
+            )
+
+        assert not (tmp_path / 'Setup.exe').exists()
+        assert not (tmp_path / 'Setup.exe.part').exists()
+
+
+def test_single_instance_lifecycle():
+    """Verify single instance mutex acquisition and explicit release."""
+    from utils.single_instance import acquire_single_instance, is_single_instance_acquired, release_single_instance
+
+    # Mock kernel32 to verify acquire and release behavior
+    mock_kernel32 = MagicMock()
+    mock_kernel32.CreateMutexW.return_value = 12345
+    mock_kernel32.GetLastError.return_value = 0
+
+    with patch('ctypes.windll.kernel32', mock_kernel32, create=True):
+        acquired = acquire_single_instance(activate_existing=False)
+        assert acquired is True
+        assert is_single_instance_acquired() is True
+
+        release_single_instance()
+        assert is_single_instance_acquired() is False
+        mock_kernel32.CloseHandle.assert_called_with(12345)
+
+
+def test_update_modal_in_app_download_and_browser_guidance():
+    """Verify UpdateModal in-app download and browser advisory flows."""
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        release_info = ReleaseInfo(
+            version='1.2.1',
+            tag_name='v1.2.1',
+            title='FastMirror v1.2.1',
+            html_url='https://github.com/rafaelsavi/fast-mirror/releases/tag/v1.2.1',
+            body='- Fast installer updater',
+            published_at='2026-10-31',
+            setup_download_url='https://github.com/download/setup.exe',
+            is_newer=True,
+        )
+
+        modal = UpdateModal(root, release_info)
+
+        # 1. Test browser download guidance
+        with patch('webbrowser.open'):
+            modal._download_via_browser()
+            assert '⚠️' in modal.lbl_progress_status.cget('text')
+            assert 'Close FastMirror' in modal.btn_action_setup.cget('text')
+
+        # 2. Test in-app download completion state
+        modal.downloaded_installer_path = 'C:\\fake\\Setup.exe'
+        modal._on_download_complete('C:\\fake\\Setup.exe', None)
+        root.update()
+
+        assert 'Restart & Install' in modal.btn_action_setup.cget('text')
+        assert 'Update downloaded' in modal.lbl_progress_status.cget('text')
+
+        # 3. Test installer launcher execution
+        with (
+            patch('subprocess.Popen') as mock_popen,
+            patch('gui.components.update_modal.release_single_instance') as mock_rel,
+            patch('sys.exit') as mock_exit,
+        ):
+            modal._launch_installer_and_exit()
+            mock_popen.assert_called_once_with(['C:\\fake\\Setup.exe'])
+            mock_rel.assert_called_once()
+            mock_exit.assert_called_once_with(0)
+
+        modal.destroy()
+    finally:
+        root.destroy()

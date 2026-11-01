@@ -2,7 +2,7 @@
 ; Creates a lightweight, modern per-user Windows Setup wizard without requiring Admin elevation.
 
 #ifndef AppVersion
-#define AppVersion "1.2.1"
+#define AppVersion "1.2.2"
 #endif
 
 #define AppName "FastMirror"
@@ -32,7 +32,9 @@ SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64compatible
+AppMutex=Local\FastMirror_SingleInstance,FastMirror_SingleInstance
 CloseApplications=yes
+CloseApplicationsFilter=FastMirror.exe,*
 RestartApplications=no
 
 [Languages]

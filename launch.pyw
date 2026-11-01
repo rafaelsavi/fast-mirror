@@ -40,21 +40,10 @@ if any(arg in sys.argv for arg in ('--help', '-h')):
     sys.exit(0)
 
 # Windows Single-Instance Guard: prevent duplicate concurrent GUI instances
-MUTEX_NAME = 'Local\\FastMirror_SingleInstance'
-kernel32 = getattr(ctypes, 'windll', None) and getattr(ctypes.windll, 'kernel32', None)
-mutex = None
-if kernel32:
-    mutex = kernel32.CreateMutexW(None, False, MUTEX_NAME)
-    if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-        user32 = getattr(ctypes.windll, 'user32', None)
-        if user32:
-            from utils.constants import WINDOW_TITLE
+from utils.single_instance import acquire_single_instance  # noqa: E402
 
-            hwnd = user32.FindWindowW(None, WINDOW_TITLE) or user32.FindWindowW(None, 'FastMirror')
-            if hwnd:
-                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-                user32.SetForegroundWindow(hwnd)
-        sys.exit(0)
+if not acquire_single_instance(activate_existing=True):
+    sys.exit(0)
 
 # Activate venv if not already active and not running as a frozen executable
 if not getattr(sys, 'frozen', False):
