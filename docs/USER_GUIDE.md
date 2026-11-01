@@ -85,7 +85,7 @@ Step 1: Add Folders          Step 2: Quick Compare          Step 3: Sync Now
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│ FastMirror v1.2.3                   Profile: [ Default ▾ ] [Save] [+ New] [Del] │
+│ FastMirror v1.2.4                   Profile: [ Default ▾ ] [Save] [+ New] [Del] │
 ├───────────────────────────────────┬─────────────────────────────────────────────┤
 │ PATHS & DIRECTORY PAIRS           │ ACTIONS & SETTINGS                          │
 │ [ + Add Pair ] [ Edit Pairs ]     │ [ Quick Compare ]  [ Sync Now ]  [ Reports ]│

@@ -9,13 +9,15 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
-## [1.2.3] - 2026-11-01
+## [1.2.4] - 2026-11-01
 
 ### Added
 - **Multi-Version Changelog Aggregation (`updater.py`)**:
-  - Automatically queries the GitHub Releases list and aggregates release notes across all intermediate versions when jumping across versions (e.g. v1.0.0 $\rightarrow$ v1.2.3).
+  - Automatically queries the GitHub Releases list and aggregates release notes across all intermediate versions when jumping across versions (e.g. v1.0.0 $\rightarrow$ v1.2.4).
   - Automatically sanitizes redundant download footers and SmartScreen notices, presenting a unified, chronological changelog in the update dialog.
   - Implemented automatic fallback from the releases list endpoint to the single latest release endpoint if needed.
+
+## [1.2.3] - 2026-11-01
 
 ### Documentation
 - **Architecture & User Flow Alignment**:

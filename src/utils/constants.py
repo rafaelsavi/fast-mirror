@@ -70,7 +70,7 @@ def _read_app_version() -> str:
     except Exception:
         pass
 
-    return '1.2.3'
+    return '1.2.4'
 
 
 APP_VERSION = _read_app_version()
