@@ -9,6 +9,12 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-11-01
+
+### Documentation
+- **Architecture & User Flow Alignment**:
+  - Synchronized User Guide, Data Storage & Migration Guide, and System Architecture specifications with the seamless 1-click update flow, live chunked progress tracking, and Win32 named mutex concurrency lifecycle.
+
 ## [1.2.2] - 2026-11-01
 
 ### Added
