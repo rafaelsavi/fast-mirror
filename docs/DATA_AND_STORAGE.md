@@ -113,11 +113,13 @@ In standard Windows desktop software architecture, executable files and user sta
 FastMirror includes an automatic, non-blocking **In-App Update Checker**:
 - When FastMirror starts, it quietly checks GitHub in the background for new releases.
 - When an update is available, a `⚡ Update: vX.Y.Z` button appears in the top status bar and in the system tray menu.
-- Clicking the update button opens a summary of release notes with direct one-click download buttons for the setup installer (`.exe`) and portable edition (`.zip`).
-- When you run the downloaded installer:
-  1. Inno Setup safely updates the executable files inside `%LOCALAPPDATA%\Programs\FastMirror\`.
-  2. **Your `%LOCALAPPDATA%\FastMirror\data\` directory is left completely untouched.**
-  3. When you open the updated FastMirror, all your directory pairs, profiles, scheduled backup times, and cached file databases are immediately available.
+- Clicking the update button opens the release notes dialog with a seamless **Update & Restart** button (alongside portable zip and browser fallback options).
+- Clicking **Update & Restart**:
+  1. FastMirror downloads the installer in the background with live progress tracking directly inside the dialog.
+  2. Clicking **Restart & Install Now** cleanly shuts down FastMirror and releases all Win32 mutex and SQLite file locks before spawning the installer.
+  3. Inno Setup safely updates the executable files inside `%LOCALAPPDATA%\Programs\FastMirror\`.
+  4. **Your `%LOCALAPPDATA%\FastMirror\data\` directory is left completely untouched.**
+  5. The installer automatically relaunches the updated FastMirror upon completion with 100% of your configurations, directory pairs, profiles, and cached file databases intact.
 
 ### Uninstalling FastMirror
 If you choose to uninstall FastMirror via Windows **Settings $\rightarrow$ Apps $\rightarrow$ Installed apps**:

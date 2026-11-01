@@ -46,6 +46,7 @@ FastMirror is designed for anyone who regularly backs up important local folders
 - **🛡️ Visual Safety Confirmation**: An interactive dialog previews all proposed additions, moves, and deletions with file size badges, timestamps, and aggregate group volumes before any file is touched.
 - **📁 Multi-Profile Support**: Switch between distinct backup configurations (`Default`, `Office Work`, `Photo Archive`, `NAS Storage`) with one click from the toolbar.
 - **🕒 Weekly Automation**: Schedule recurring backups by choosing specific days of the week and times.
+- **🚀 Seamless 1-Click In-App Updates**: Automatically checks for new versions in the background, downloads the setup installer with real-time in-app progress tracking, and cleanly restarts to complete upgrades without file lock errors.
 - **🔔 Windows System Tray Integration**: Minimizes seamlessly to the Windows notification tray with customizable background notifications and one-click restoration.
 - **🚫 Wildcard & Git-Style Exclusions**: Ignore temporary files, caches, and system folders using familiar `.gitignore`-style wildcard patterns (e.g. `$RECYCLE.BIN`, `\~$*`, `*.tmp`, `node_modules/`).
 - **📊 Detailed Audit Reports**: Export rich color-coded Excel (`.xlsx`) spreadsheets comparing source and destination trees side by side.

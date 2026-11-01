@@ -248,8 +248,9 @@ FastMirror performs a non-blocking reachability probe before attempting any sync
 ### How do I update to a newer version?
 FastMirror automatically checks for new releases on startup without slowing down your system. When an update is available:
 1. Click the `⚡ Update: vX.Y.Z` button in the top status bar or select **Check for Updates...** from the System Tray menu.
-2. Review the release notes and click **Download Setup (.exe)**.
-3. Run the downloaded installer. It will automatically update FastMirror in seconds while preserving all your folder pairs, profiles, and backup history.
+2. Review the release notes and click **Update & Restart** (or choose **In Browser** if you prefer downloading manually).
+3. FastMirror downloads the installer in the background with real-time progress.
+4. When ready, click **Restart & Install Now**. FastMirror will cleanly close itself, release system locks, and launch the installer wizard. Once completed, the updated version will automatically launch with all your profiles, schedules, and mirror caches preserved.
 
 ### Will FastMirror ever delete files from my original Source folders?
 **No, never.** FastMirror is strictly a one-way mirror. It only ever writes to or removes obsolete files from the **Target** destination. Your Source files are treated as read-only inputs.

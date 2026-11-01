@@ -33,6 +33,8 @@ This document provides an in-depth technical analysis of the design, internal da
    - [Custom TreeView with Dynamic Grouping](#custom-treeview-with-dynamic-grouping)
    - [Modular GUI Panels & Management Windows](#modular-gui-panels--management-windows)
    - [System Tray via Pystray](#system-tray-via-pystray)
+   - [Single-Instance Concurrency & Mutex Management](#single-instance-concurrency--mutex-management)
+   - [In-App Update Engine & Chunked Downloader](#in-app-update-engine--chunked-downloader)
 
 ---
 
@@ -346,3 +348,18 @@ Windows-native notification tray docking is provided via `pystray`:
 - Pure Python using native Windows API (`Shell_NotifyIconW`) without requiring any compiled binary DLLs.
 - Supports native `.ico` icon loading via Pillow (`PIL.Image`).
 - Provides background-threaded execution (`icon.run_detached()`) with context menu options ("Open", "Quit") and double-click window restoration.
+
+### Single-Instance Concurrency & Mutex Management
+Implemented in [`src/utils/single_instance.py`](../src/utils/single_instance.py) and [`launch.pyw`](../launch.pyw).
+
+Concurrency is guarded using a Win32 Named Mutex (`Local\FastMirror_SingleInstance`):
+- Prevents accidental duplicate processes from launching simultaneously.
+- If a secondary instance is launched, it restores and focuses the existing window (`user32.ShowWindow(hwnd, SW_RESTORE)` and `SetForegroundWindow(hwnd)`) before exiting silently.
+- Explicitly releases and closes the kernel mutex handle on application finalization and update handoffs (`release_single_instance()`), guaranteeing zero race conditions when launching installers.
+
+### In-App Update Engine & Chunked Downloader
+Implemented in [`src/utils/updater.py`](../src/utils/updater.py) and [`src/gui/components/update_modal.py`](../src/gui/components/update_modal.py).
+
+- **Non-blocking version resolution**: Compares SemVer tags asynchronously against GitHub Releases API using a daemon thread.
+- **Chunked atomic downloading**: Streams the installer in 64 KB chunks to an isolated `.part` file before atomic filesystem replacement, preventing corrupt or truncated binaries.
+- **In-place safe transition**: Provides real-time UI progress and a clean handoff sequence: spawns the installer, closes Win32 mutexes, and exits FastMirror (`finalize_quit(force=True)`) to eliminate file-locking errors during setup.
