@@ -41,6 +41,19 @@ def test_get_launcher_targets():
     assert icon_path.is_file(), f'app_icon.ico missing at {icon_path}'
 
 
+def test_get_launcher_targets_frozen(monkeypatch, tmp_path):
+    """Verify get_launcher_targets targets sys.executable directly when running as frozen binary."""
+    fake_exe = tmp_path / 'FastMirror.exe'
+    fake_exe.touch()
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, 'executable', str(fake_exe))
+
+    exe_target, script_target, icon_target = get_launcher_targets()
+    assert exe_target == fake_exe.resolve()
+    assert script_target is None
+    assert icon_target == fake_exe.resolve()
+
+
 def test_create_windows_shortcut(tmp_path):
     """Test actual creation of a Windows .lnk shortcut in a temporary directory."""
     shortcut_name = 'TestFastMirror.lnk'

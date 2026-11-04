@@ -100,12 +100,24 @@ def get_start_menu_dir() -> Path:
     return Path.home() / 'AppData' / 'Roaming' / 'Microsoft' / 'Windows' / 'Start Menu' / 'Programs'
 
 
-def get_launcher_targets() -> tuple[Path, Path, Path]:
+def get_launcher_targets() -> tuple[Path, Path | None, Path]:
     """
-    Return (target_pythonw_executable, launch_script, icon_path).
+    Return (target_executable, launch_script_or_none, icon_path).
 
-    Prefers .venv/Scripts/pythonw.exe for silent execution without a console window.
+    When running from a compiled PyInstaller frozen executable:
+    - Target executable is sys.executable (FastMirror.exe).
+    - launch_script is None (no extra script argument).
+    - Icon path is sys.executable (FastMirror.exe has embedded icons).
+
+    When running from Python source repository:
+    - Target executable prefers .venv/Scripts/pythonw.exe for silent execution.
+    - launch_script is ROOT_DIR/launch.pyw.
+    - Icon path is ROOT_DIR/src/gui/app_icon.ico.
     """
+    if getattr(sys, 'frozen', False):
+        exe_path = Path(sys.executable).resolve()
+        return exe_path, None, exe_path
+
     root = Path(ROOT_DIR)
     venv_pythonw = root / '.venv' / 'Scripts' / 'pythonw.exe'
     if venv_pythonw.is_file():
@@ -142,11 +154,13 @@ def create_windows_shortcut(
     def _ps_esc(p: Path | str) -> str:
         return str(p).replace("'", "''")
 
+    args_prop = f'$s.Arguments = \'"{_ps_esc(launch_script)}"\'; ' if launch_script else "$s.Arguments = ''; "
+
     ps_script = (
         f'$ws = New-Object -ComObject WScript.Shell; '
         f"$s = $ws.CreateShortcut('{_ps_esc(shortcut_path)}'); "
         f"$s.TargetPath = '{_ps_esc(python_exe)}'; "
-        f'$s.Arguments = \'"{_ps_esc(launch_script)}"\'; '
+        f'{args_prop}'
         f"$s.WorkingDirectory = '{_ps_esc(work_dir)}'; "
         f"$s.IconLocation = '{_ps_esc(icon_path)},0'; "
         f"$s.Description = 'FastMirror - Automated Directory Synchronization'; "
