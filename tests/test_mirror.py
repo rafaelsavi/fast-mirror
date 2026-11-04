@@ -308,3 +308,69 @@ def test_mirror_persists_size_and_mtime_and_migration(tmp_path):
     retrieved2 = {p.rel_to_root: p for p in mirror2.get_paths(root_dir)}
     assert 'legacy_zero.txt' in retrieved2
     assert retrieved2['legacy_zero.txt'].cached_stats is None
+
+
+def test_mirror_cache_nocase_collation_and_migration(tmp_path):
+    """Verify that mirror_cache enforces case-insensitive path collation and migrates legacy tables."""
+    import contextlib
+    import sqlite3
+
+    db_path = str(tmp_path / 'nocase.db')
+    root_dir = str(tmp_path / 'target')
+    os.makedirs(root_dir, exist_ok=True)
+
+    # 1. Create a legacy table without NOCASE collation and with duplicate case rows
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        conn.execute("""
+            CREATE TABLE mirror_cache (
+                root_dir TEXT NOT NULL,
+                rel_path TEXT NOT NULL,
+                stats_hash TEXT NOT NULL,
+                size INTEGER,
+                mtime REAL,
+                PRIMARY KEY (root_dir, rel_path)
+            );
+        """)
+        conn.execute(
+            """
+            INSERT INTO mirror_cache (root_dir, rel_path, stats_hash, size, mtime)
+            VALUES (?, ?, ?, ?, ?);
+        """,
+            (root_dir, 'album\\photo.jpg', 'hash_lower', 100, 1000.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO mirror_cache (root_dir, rel_path, stats_hash, size, mtime)
+            VALUES (?, ?, ?, ?, ?);
+        """,
+            (root_dir, 'Album\\photo.jpg', 'hash_upper', 200, 2000.0),
+        )
+        conn.commit()
+
+    # 2. Open with MirrorDatabase - should auto-migrate to COLLATE NOCASE and deduplicate
+    mirror = MirrorDatabase(path=db_path)
+    assert mirror.size(root_dir) == 1
+
+    # 3. Verify case-insensitive exists check
+    assert mirror.exists(root_dir, 'ALBUM/PHOTO.JPG') is True
+    assert mirror.exists(root_dir, 'album/photo.jpg') is True
+
+    # 4. Verify adding a case-variant path updates existing entry instead of creating duplicates
+    file_path = os.path.join(root_dir, 'ALBUM', 'PHOTO.JPG')
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, 'w') as f:
+        f.write('updated')
+
+    cstm = CstmPath(file_path, root_dir=root_dir, stats=Stats(300, 3000.0), stats_hash=StatsHash('hash_new'))
+    mirror.add_path(root_dir, cstm)
+
+    assert mirror.size(root_dir) == 1
+    paths = {p.rel_to_root: p for p in mirror.get_paths(root_dir)}
+    assert len(paths) == 1
+    # Primary key should be updated to latest added casing
+    assert 'ALBUM\\PHOTO.JPG' in paths or 'ALBUM/PHOTO.JPG' in paths
+
+    # 5. Verify case-insensitive remove_path
+    assert mirror.remove_path(root_dir, os.path.join(root_dir, 'album', 'photo.jpg')) is True
+    assert mirror.size(root_dir) == 0
+    assert mirror.exists(root_dir, 'ALBUM/PHOTO.JPG') is False

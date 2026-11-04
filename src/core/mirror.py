@@ -48,7 +48,7 @@ class MirrorDatabase:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS mirror_cache (
                         root_dir TEXT NOT NULL,
-                        rel_path TEXT NOT NULL,
+                        rel_path TEXT COLLATE NOCASE NOT NULL,
                         stats_hash TEXT NOT NULL,
                         size INTEGER,
                         mtime REAL,
@@ -62,6 +62,31 @@ class MirrorDatabase:
                     conn.execute('ALTER TABLE mirror_cache ADD COLUMN size INTEGER;')
                 if 'mtime' not in columns:
                     conn.execute('ALTER TABLE mirror_cache ADD COLUMN mtime REAL;')
+
+                # Migrate existing table to COLLATE NOCASE if created with legacy case-sensitive schema
+                table_sql_row = conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='mirror_cache';"
+                ).fetchone()
+                if table_sql_row and 'collate nocase' not in table_sql_row[0].lower():
+                    conn.execute('ALTER TABLE mirror_cache RENAME TO mirror_cache_legacy;')
+                    conn.execute("""
+                        CREATE TABLE mirror_cache (
+                            root_dir TEXT NOT NULL,
+                            rel_path TEXT COLLATE NOCASE NOT NULL,
+                            stats_hash TEXT NOT NULL,
+                            size INTEGER,
+                            mtime REAL,
+                            PRIMARY KEY (root_dir, rel_path)
+                        );
+                    """)
+                    conn.execute("""
+                        INSERT OR REPLACE INTO mirror_cache
+                        SELECT root_dir, rel_path, stats_hash, size, mtime
+                        FROM mirror_cache_legacy;
+                    """)
+                    conn.execute('DROP TABLE mirror_cache_legacy;')
+                    conn.execute('CREATE INDEX IF NOT EXISTS idx_mirror_root ON mirror_cache(root_dir);')
+
                 # Clean up legacy entries where size and mtime were artificially set to 0 by older migrations
                 conn.execute(
                     'UPDATE mirror_cache SET size = NULL, mtime = NULL WHERE size = 0 AND (mtime = 0 OR mtime IS NULL);'
@@ -143,7 +168,7 @@ class MirrorDatabase:
         try:
             with self._get_connection() as conn:
                 row = conn.execute(
-                    'SELECT 1 FROM mirror_cache WHERE root_dir = ? AND rel_path = ?;',
+                    'SELECT 1 FROM mirror_cache WHERE root_dir = ? AND rel_path = ? COLLATE NOCASE;',
                     (root_str, rel_path),
                 ).fetchone()
                 return row is not None
@@ -309,7 +334,7 @@ class MirrorDatabase:
                 deleted_count = 0
                 for r_dir, rel in rows:
                     cur = conn.execute(
-                        'DELETE FROM mirror_cache WHERE root_dir = ? AND rel_path = ?;',
+                        'DELETE FROM mirror_cache WHERE root_dir = ? AND rel_path = ? COLLATE NOCASE;',
                         (r_dir, rel),
                     )
                     if cur.rowcount > 0:
@@ -354,14 +379,14 @@ class MirrorDatabase:
             with self._get_connection() as conn:
                 if new_size is None and new_mtime is None:
                     old_row = conn.execute(
-                        'SELECT size, mtime FROM mirror_cache WHERE root_dir = ? AND rel_path = ?;',
+                        'SELECT size, mtime FROM mirror_cache WHERE root_dir = ? AND rel_path = ? COLLATE NOCASE;',
                         (root_str, old_rel),
                     ).fetchone()
                     if old_row:
                         new_size, new_mtime = old_row[0], old_row[1]
 
                 conn.execute(
-                    'DELETE FROM mirror_cache WHERE root_dir = ? AND rel_path = ?;',
+                    'DELETE FROM mirror_cache WHERE root_dir = ? AND rel_path = ? COLLATE NOCASE;',
                     (root_str, old_rel),
                 )
                 conn.execute(
