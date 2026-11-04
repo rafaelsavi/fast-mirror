@@ -547,30 +547,33 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             with contextlib.suppress(Exception):
                 self.heading(orig_col, text=f'{orig_col}{arrow}')
 
+        folder_priority = 1 if reverse else 0
+        file_priority = 0 if reverse else 1
+
         def _sort_key(item_id: str):
             if item_id in self._folder_nodes:
-                return (0, self._folder_display_names.get(item_id, item_id).lower())
+                return (folder_priority, self._folder_display_names.get(item_id, item_id).lower())
             action_info = self._item_actions.get(item_id)
             if not action_info:
-                return (1, item_id.lower())
+                return (file_priority, item_id.lower())
             action, src_val, tgt_val = action_info
             row = self._data.get(action, {}).get(item_id, {})
             if col == 'size':
                 val = row.get('size in bytes', 0)
-                return (1, float(val if isinstance(val, int | float) else 0))
+                return (file_priority, float(val if isinstance(val, int | float) else 0))
             elif col == 'action':
-                return (1, action.value)
+                return (file_priority, action.value)
             elif col == 'origin':
                 primary_path = tgt_val if (tgt_val and tgt_val != '-') else src_val
-                return (1, str(primary_path).lower())
+                return (file_priority, str(primary_path).lower())
             elif col == 'modified':
                 dt_key = 'modification date (target)' if action == Action.DELETE else 'modification date (source)'
-                return (1, str(row.get(dt_key, '')))
+                return (file_priority, str(row.get(dt_key, '')))
             elif col == '#0':
                 primary_path = tgt_val if (tgt_val and tgt_val != '-') else src_val
-                return (1, os.path.basename(primary_path).lower())
+                return (file_priority, os.path.basename(primary_path).lower())
             else:
-                return (1, item_id.lower())
+                return (file_priority, item_id.lower())
 
         for parent_iid, children in list(self._original_tree_structure.items()):
             sorted_children = sorted(children, key=_sort_key, reverse=reverse)

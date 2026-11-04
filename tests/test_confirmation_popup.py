@@ -1365,6 +1365,54 @@ def test_custom_treeview_click_to_sort_columns(tmp_path):
             root.destroy()
 
 
+def test_custom_treeview_sort_folders_remain_at_top(tmp_path):
+    """Verify folder nodes always remain sorted above file leaves in both ascending and descending sorts."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    src = tmp_path / 's'
+    tgt = tmp_path / 't'
+    src.mkdir()
+    tgt.mkdir()
+    (src / 'sub_folder').mkdir()
+    f_nested = src / 'sub_folder' / 'nested.txt'
+    f_nested.write_text('nested')
+    f_root = src / 'a_file.txt'
+    f_root.write_text('root')
+
+    try:
+        tree = CustomCheckboxTreeView(root)
+        tree.add_file_lists(
+            {
+                Action.COPY: [
+                    (CstmPath(f_nested, root_dir=src), CstmPath(tgt / 'sub_folder' / 'nested.txt', root_dir=tgt)),
+                    (CstmPath(f_root, root_dir=src), CstmPath(tgt / 'a_file.txt', root_dir=tgt)),
+                ]
+            },
+            default_active=[Action.COPY],
+        )
+
+        parent_folder = tree.get_children('')[0]
+        # Sort Ascending on #0
+        tree.sort_by_column('#0')
+        children_asc = tree._original_tree_structure[parent_folder]
+        assert children_asc[0] in tree._folder_nodes
+        assert children_asc[1] not in tree._folder_nodes
+
+        # Sort Descending on #0
+        tree.sort_by_column('#0')
+        children_desc = tree._original_tree_structure[parent_folder]
+        # Folder node MUST STILL BE FIRST in descending order
+        assert children_desc[0] in tree._folder_nodes
+        assert children_desc[1] not in tree._folder_nodes
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
 def test_action_selection_safety_buttons(tmp_path, monkeypatch):
     """Test 'Uncheck Deletions' and 'Copies Only' toolbar buttons."""
     monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
