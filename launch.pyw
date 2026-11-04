@@ -39,12 +39,6 @@ if any(arg in sys.argv for arg in ('--help', '-h')):
     print('  python launch.pyw --help          Show this help message')
     sys.exit(0)
 
-# Windows Single-Instance Guard: prevent duplicate concurrent GUI instances
-from utils.single_instance import acquire_single_instance  # noqa: E402
-
-if not acquire_single_instance(activate_existing=True):
-    sys.exit(0)
-
 # Activate venv if not already active and not running as a frozen executable
 if not getattr(sys, 'frozen', False):
     venv_dir = os.path.join(os.path.dirname(__file__), '.venv', 'Scripts')
@@ -59,6 +53,12 @@ if not getattr(sys, 'frozen', False):
     ):
         subprocess.Popen([venv_pythonw] + sys.argv)
         sys.exit(0)
+
+# Windows Single-Instance Guard: prevent duplicate concurrent GUI instances
+from utils.single_instance import acquire_single_instance  # noqa: E402
+
+if not acquire_single_instance(activate_existing=True):
+    sys.exit(0)
 
 from gui.gui import Gui  # noqa: E402
 
