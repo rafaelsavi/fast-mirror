@@ -9,6 +9,21 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [1.2.6] - 2026-11-05
+
+### Fixed
+- **Case-Insensitive SQLite Mirror Collation (`mirror.py`)**:
+  - Enforced `COLLATE NOCASE` on `rel_path` in `mirror_cache` table schema and path operations (`exists`, `remove_path`, `replace_path`), preventing duplicate cache records when directory or file casing changes.
+  - Added automatic database migration in `MirrorDatabase.init()` to upgrade legacy case-sensitive tables and deduplicate existing case-variant rows safely.
+- **Treeview Sorting Folder Preservation (`checkbox_treeview.py`)**:
+  - Fixed column sorting in the action confirmation popup so directory group nodes remain pinned at the top above individual file items when sorting in descending order.
+- **Launcher Mutex Lifecycle (`launch.pyw`)**:
+  - Reordered Python virtual environment activation in `launch.pyw` to execute prior to acquiring the Win32 single-instance mutex, eliminating premature mutex lockups during launcher re-spawning.
+- **Desktop Shortcut for Frozen Executables (`shortcut.py`)**:
+  - Resolved desktop shortcut creation when running from compiled standalone binaries (`FastMirror.exe`), targeting the native executable directly with embedded icons rather than attempting to launch via `launch.pyw` and `pythonw.exe`.
+- **Inno Setup Default Version Alignment (`installer.iss`)**:
+  - Synchronized default fallback installer version definition with current release.
+
 ## [1.2.5] - 2026-11-01
 
 ### Fixed

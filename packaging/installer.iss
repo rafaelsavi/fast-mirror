@@ -2,7 +2,7 @@
 ; Creates a lightweight, modern per-user Windows Setup wizard without requiring Admin elevation.
 
 #ifndef AppVersion
-#define AppVersion "1.2.5"
+#define AppVersion "1.2.6"
 #endif
 
 #define AppName "FastMirror"
