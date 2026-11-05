@@ -6,7 +6,7 @@ Welcome to the **FastMirror** codebase. This repository provides automated, mult
 
 ## 1. Tech Stack & Environment
 - **Platform**: Windows 10 / 11 (requires native Windows support for UNC network paths, `winsound`, `pystray` system tray integration, and `ctypes.windll.kernel32`).
-- **Python**: Python 3.10+ (tested with 3.13) managed via `uv`.
+- **Python**: Python 3.13+ managed via `uv`.
 - **GUI**: Tkinter / `sv-ttk` (Sun Valley theme) / `ttkwidgets` with custom worker threads.
 - **Database**: SQLite3 (`data/local_mirror.db`) operating in WAL (`Write-Ahead Logging`) mode for lightning-fast hash caching and path tracking.
 - **Packaging & Installer**: PyInstaller (`packaging/fastmirror.spec`, `packaging/build.py`) and Inno Setup 6 (`packaging/installer.iss`).

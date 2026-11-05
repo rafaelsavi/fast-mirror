@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/rafaelsavi/fast-mirror?color=2ea44f&logo=github)](https://github.com/rafaelsavi/fast-mirror/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Database: SQLite WAL](https://img.shields.io/badge/database-SQLite%20WAL-003B57.svg?logo=sqlite)](https://sqlite.org/)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB.svg?logo=python)](https://www.python.org/)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-3776AB.svg?logo=python)](https://www.python.org/)
 
 **Automated, accelerated one-way folder mirroring and backup for Windows to external drives and network shares (NAS).**
 
@@ -75,7 +75,7 @@ Documentation is organized by role and expertise:
 
 If you are developing or contributing to FastMirror:
 
-**Requirements:** Windows 10/11, Python 3.10+, and [uv](https://docs.astral.sh/uv/).
+**Requirements:** Windows 10/11, Python 3.13+, and [uv](https://docs.astral.sh/uv/).
 
 ```powershell
 # 1. Clone the repository

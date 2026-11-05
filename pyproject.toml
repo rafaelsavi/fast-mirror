@@ -1,8 +1,8 @@
 [project]
 name = "fast-mirror"
-version = "1.2.6"
+version = "1.3.0"
 description = "FastMirror: High-performance one-way directory synchronization and backup tool for Windows."
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "pandas[excel]",
     "pathspec",
@@ -35,7 +35,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py313"
 exclude = ["**/.venv/**", "scratch_*.py"]
 extend-exclude = ["*.ipynb"]
 
@@ -81,7 +81,7 @@ docstring-code-format = true
 quote-style = "single"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.13"
 ignore_missing_imports = true
 mypy_path = "src"
 explicit_package_bases = true

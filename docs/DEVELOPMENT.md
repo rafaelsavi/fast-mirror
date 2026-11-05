@@ -39,7 +39,7 @@ This guide covers developer environment setup, testing, code quality gates, Wind
 
 ### Prerequisites
 - **Operating System**: Windows 10 or Windows 11 (requires native Windows APIs for UNC paths, `winsound`, and system tray).
-- **Python**: Version **3.10** or higher (Python 3.13 recommended).
+- **Python**: Version **3.13** or higher.
 - **Package Manager**: [uv](https://docs.astral.sh/uv/) (recommended for instant dependency resolution) or standard `pip`.
 
 ### Setup with uv (Recommended)

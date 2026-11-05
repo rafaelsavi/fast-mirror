@@ -9,6 +9,14 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-05
+
+### Changed
+- **Python 3.13 Runtime Baseline & Toolchain Alignment (`pyproject.toml`)**:
+  - Upgraded minimum supported Python specification from `>=3.10` to `>=3.13`, aligning local development, CI/CD runners, and standalone compilation with the modern Python runtime.
+  - Modernized static analysis targets for Ruff (`target-version = "py313"`) and Mypy (`python_version = "3.13"`).
+  - Modernized project documentation and setup guides to reflect the Python 3.13+ platform requirement.
+
 ## [1.2.6] - 2026-11-05
 
 ### Fixed

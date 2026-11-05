@@ -146,7 +146,7 @@ def get_icon(name: str, master: tk.Misc | None = None, auto_scale: bool = False)
         img = tk.PhotoImage(file=icon_path, master=master)
         if auto_scale and master and get_dpi_scale(master) >= 1.75:
             with contextlib.suppress(Exception):
-                img = img.zoom(2, 2)
+                img = img.zoom(2)
         _ICON_CACHE[cache_key] = img
         return img
     except (tk.TclError, RuntimeError):
