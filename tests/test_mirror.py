@@ -374,3 +374,49 @@ def test_mirror_cache_nocase_collation_and_migration(tmp_path):
     assert mirror.remove_path(root_dir, os.path.join(root_dir, 'album', 'photo.jpg')) is True
     assert mirror.size(root_dir) == 0
     assert mirror.exists(root_dir, 'ALBUM/PHOTO.JPG') is False
+
+
+def test_mirror_volume_serial_isolation_and_relocation(tmp_path):
+    """
+    Verify that external drives sharing a mount path are isolated by volume serial,
+    and letter shifts are transparent.
+    """
+    db_path = str(tmp_path / 'volume_isolation.db')
+    mirror = MirrorDatabase(path=db_path)
+
+    # Drive 1 (serial AAAA-1111) mounted at E:\Backup
+    drive1_mount = r'E:\Backup'
+    drive1_serial = 'AAAA-1111'
+    file_d1 = CstmPath(r'E:\Backup\photo1.jpg', root_dir=drive1_mount, stats=Stats(100, 1000.0))
+    mirror.add_path(drive1_mount, file_d1, serial=drive1_serial)
+
+    assert mirror.exists_table(drive1_mount, serial=drive1_serial) is True
+    assert mirror.size(drive1_mount, serial=drive1_serial) == 1
+
+    # Drive 2 (serial BBBB-2222) sharing the SAME mount path E:\Backup
+    drive2_mount = r'E:\Backup'
+    drive2_serial = 'BBBB-2222'
+    file_d2 = CstmPath(r'E:\Backup\doc2.pdf', root_dir=drive2_mount, stats=Stats(200, 2000.0))
+    mirror.add_path(drive2_mount, file_d2, serial=drive2_serial)
+
+    # Both drives must maintain completely independent caches!
+    assert mirror.size(drive1_mount, serial=drive1_serial) == 1
+    assert mirror.size(drive2_mount, serial=drive2_serial) == 1
+
+    d1_paths = {p.rel_to_root: p for p in mirror.get_paths(drive1_mount, serial=drive1_serial)}
+    d2_paths = {p.rel_to_root: p for p in mirror.get_paths(drive2_mount, serial=drive2_serial)}
+
+    assert 'photo1.jpg' in d1_paths
+    assert 'doc2.pdf' not in d1_paths
+    assert 'doc2.pdf' in d2_paths
+    assert 'photo1.jpg' not in d2_paths
+
+    # Drive 1 shifts drive letters from E:\Backup to F:\Backup!
+    drive1_new_mount = r'F:\Backup'
+    assert mirror.exists_table(drive1_new_mount, serial=drive1_serial) is True
+    assert mirror.size(drive1_new_mount, serial=drive1_serial) == 1
+
+    shifted_paths = {p.rel_to_root: p for p in mirror.get_paths(drive1_new_mount, serial=drive1_serial)}
+    assert 'photo1.jpg' in shifted_paths
+    # Reconstructed path must reflect new mount letter F:\
+    assert str(shifted_paths['photo1.jpg']).startswith('F:\\')

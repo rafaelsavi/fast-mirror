@@ -157,6 +157,7 @@ class ProfileManager:
                 data = json.load(f)
             if not isinstance(data, dict):
                 raise ValueError(f"Profile '{name}' root must be a JSON object, got {type(data).__name__}")
+            data.pop('storage_roots', None)
             return data
         except Exception as e:
             logger.error(f"Failed to read profile '{name}' from '{path}': {e}")

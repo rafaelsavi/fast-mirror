@@ -195,7 +195,7 @@ class PathsPanel(ttk.LabelFrame):
         raw_pairs = self.entry_paths.get_raw_pairs()
         source_errors = [err for _, _, err in raw_pairs if err]
 
-        dirs = self.entry_paths.get_as_dir_pairs()
+        dirs = self.entry_paths.get_as_dir_pairs(resolve_relocation=False)
         if source_errors:
             if len(source_errors) > 2:
                 err_summary = f'{"; ".join(source_errors[:2])} (and {len(source_errors) - 2} more)'
@@ -243,8 +243,7 @@ class PathsPanel(ttk.LabelFrame):
             with contextlib.suppress(Exception):
                 self.after(0, _update_ui)
 
-        target_paths = [p.target for p in dirs]
-        probe_targets_async(target_paths, _on_health_results)
+        probe_targets_async(dirs, _on_health_results)
 
     def refresh_cards(self):
         """Syntax highlight and refresh pair statistics."""

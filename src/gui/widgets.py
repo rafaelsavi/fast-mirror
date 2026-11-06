@@ -9,7 +9,8 @@ from tkinter.scrolledtext import ScrolledText
 from gui.enums import TkinterCfgState
 from gui.theme import BADGE_PALETTES, FILTER_BTN_PALETTES
 from utils.logger import logger
-from utils.utils import DirectoryPair, sanitize_path
+from utils.utils import DirectoryPair, StorageRoot, sanitize_path
+from utils.volume import find_drive_by_serial, get_volume_info, split_path_root
 
 
 class EntryPaths(ScrolledText):
@@ -17,6 +18,7 @@ class EntryPaths(ScrolledText):
         if 'font' not in kwargs:
             kwargs['font'] = ('Consolas', 9)
         self.on_changed: Callable[[], None] | None = None
+        self.storage_roots: dict[str, StorageRoot] = {}
         super().__init__(*args, **kwargs)
         self.bind('<KeyRelease>', lambda e: self.highlight_syntax())
         self._setup_context_menu()
@@ -120,8 +122,153 @@ class EntryPaths(ScrolledText):
                 unique.append(p)
         return unique
 
-    def get_as_dir_pairs(self) -> list[DirectoryPair]:
-        return [DirectoryPair(source=pair[0], target=pair[1]) for pair in self.get()]
+    def ensure_roots_for_pairs(self) -> None:
+        """Ensure every configured directory pair is covered by a StorageRoot in self.storage_roots."""
+        for src, tgt in self.get_configured_pairs():
+            for p in (src, tgt):
+                r_path, _ = split_path_root(p)
+                if not r_path:
+                    continue
+                clean_r = sanitize_path(r_path).rstrip('\\')
+                if len(clean_r) == 2 and clean_r[1] == ':':
+                    clean_r += '\\'
+
+                p_norm = sanitize_path(p).rstrip('\\').lower()
+                covered = False
+                for existing_root in self.storage_roots.values():
+                    er_norm = sanitize_path(existing_root.path).rstrip('\\').lower()
+                    if er_norm and (p_norm == er_norm or p_norm.startswith(er_norm + '\\')):
+                        covered = True
+                        if not existing_root.serial and not existing_root.path.startswith('\\\\'):
+                            v_info = get_volume_info(existing_root.path)
+                            if v_info:
+                                existing_root.serial = v_info.serial
+                                existing_root.label = v_info.label
+                        break
+
+                if not covered:
+                    v_info = get_volume_info(clean_r)
+                    if v_info and v_info.label:
+                        name = v_info.label
+                    elif clean_r.startswith('\\\\'):
+                        name = clean_r.strip('\\').replace('\\', '_')
+                    elif len(clean_r) >= 2 and clean_r[1] == ':':
+                        name = f'Drive_{clean_r[0].upper()}'
+                    else:
+                        name = f'Root_{len(self.storage_roots) + 1}'
+
+                    base = name
+                    idx = 2
+                    while name in self.storage_roots:
+                        name = f'{base}_{idx}'
+                        idx += 1
+
+                    self.storage_roots[name] = StorageRoot(
+                        name=name,
+                        path=clean_r,
+                        serial=v_info.serial if v_info else None,
+                        label=v_info.label if v_info else None,
+                    )
+
+    def get_as_dir_pairs(self, resolve_relocation: bool = True) -> list[DirectoryPair]:
+        """
+        Return all configured pairs as DirectoryPair objects, enriched with storage root
+        metadata and (when resolve_relocation is True) resolved against dynamic drive letter shifts.
+        """
+        pairs: list[DirectoryPair] = []
+        # Sort roots by specificity ascending so nested roots override broader drive roots
+        sorted_roots = sorted(
+            self.storage_roots.items(),
+            key=lambda item: (
+                sanitize_path(item[1].path).rstrip('\\').count('\\'),
+                len(sanitize_path(item[1].path).rstrip('\\')),
+            ),
+        )
+        for src_str, tgt_str in self.get_configured_pairs():
+            src_clean = sanitize_path(src_str)
+            tgt_clean = sanitize_path(tgt_str)
+            src_norm = src_clean.rstrip('\\')
+            tgt_norm = tgt_clean.rstrip('\\')
+
+            src_root_name = None
+            src_subpath = None
+            src_serial = None
+            tgt_root_name = None
+            tgt_subpath = None
+            tgt_serial = None
+
+            for r_name, r_obj in sorted_roots:
+                r_path = sanitize_path(r_obj.path).rstrip('\\')
+                if not r_path:
+                    continue
+                if src_norm.lower().startswith(r_path.lower() + '\\'):
+                    src_root_name = r_name
+                    src_subpath = src_norm[len(r_path) + 1 :]
+                    src_serial = r_obj.serial
+                elif src_norm.lower() == r_path.lower():
+                    src_root_name = r_name
+                    src_subpath = ''
+                    src_serial = r_obj.serial
+
+                if tgt_norm.lower().startswith(r_path.lower() + '\\'):
+                    tgt_root_name = r_name
+                    tgt_subpath = tgt_norm[len(r_path) + 1 :]
+                    tgt_serial = r_obj.serial
+                elif tgt_norm.lower() == r_path.lower():
+                    tgt_root_name = r_name
+                    tgt_subpath = ''
+                    tgt_serial = r_obj.serial
+
+            # If not bound to a storage_root yet, auto-query volume info if local drive
+            if not tgt_serial and len(tgt_clean) >= 2 and tgt_clean[1] == ':':
+                v_info = get_volume_info(tgt_clean)
+                if v_info:
+                    tgt_serial = v_info.serial
+
+            if not src_serial and len(src_clean) >= 2 and src_clean[1] == ':':
+                v_info = get_volume_info(src_clean)
+                if v_info:
+                    src_serial = v_info.serial
+
+            resolved_tgt = tgt_clean
+            resolved_src = src_clean
+            if resolve_relocation:
+                # Check for dynamic drive letter relocation
+                if tgt_serial:
+                    curr_v = get_volume_info(tgt_clean)
+                    if not curr_v or curr_v.serial.upper() != tgt_serial.upper():
+                        reloc = find_drive_by_serial(tgt_serial)
+                        if reloc:
+                            resolved_tgt = (
+                                reloc.drive + tgt_clean[2:]
+                                if len(tgt_clean) >= 2 and tgt_clean[1] == ':'
+                                else tgt_clean
+                            )
+
+                if src_serial:
+                    curr_v = get_volume_info(src_clean)
+                    if not curr_v or curr_v.serial.upper() != src_serial.upper():
+                        reloc = find_drive_by_serial(src_serial)
+                        if reloc:
+                            resolved_src = (
+                                reloc.drive + src_clean[2:]
+                                if len(src_clean) >= 2 and src_clean[1] == ':'
+                                else src_clean
+                            )
+
+            pairs.append(
+                DirectoryPair(
+                    source=resolved_src,
+                    target=resolved_tgt,
+                    source_root_name=src_root_name,
+                    source_subpath=src_subpath,
+                    source_serial=src_serial,
+                    target_root_name=tgt_root_name,
+                    target_subpath=tgt_subpath,
+                    target_serial=tgt_serial,
+                )
+            )
+        return pairs
 
     def get_raw_pairs(self) -> list[tuple[str, str, str]]:
         """
@@ -147,8 +294,8 @@ class EntryPaths(ScrolledText):
         return results
 
     def add(self, pair: tuple[str, str] | DirectoryPair):
-        pair_tuple = (pair.source, pair.target) if isinstance(pair, DirectoryPair) else pair
-        self.set(self.get() + [pair_tuple])
+        pair_tuple = (pair.source, pair.target) if isinstance(pair, DirectoryPair) else (str(pair[0]), str(pair[1]))
+        self.set(self.get_configured_pairs() + [pair_tuple])
 
     def insert(self, index, chars, *args):
         was_disabled = str(self.cget('state')) == TkinterCfgState.DISABLED.value
@@ -190,14 +337,29 @@ class EntryPaths(ScrolledText):
             if ' -> ' not in raw:
                 return None
             source, target = raw.split(' -> ', 1)
-            source, target = source.strip().strip('"\''), target.strip().strip('"\'')
-            # Source must exist as a directory.
-            # Target can exist as a directory, or its parent directory must exist
-            # (e.g. creating a new backup target folder).
-            if os.path.isdir(source) and (
-                os.path.isdir(target) or os.path.isdir(os.path.dirname(os.path.realpath(target)))
-            ):
-                return (os.path.realpath(source), os.path.realpath(target))
+            source, target = sanitize_path(source.strip().strip('"\'')), sanitize_path(target.strip().strip('"\''))
+            if not source or not target:
+                return None
+
+            # Source must exist as a directory
+            if not os.path.isdir(source):
+                return None
+
+            # Target can exist as a directory, or its nearest existing ancestor must be a directory
+            # (e.g. creating new backup target subfolders on a connected drive)
+            curr = target
+            target_valid = False
+            while curr:
+                if os.path.isdir(curr):
+                    target_valid = True
+                    break
+                parent = os.path.dirname(curr)
+                if parent == curr:
+                    break
+                curr = parent
+
+            if target_valid:
+                return (source, target)
             return None
         except Exception:
             return None

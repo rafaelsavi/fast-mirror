@@ -148,15 +148,17 @@ class CompareDirs:
             current_step = source_offset + i
             if self.progress_callback:
                 self.progress_callback('Scanning', current_step, total_items, str(dir_pair.target))
-            mirror_exists = self.mirror.exists_table(dir_pair.target)
+            t_serial = getattr(dir_pair, 'target_serial', None)
+            mirror_exists = self.mirror.exists_table(dir_pair.target, serial=t_serial)
             if rebuild_mirror and mirror_exists:
-                self.mirror.reset(dir_pair.target)
+                self.mirror.reset(dir_pair.target, serial=t_serial)
 
             if use_mirror and mirror_exists:
                 logger.info(
-                    f"Using mirror for '{dir_pair.target}'. Table has {self.mirror.size(dir_pair.target):,} entries"
+                    f"Using mirror for '{dir_pair.target}'. "
+                    f'Table has {self.mirror.size(dir_pair.target, serial=t_serial):,} entries'
                 )
-                self.files_in_target[dir_pair.target] = self.mirror.get_paths(root_dir=dir_pair.target)
+                self.files_in_target[dir_pair.target] = self.mirror.get_paths(root_dir=dir_pair.target, serial=t_serial)
                 continue
 
             if use_mirror and not mirror_exists:
@@ -169,8 +171,8 @@ class CompareDirs:
 
             if increment_mirror or rebuild_mirror:
                 logger.info(f'Adding {len(self.files_in_target[dir_pair.target]):,} files to mirror')
-                self.mirror.add_path(dir_pair.target, self.files_in_target[dir_pair.target])
-                size = self.mirror.size(dir_pair.target)
+                self.mirror.add_path(dir_pair.target, self.files_in_target[dir_pair.target], serial=t_serial)
+                size = self.mirror.size(dir_pair.target, serial=t_serial)
                 logger.info(f"Mirror cache updated and saved for '{dir_pair.target}' ({size:,} entries)")
 
         num_files = sum(len(files) for files in self.files_in_target.values())
@@ -656,7 +658,9 @@ class SyncDirs:
                 ):
                     logger.info(f"Target already exists and matches source: '{target}'. Self-healing mirror entry.")
                     if self.increment_mirror:
-                        self.mirror.add_path(root_dir=dir_pair.target, path=target)
+                        self.mirror.add_path(
+                            root_dir=dir_pair.target, path=target, serial=getattr(dir_pair, 'target_serial', None)
+                        )
                     return True, target_stat.st_size
             except Exception as jit_err:
                 logger.debug(f"JIT self-heal check skipped for '{target}': {jit_err}")
@@ -676,13 +680,14 @@ class SyncDirs:
                 target.refresh_stats()
 
         if self.increment_mirror:
-            self.mirror.add_path(root_dir=dir_pair.target, path=target)
+            self.mirror.add_path(root_dir=dir_pair.target, path=target, serial=getattr(dir_pair, 'target_serial', None))
         return True, size
 
     def _move_file(self, item: tuple[CstmPath | str, CstmPath | str], i: int, n_files: int) -> tuple[bool, int | float]:
         source, target = item
         # Pre-resolve dir_pair before any filesystem changes
         dir_pair = get_dirs_from_path(target, self.dirs or [])
+        t_serial = getattr(dir_pair, 'target_serial', None)
 
         # JIT Self-Healing & Phantom handling
         if not os.path.isfile(source):
@@ -690,7 +695,9 @@ class SyncDirs:
                 try:
                     logger.info(f"Source is already missing and target exists: '{target}'. Self-healing mirror entry.")
                     if self.increment_mirror:
-                        self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
+                        self.mirror.replace_path(
+                            root_dir=dir_pair.target, path=source, new_path=target, serial=t_serial
+                        )
                     return True, 0
                 except Exception as jit_err:
                     logger.debug(f"JIT move self-heal check skipped for '{target}': {jit_err}")
@@ -701,7 +708,7 @@ class SyncDirs:
                 )
                 try:
                     if self.increment_mirror:
-                        self.mirror.remove_path(root_dir=dir_pair.target, path=source)
+                        self.mirror.remove_path(root_dir=dir_pair.target, path=source, serial=t_serial)
                 except Exception as rm_err:
                     logger.debug(f'Could not remove phantom move source from mirror: {rm_err}')
                 return False, 0
@@ -724,7 +731,7 @@ class SyncDirs:
             with contextlib.suppress(Exception):
                 target.refresh_stats()
         if self.increment_mirror:
-            self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target)
+            self.mirror.replace_path(root_dir=dir_pair.target, path=source, new_path=target, serial=t_serial)
         return True, size
 
     def _delete_file(self, path: CstmPath | str, i: int, n_files: int) -> tuple[bool, int | float]:
@@ -741,11 +748,12 @@ class SyncDirs:
             logger.error(f"Could not identify root directory for deletion target '{path}': {e}")
             return False, 0
 
+        t_serial = getattr(dir_pair, 'target_serial', None)
         if not os.path.lexists(path):
             logger.warning(f"Skipping deletion of file because it is already missing: '{path}'")
             try:
                 if self.increment_mirror:
-                    self.mirror.remove_path(root_dir=dir_pair.target, path=path)
+                    self.mirror.remove_path(root_dir=dir_pair.target, path=path, serial=t_serial)
             except Exception as e:
                 logger.debug(f'Could not remove phantom path from mirror: {e}')
             return True, 0
@@ -757,7 +765,7 @@ class SyncDirs:
             backoff_factor=self.backoff_factor,
         )
         if self.increment_mirror:
-            self.mirror.remove_path(root_dir=dir_pair.target, path=path)
+            self.mirror.remove_path(root_dir=dir_pair.target, path=path, serial=t_serial)
         return True, size
 
     def copy_files(self):

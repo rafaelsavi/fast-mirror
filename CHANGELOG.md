@@ -9,6 +9,24 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-06
+
+### Added
+- **Hardware Volume Serial Keying for Mirror Database (`mirror.py`, `volume.py`)**:
+  - Automatically isolates local and external drive caches in SQLite (`data/local_mirror.db`) using hardware Volume Serial numbers (`[SERIAL]\subpath`).
+  - Sequentially connecting different physical USB/external drives mapped to the same drive letter (e.g. `E:\`) cleanly separates their cached files and metadata.
+  - Transparently preserves cache continuity when a physical drive's letter shifts (e.g. `E:\` $\to$ `F:\`).
+  - Added seamless one-time automatic database migration for legacy drive-letter cache records.
+- **Batch Endpoint Re-binding with `Change Drive...` (`directory_pairs_modal.py`)**:
+  - Replaced manual "Storage Roots" configuration with a streamlined `Change Drive...` action inside the Directory Backup Pairs Manager.
+  - Automatically aggregates active drives and network servers (grouping multi-share UNC endpoints under the root server) and provides live before $\to$ after preview when batch-updating pairs.
+
+### Changed
+- **Clean Health Check & Status Display (`directory_pairs_modal.py`, `paths_panel.py`)**:
+  - Simplified pair status indicators to clean `🟢 Online`, `🔴 Missing Src`, `🔴 Target Offline`, and `🟡 Low Space`, eliminating visual clutter.
+- **Auto-Directory Creation for Fresh Targets (`file.py`)**:
+  - Gracefully handles non-existent target root folders on new backup drives, scanning empty sets without failure and automatically provisioning directories during sync.
+
 ## [1.3.0] - 2026-11-05
 
 ### Changed

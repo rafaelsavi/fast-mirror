@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import datetime
 import os
 import time
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 from enum import Enum
 from os import PathLike
+from typing import Any
 
 from utils.logger import logger
 
@@ -13,12 +17,55 @@ class CompareMethod(Enum):
     CONTENT = 'content'
 
 
+@dataclass
+class StorageRoot:
+    """Represents a configured storage root (local drive, USB drive, or remote share)."""
+
+    name: str
+    path: str  # e.g. "E:\\Backup" or "D:\\" or "\\\\nas\\backup"
+    serial: str | None = None  # Volume Serial Number (e.g. "A4B1-9C32"), None for UNC
+    label: str | None = None  # Volume Label (e.g. "PHOTOS_HDD")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            'name': self.name,
+            'path': self.path,
+            'serial': self.serial,
+            'label': self.label,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], default_name: str = '') -> StorageRoot:
+        return cls(
+            name=str(data.get('name') or default_name),
+            path=str(data.get('path', '')),
+            serial=data.get('serial'),
+            label=data.get('label'),
+        )
+
+
 class DirectoryPair:
-    def __init__(self, source: str, target: str):
+    def __init__(
+        self,
+        source: str,
+        target: str,
+        source_root_name: str | None = None,
+        source_subpath: str | None = None,
+        source_serial: str | None = None,
+        target_root_name: str | None = None,
+        target_subpath: str | None = None,
+        target_serial: str | None = None,
+    ):
         if not isinstance(source, str) or not isinstance(target, str):
             raise TypeError('Both source and target must be strings.')
         self.source = source
         self.target = target
+        self.source_root_name = source_root_name
+        self.source_subpath = source_subpath
+        self.source_serial = source_serial
+        self.target_root_name = target_root_name
+        self.target_subpath = target_subpath
+        self.target_serial = target_serial
 
     def __iter__(self) -> Iterator[str]:
         return iter((self.source, self.target))

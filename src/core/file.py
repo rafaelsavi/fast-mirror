@@ -163,6 +163,10 @@ class CstmPath(Path):
         start_time = time.time()
 
         base_path = Path(dir_path)
+        if not os.path.exists(dir_path):
+            logger.info(f"Directory '{dir_path}' does not exist yet (empty). Found 0 files.")
+            return all_paths
+
         stack = [base_path]
 
         while stack:

@@ -40,6 +40,7 @@ from utils.logger import is_test_or_agent_mode, logger
 from utils.profile_manager import ProfileManager, sanitize_profile_name
 from utils.updater import ReleaseInfo, check_for_updates_async
 from utils.utils import CompareMethod, DirectoryPair, round_time_to_minutes
+from utils.volume import find_drive_by_serial, get_volume_info
 
 
 class Gui:
@@ -1134,9 +1135,84 @@ class Gui:
 
     def call_backend_thread(self, also_sync: bool, timestamp: datetime.datetime):
         self.last_realized_sync = timestamp
-        dirs = self.entry_paths.get_as_dir_pairs()
-        if not dirs:
+        all_dirs = self.entry_paths.get_as_dir_pairs(resolve_relocation=False)
+        if not all_dirs:
             logger.warning('No valid directory pairs configured. Please add at least one path pair.')
+            self.backend_thread_status = BackendThreadStatus.STANDBY
+            return
+
+        # Pre-flight check each pair for reachability, volume mismatch, or disconnection
+        dirs: list[DirectoryPair] = []
+        for d in all_dirs:
+            if d.source_serial:
+                src_v = get_volume_info(d.source)
+                if src_v and src_v.serial.upper() != d.source_serial.upper():
+                    reloc = find_drive_by_serial(d.source_serial)
+                    if reloc and len(d.source) >= 2 and d.source[1] == ':':
+                        logger.info(f'Source drive [{d.source_serial}] relocated from {d.source[:2]} to {reloc.drive}')
+                        d.source = reloc.drive + d.source[2:]
+                    else:
+                        wrong_label = src_v.label or src_v.serial
+                        logger.error(
+                            f"Skipping pair '{d.source} -> {d.target}': wrong drive mounted at {d.source[:2]} "
+                            f"(found '{wrong_label}', expected [{d.source_serial}])."
+                        )
+                        continue
+                elif not src_v:
+                    reloc = find_drive_by_serial(d.source_serial)
+                    if reloc and len(d.source) >= 2 and d.source[1] == ':':
+                        logger.info(f'Source drive [{d.source_serial}] detected at {reloc.drive}')
+                        d.source = reloc.drive + d.source[2:]
+
+            if not os.path.isdir(d.source):
+                logger.warning(
+                    f"Skipping pair '{d.source} -> {d.target}': source directory does not exist or is disconnected."
+                )
+                continue
+
+            if d.target_serial:
+                v_info = get_volume_info(d.target)
+                if v_info and v_info.serial.upper() != d.target_serial.upper():
+                    reloc = find_drive_by_serial(d.target_serial)
+                    if reloc and len(d.target) >= 2 and d.target[1] == ':':
+                        logger.info(f'Target drive [{d.target_serial}] relocated from {d.target[:2]} to {reloc.drive}')
+                        d.target = reloc.drive + d.target[2:]
+                    else:
+                        wrong_label = v_info.label or v_info.serial
+                        logger.error(
+                            f"Skipping pair '{d.source} -> {d.target}': wrong drive mounted at {d.target[:2]} "
+                            f"(found '{wrong_label}', expected [{d.target_serial}]). Aborting pair for safety."
+                        )
+                        continue
+                elif not v_info:
+                    reloc = find_drive_by_serial(d.target_serial)
+                    if reloc and len(d.target) >= 2 and d.target[1] == ':':
+                        logger.info(f'Target drive [{d.target_serial}] detected at {reloc.drive}')
+                        d.target = reloc.drive + d.target[2:]
+
+            # Verify target directory or its nearest ancestor root (drive root or UNC share) is reachable
+            parent_exists = False
+            curr = d.target
+            while curr:
+                if os.path.isdir(curr):
+                    parent_exists = True
+                    break
+                p = os.path.dirname(curr)
+                if p == curr:
+                    break
+                curr = p
+            if not parent_exists:
+                serial_hint = f' [{d.target_serial}]' if d.target_serial else ''
+                logger.warning(
+                    f"Skipping pair '{d.source} -> {d.target}': "
+                    f'target drive or network share{serial_hint} is disconnected or unreachable.'
+                )
+                continue
+
+            dirs.append(d)
+
+        if not dirs:
+            logger.warning('No reachable directory pairs available for synchronization.')
             self.backend_thread_status = BackendThreadStatus.STANDBY
             return
 
