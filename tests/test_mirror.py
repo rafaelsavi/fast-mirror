@@ -420,3 +420,33 @@ def test_mirror_volume_serial_isolation_and_relocation(tmp_path):
     assert 'photo1.jpg' in shifted_paths
     # Reconstructed path must reflect new mount letter F:\
     assert str(shifted_paths['photo1.jpg']).startswith('F:\\')
+
+
+def test_mirror_incremental_single_file_counts(tmp_path):
+    """Verify single-file add/update/remove operations keep mirror_metadata.file_count exact."""
+    root = tmp_path / 'tgt'
+    root.mkdir()
+    f1 = root / 'a.txt'
+    f2 = root / 'b.txt'
+    f3 = root / 'c.txt'
+    f1.write_text('one')
+    f2.write_text('two')
+    f3.write_text('three')
+
+    mirror = MirrorDatabase(path=str(tmp_path / 'mirror.db'))
+    mirror.add_path(str(root), [f1, f2])
+    assert mirror.size(str(root)) == 2
+
+    # Single new insert increments count
+    mirror.add_path(str(root), f3)
+    assert mirror.size(str(root)) == 3
+
+    # Updating an existing file must not double-count
+    mirror.add_path(str(root), CstmPath(f1, root_dir=root, stats=Stats(99, 1234.0)))
+    assert mirror.size(str(root)) == 3
+
+    # Single remove decrements only when key existed
+    assert mirror.remove_path(str(root), f2) is True
+    assert mirror.size(str(root)) == 2
+    assert mirror.remove_path(str(root), root / 'nonexistent.txt') is False
+    assert mirror.size(str(root)) == 2

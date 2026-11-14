@@ -945,3 +945,44 @@ def test_sync_reconciles_case_only_rename_with_copy_only_unattended(tmp_path):
     assert 'CaseDir' in os.listdir(target)
     assert (target / 'OldDir' / 'moved.jpg').exists()
     assert not (target / 'MovedDir').exists()
+
+
+def test_content_comparison_bypasses_stale_mirror_cache(tmp_path):
+    """Verify CompareMethod.CONTENT scans target disk directly even when use_mirror=True."""
+    source = tmp_path / 'src'
+    target = tmp_path / 'tgt'
+    source.mkdir()
+    target.mkdir()
+
+    (source / 'a.bin').write_bytes(b'AAAA')
+    (target / 'a.bin').write_bytes(b'AAAA')
+    shutil.copystat(source / 'a.bin', target / 'a.bin')
+
+    (source / 'b.bin').write_bytes(b'BBBB')
+    (target / 'b.bin').write_bytes(b'BBBB')
+    shutil.copystat(source / 'b.bin', target / 'b.bin')
+
+    mirror = MirrorDatabase(path=str(tmp_path / 'mirror.db'))
+    dirs = [DirectoryPair(str(source), str(target))]
+
+    # Populate mirror cache
+    CompareDirs(mirror=mirror, dirs=dirs, exclusions=[], use_mirror=False, increment_mirror=True)
+    assert mirror.size(str(target)) == 2
+
+    # Externally alter target content (preserving size & mtime) and delete another file
+    (target / 'a.bin').write_bytes(b'ZZZZ')
+    shutil.copystat(source / 'a.bin', target / 'a.bin')
+    (target / 'b.bin').unlink()
+
+    compare = CompareDirs(
+        mirror=mirror,
+        dirs=dirs,
+        exclusions=[],
+        comparison_method=CompareMethod.CONTENT,
+        use_mirror=True,
+        increment_mirror=False,
+    )
+
+    copied_names = sorted(src.name for src, _ in compare.files_to_copy)
+    assert copied_names == ['a.bin', 'b.bin']
+    assert len(compare.compare_error_files) == 0

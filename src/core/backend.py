@@ -138,6 +138,9 @@ class CompareDirs:
             raise Exception('Cannot use mirror and rebuild it at the same time.')
         if rebuild_mirror and increment_mirror:
             raise Exception('Cannot increment mirror and rebuild it at the same time.')
+        if use_mirror and self.comparison_method == CompareMethod.CONTENT:
+            logger.info('Content comparison selected: bypassing mirror cache to verify target files on disk.')
+            use_mirror = False
 
         start_time = time.time()
         total_items = len(self.dirs) * 2

@@ -32,12 +32,14 @@ class MirrorDatabase:
         self.path = path
         self.exclusions = list(sorted([sanitize_path(ex) for ex in exclusions])) if exclusions else []
         self.exclusions_hash = _compute_exclusions_hash(self.exclusions)
+        self._migrated_keys: set[tuple[str, str]] = set()
         self.init()
 
     @contextlib.contextmanager
     def _get_connection(self):
         """Context manager for SQLite connections strictly adhering to Windows file lock rules."""
         with contextlib.closing(sqlite3.connect(self.path, timeout=30.0)) as conn:
+            conn.execute('PRAGMA synchronous=NORMAL;')
             yield conn
 
     def init(self) -> bool:
@@ -149,7 +151,7 @@ class MirrorDatabase:
 
     def _ensure_migrated(self, conn: sqlite3.Connection, db_key: str, mount_root: str):
         """Ensure any unmigrated records matching mount_root are promoted to db_key."""
-        if db_key != mount_root:
+        if db_key != mount_root and (db_key, mount_root) not in self._migrated_keys:
             conn.execute(
                 'UPDATE OR REPLACE mirror_cache SET root_dir = ? WHERE root_dir = ?;',
                 (db_key, mount_root),
@@ -158,6 +160,7 @@ class MirrorDatabase:
                 'UPDATE OR REPLACE mirror_metadata SET root_dir = ? WHERE root_dir = ?;',
                 (db_key, mount_root),
             )
+            self._migrated_keys.add((db_key, mount_root))
 
     def _resolve_keys(self, root_dir: str | PathLike[str], serial: str | None = None) -> tuple[str, str]:
         r"""
@@ -381,30 +384,44 @@ class MirrorDatabase:
             with self._get_connection() as conn:
                 self._ensure_migrated(conn, db_key, mount_root)
                 saved_hash = conn.execute(
-                    'SELECT exclusions_hash FROM mirror_metadata WHERE root_dir = ?;',
+                    'SELECT exclusions_hash, file_count FROM mirror_metadata WHERE root_dir = ?;',
                     (db_key,),
                 )
                 saved_hash_row = saved_hash.fetchone() if saved_hash else None
                 if saved_hash_row and saved_hash_row[0] != self.exclusions_hash:
                     conn.execute('DELETE FROM mirror_cache WHERE root_dir = ?;', (db_key,))
 
-                conn.executemany(
-                    'INSERT OR REPLACE INTO mirror_cache '
-                    '(root_dir, rel_path, stats_hash, size, mtime) VALUES (?, ?, ?, ?, ?);',
-                    rows,
-                )
-                count = conn.execute(
-                    'SELECT COUNT(*) FROM mirror_cache WHERE root_dir = ?;',
-                    (db_key,),
-                ).fetchone()[0]
+                if len(rows) == 1 and saved_hash_row and saved_hash_row[0] == self.exclusions_hash:
+                    existed = (
+                        conn.execute(
+                            'SELECT 1 FROM mirror_cache WHERE root_dir = ? AND rel_path = ? COLLATE NOCASE;',
+                            (db_key, rows[0][1]),
+                        ).fetchone()
+                        is not None
+                    )
+                    conn.executemany(
+                        'INSERT OR REPLACE INTO mirror_cache '
+                        '(root_dir, rel_path, stats_hash, size, mtime) VALUES (?, ?, ?, ?, ?);',
+                        rows,
+                    )
+                    count = saved_hash_row[1] + (0 if existed else 1)
+                else:
+                    conn.executemany(
+                        'INSERT OR REPLACE INTO mirror_cache '
+                        '(root_dir, rel_path, stats_hash, size, mtime) VALUES (?, ?, ?, ?, ?);',
+                        rows,
+                    )
+                    count = conn.execute(
+                        'SELECT COUNT(*) FROM mirror_cache WHERE root_dir = ?;',
+                        (db_key,),
+                    ).fetchone()[0]
+
                 conn.execute(
                     'INSERT OR REPLACE INTO mirror_metadata (root_dir, exclusions_hash, file_count, last_scanned) '
                     'VALUES (?, ?, ?, ?);',
                     (db_key, self.exclusions_hash, count, time.time()),
                 )
                 conn.commit()
-                with contextlib.suppress(Exception):
-                    conn.execute('PRAGMA wal_checkpoint(PASSIVE);')
         except Exception as e:
             logger.critical(f"Could not open DB to add file(s): '{path}'. Exception: {e}")
 
@@ -437,10 +454,17 @@ class MirrorDatabase:
                     else:
                         logger.warning(f"Key does not exist in database: '{rel}'")
 
-                count = conn.execute(
-                    'SELECT COUNT(*) FROM mirror_cache WHERE root_dir = ?;',
+                meta_row = conn.execute(
+                    'SELECT file_count FROM mirror_metadata WHERE root_dir = ?;',
                     (db_key,),
-                ).fetchone()[0]
+                ).fetchone()
+                if meta_row is not None:
+                    count = max(0, meta_row[0] - deleted_count)
+                else:
+                    count = conn.execute(
+                        'SELECT COUNT(*) FROM mirror_cache WHERE root_dir = ?;',
+                        (db_key,),
+                    ).fetchone()[0]
                 conn.execute(
                     'UPDATE mirror_metadata SET file_count = ?, last_scanned = ? WHERE root_dir = ?;',
                     (count, time.time(), db_key),
