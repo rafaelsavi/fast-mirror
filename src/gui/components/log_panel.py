@@ -25,13 +25,13 @@ class LogPanel(ttk.LabelFrame):
     ):
         super().__init__(master, text=' Activity & Operation Log ', **kwargs)
 
-        self.log_levels = log_levels or LogLevels()
-        self.toggle_auto_scroll = toggle_auto_scroll or tk.BooleanVar(value=True)
+        self.log_levels = log_levels or LogLevels(master=self)
+        self.toggle_auto_scroll = toggle_auto_scroll or tk.BooleanVar(master=self, value=True)
         self.on_update_log_levels = on_update_log_levels
         self.on_toggle_auto_scroll = on_toggle_auto_scroll
 
-        self.search_var = tk.StringVar()
-        self.search_count_var = tk.StringVar(value='')
+        self.search_var = tk.StringVar(master=self)
+        self.search_count_var = tk.StringVar(master=self, value='')
         self._search_matches: list[str] = []
         self._current_match_idx: int = -1
 

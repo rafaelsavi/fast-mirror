@@ -458,9 +458,11 @@ class Action(Enum):
 
 
 class DefaultActions:
-    def __init__(self):
+    def __init__(self, master: tk.Misc | None = None):
         self._data: dict[Action, bool] = {k: False for k in Action.get_options()}
-        self._tkinter_vars: dict[Action, tk.BooleanVar] = {k: tk.BooleanVar() for k in Action.get_options()}
+        self._tkinter_vars: dict[Action, tk.BooleanVar] = {
+            k: tk.BooleanVar(master=master) for k in Action.get_options()
+        }
         self.reset()
 
     def get(self) -> list[str]:
@@ -505,8 +507,8 @@ class DefaultActions:
 class WeekDays:
     options = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 
-    def __init__(self):
-        self.checkboxes = {day: tk.BooleanVar() for day in self.options}
+    def __init__(self, master: tk.Misc | None = None):
+        self.checkboxes = {day: tk.BooleanVar(master=master) for day in self.options}
 
     def set(self, values: list[str]):
         for value, _status in self.checkboxes.items():
@@ -522,8 +524,8 @@ class WeekDays:
 class LogLevels:
     options = 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
 
-    def __init__(self):
-        self.checkboxes = {option: tk.BooleanVar() for option in self.options}
+    def __init__(self, master: tk.Misc | None = None):
+        self.checkboxes = {option: tk.BooleanVar(master=master) for option in self.options}
         self.reset()
 
     def reset(self):

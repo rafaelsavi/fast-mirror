@@ -148,10 +148,10 @@ class ActionsPanel(ttk.LabelFrame):
                 if checkbox_var_metadata_comparison is None or checkbox_var_metadata_comparison.get()
                 else 'content'
             )
-            self.radio_var_compare_method = tk.StringVar(master=master, value=init_val)
+            self.radio_var_compare_method = tk.StringVar(master=self, value=init_val)
 
         self.checkbox_var_metadata_comparison = checkbox_var_metadata_comparison or tk.BooleanVar(
-            master=master,
+            master=self,
             value=self.radio_var_compare_method.get() == 'metadata',
         )
 
@@ -161,11 +161,11 @@ class ActionsPanel(ttk.LabelFrame):
         elif checkbox_var_build_mirror is not None:
             self.checkbox_var_reset_mirror = checkbox_var_build_mirror
         else:
-            self.checkbox_var_reset_mirror = tk.BooleanVar(master=master, value=False)
+            self.checkbox_var_reset_mirror = tk.BooleanVar(master=self, value=False)
 
         self.checkbox_var_build_mirror = checkbox_var_build_mirror or self.checkbox_var_reset_mirror
         self.checkbox_var_use_mirror = checkbox_var_use_mirror or tk.BooleanVar(
-            master=master,
+            master=self,
             value=not self.checkbox_var_reset_mirror.get(),
         )
 
@@ -222,7 +222,7 @@ class ActionsPanel(ttk.LabelFrame):
         lbl_prof = ttk.Label(cfg_frame, text='Profile:', font=('Segoe UI', 9, 'bold'), width=7)
         lbl_prof.pack(side='left')
 
-        self.profile_var = tk.StringVar(value='Default')
+        self.profile_var = tk.StringVar(master=self, value='Default')
         self.combobox_profile = ttk.Combobox(
             cfg_frame,
             textvariable=self.profile_var,

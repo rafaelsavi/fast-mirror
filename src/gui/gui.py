@@ -73,16 +73,16 @@ class Gui:
         self._last_saved_config_vars: dict[str, Any] | None = None
 
         # Tkinter control variables
-        self.toggle_auto_scroll = tk.BooleanVar(value=True)
-        self.radio_var_compare_method = tk.StringVar(value='metadata')
-        self.checkbox_var_reset_mirror = tk.BooleanVar(value=False)
-        self.checkbox_var_use_mirror = tk.BooleanVar(value=True)
-        self.checkbox_var_build_mirror = tk.BooleanVar(value=False)
-        self.checkbox_var_metadata_comparison = tk.BooleanVar(value=True)
-        self.checkbox_var_confirm_sync = tk.BooleanVar(value=True)
-        self.checkbox_var_save_report = tk.BooleanVar(value=False)
-        self.text_var_status = tk.StringVar(value=BackendThreadStatus.STANDBY.value)
-        self.text_var_next_appointment = tk.StringVar(value='Schedule is not activated')
+        self.toggle_auto_scroll = tk.BooleanVar(master=self.root, value=True)
+        self.radio_var_compare_method = tk.StringVar(master=self.root, value='metadata')
+        self.checkbox_var_reset_mirror = tk.BooleanVar(master=self.root, value=False)
+        self.checkbox_var_use_mirror = tk.BooleanVar(master=self.root, value=True)
+        self.checkbox_var_build_mirror = tk.BooleanVar(master=self.root, value=False)
+        self.checkbox_var_metadata_comparison = tk.BooleanVar(master=self.root, value=True)
+        self.checkbox_var_confirm_sync = tk.BooleanVar(master=self.root, value=True)
+        self.checkbox_var_save_report = tk.BooleanVar(master=self.root, value=False)
+        self.text_var_status = tk.StringVar(master=self.root, value=BackendThreadStatus.STANDBY.value)
+        self.text_var_next_appointment = tk.StringVar(master=self.root, value='Schedule is not activated')
 
         # Backward compatibility bidirectional sync traces
         def _sync_compare_to_meta(*_):
@@ -121,9 +121,9 @@ class Gui:
         self.checkbox_var_use_mirror.trace_add('write', _sync_use_to_reset)
 
         # Model objects
-        self.checkbox_default_actions = DefaultActions()
-        self.week_days = WeekDays()
-        self.log_levels = LogLevels()
+        self.checkbox_default_actions = DefaultActions(master=self.root)
+        self.week_days = WeekDays(master=self.root)
+        self.log_levels = LogLevels(master=self.root)
 
         # Build GUI modular components
         self.create_widgets()

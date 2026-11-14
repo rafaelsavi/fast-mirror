@@ -23,7 +23,7 @@ class SchedulePanel(ttk.LabelFrame):
         super().__init__(master, text=' Schedule Settings ', **kwargs)
         self.week_days = week_days or WeekDays()
         self.on_toggle_schedule = on_toggle_schedule
-        self.schedule_var = schedule_var if schedule_var is not None else tk.BooleanVar(value=False)
+        self.schedule_var = schedule_var if schedule_var is not None else tk.BooleanVar(master=self, value=False)
         self.text_var_next_appointment = text_var_next_appointment
 
         self._create_widgets(entry_times)

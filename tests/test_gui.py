@@ -931,29 +931,34 @@ def test_reports_window_listing_and_cleanup(tmp_path, monkeypatch):
     # Point logger.log_dir to temporary directory
     monkeypatch.setattr(logger, 'log_dir', str(tmp_path))
 
-    # Create dummy reports
-    rep1 = tmp_path / 'compare_report_2026-10-15_10-00-00.xlsx'
-    rep2 = tmp_path / 'compare_report_2026-09-01_08-30-00.xlsx'  # Old report (> 30 days)
-    rep1.write_text('dummy1')
-    rep2.write_text('dummy2')
+    win = None
+    try:
+        # Create dummy reports with dynamic dates relative to now
+        recent_dt = datetime.datetime.now() - datetime.timedelta(days=5)
+        old_dt = datetime.datetime.now() - datetime.timedelta(days=45)
+        rep1 = tmp_path / f'compare_report_{recent_dt.strftime("%Y-%m-%d_%H-%M-%S")}.xlsx'
+        rep2 = tmp_path / f'compare_report_{old_dt.strftime("%Y-%m-%d_%H-%M-%S")}.xlsx'
+        rep1.write_text('dummy1')
+        rep2.write_text('dummy2')
 
-    # Fake os.path.getmtime for old report
-    old_time = (datetime.datetime.now() - datetime.timedelta(days=45)).timestamp()
-    os.utime(str(rep2), (old_time, old_time))
+        # Fake os.path.getmtime for old report
+        old_time = old_dt.timestamp()
+        os.utime(str(rep2), (old_time, old_time))
 
-    win = ReportsWindow(root)
-    items = win.tree.get_children('')
-    assert len(items) == 2
+        win = ReportsWindow(root)
+        items = win.tree.get_children('')
+        assert len(items) == 2
 
-    # Clean reports older than 30 days
-    monkeypatch.setattr('tkinter.messagebox.askyesno', lambda *args, **kwargs: True)
-    win.btn_clean.invoke()
+        # Clean reports older than 30 days
+        monkeypatch.setattr('tkinter.messagebox.askyesno', lambda *args, **kwargs: True)
+        win.btn_clean.invoke()
 
-    assert os.path.exists(str(rep1))
-    assert not os.path.exists(str(rep2))
-
-    win.window.destroy()
-    root.destroy()
+        assert os.path.exists(str(rep1))
+        assert not os.path.exists(str(rep2))
+    finally:
+        if win is not None:
+            win.window.destroy()
+        root.destroy()
 
 
 def test_confirmation_popup_file_type_badges():
