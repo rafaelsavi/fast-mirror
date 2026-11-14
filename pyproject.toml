@@ -4,11 +4,10 @@ version = "1.4.0"
 description = "FastMirror: High-performance one-way directory synchronization and backup tool for Windows."
 requires-python = ">=3.13"
 dependencies = [
-    "pandas[excel]",
+    "openpyxl>=3.1.0",
     "pathspec",
     "pillow>=11.2.1",
     "pystray>=0.19.5",
-    "sv-ttk>=2.6.1",
     "ttkwidgets",
 ]
 

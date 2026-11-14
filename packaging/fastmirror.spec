@@ -15,12 +15,11 @@ datas = [
 ]
 
 # Collect package data and submodules for dynamic Tkinter and tray dependencies
-sv_ttk_datas, sv_ttk_binaries, sv_ttk_hiddenimports = collect_all('sv_ttk')
 ttkwidgets_datas, ttkwidgets_binaries, ttkwidgets_hiddenimports = collect_all('ttkwidgets')
 pystray_datas, pystray_binaries, pystray_hiddenimports = collect_all('pystray')
 
-datas += sv_ttk_datas + ttkwidgets_datas + pystray_datas
-binaries = sv_ttk_binaries + ttkwidgets_binaries + pystray_binaries
+datas += ttkwidgets_datas + pystray_datas
+binaries = ttkwidgets_binaries + pystray_binaries
 
 hiddenimports = [
     'PIL',
@@ -28,10 +27,9 @@ hiddenimports = [
     'pystray',
     'pystray._win32',
     'openpyxl',
-    'xlsxwriter',
     'pathspec',
     'sqlite3',
-] + sv_ttk_hiddenimports + ttkwidgets_hiddenimports + pystray_hiddenimports
+] + ttkwidgets_hiddenimports + pystray_hiddenimports
 
 a = Analysis(
     [os.path.join(ROOT_DIR, 'launch.pyw')],

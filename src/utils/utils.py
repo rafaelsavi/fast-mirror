@@ -113,8 +113,10 @@ def format_size(size_bytes: float | int | None) -> str:
         msg = f'{prefix}{abs_size / (1024**1):.2f}KB'
     elif 1024**2 <= abs_size < 1024**3:
         msg = f'{prefix}{abs_size / (1024**2):.2f}MB'
-    else:
+    elif 1024**3 <= abs_size < 1024**4:
         msg = f'{prefix}{abs_size / (1024**3):.2f}GB'
+    else:
+        msg = f'{prefix}{abs_size / (1024**4):.2f}TB'
 
     return msg
 
@@ -161,9 +163,9 @@ def log_progress(
 
     if total is not None:
         if speed_files_p_min > 0:
-            msgs.append(f'ETL: {int((total - progress) / speed_files_p_min):,} min')
+            msgs.append(f'ETA: {int((total - progress) / speed_files_p_min):,} min')
         else:
-            msgs.append('ETL: 0 min')
+            msgs.append('ETA: 0 min')
 
     logger.info(' '.join(msgs))
 

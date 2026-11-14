@@ -11,7 +11,7 @@ from collections.abc import Callable
 from copy import copy
 from typing import Any
 
-import pandas as pd
+import openpyxl  # type: ignore[import-untyped]
 
 from core.file import CstmPath, File, compare_files
 from core.file_ops import (
@@ -364,58 +364,89 @@ class CompareDirs:
     def _save_report(self):
         logger.info('Loading data to create comparison report (ignoring files in both that are the same)')
 
-        # Load all linked files and store as a dataframe where columns are file attributes
-        df = pd.DataFrame(
-            [
-                {
-                    'source': str(file.source) if file.source else '-',
-                    'target': str(file.target) if file.target else '-',
-                    'ext': file.source.suffix.lower()
-                    if file.source
-                    else file.target.suffix.lower()
-                    if file.target
-                    else '',
-                    'in both': 'X' if file.in_both else '',
-                    'same': 'X' if file.same else '',
-                    'moved': 'X' if file.moved else '',
-                    'modified': 'X' if file.in_both and not file.compare_error and file.modified else '',
-                    'only source': 'X' if file.only_source else '',
-                    'only target': 'X' if file.only_target else '',
-                    'size (source)': file.source.get_st_size(as_str=True)
-                    if file.source is not None
-                    and (file.source.has_cached_stats or (not file.source.stat_failed and file.source.exists()))
-                    else '',
-                    'size (target)': file.target.get_st_size(as_str=True)
-                    if file.target is not None
-                    and (
-                        file.target.has_cached_stats
-                        or (not file.target.is_new_target and not file.target.stat_failed and file.target.exists())
-                    )
-                    else '',
-                    'modified (source)': file.source.get_st_mtime(as_date_str=True)
-                    if file.source is not None
-                    and (file.source.has_cached_stats or (not file.source.stat_failed and file.source.exists()))
-                    else '',
-                    'modified (target)': file.target.get_st_mtime(as_date_str=True)
-                    if file.target is not None
-                    and (
-                        file.target.has_cached_stats
-                        or (not file.target.is_new_target and not file.target.stat_failed and file.target.exists())
-                    )
-                    else '',
-                    'compare error': file.compare_error,
-                }
-                for file in [
-                    *[f for f in self.linked_files if not (f.in_both and not f.moved and f.same)],
-                    *self.compare_error_files,
-                ]
-            ]
-        )
+        headers = [
+            'source',
+            'target',
+            'ext',
+            'in both',
+            'same',
+            'moved',
+            'modified',
+            'only source',
+            'only target',
+            'size (source)',
+            'size (target)',
+            'modified (source)',
+            'modified (target)',
+            'compare error',
+        ]
+        report_files = [
+            *[f for f in self.linked_files if not (f.in_both and not f.moved and f.same)],
+            *self.compare_error_files,
+        ]
 
-        logger.info('Starting to write comparison report')
-        os.makedirs(os.path.dirname(self.save_report_path), exist_ok=True)
-        df.to_excel(self.save_report_path, index=False)
-        logger.info(f"Comparison report was saved to '{self.save_report_path}'")
+        wb = openpyxl.Workbook()
+        try:
+            ws = wb.active
+            if ws is not None:
+                ws.title = 'Sheet1'
+                ws.append(headers)
+                for file in report_files:
+                    ws.append(
+                        [
+                            str(file.source) if file.source else '-',
+                            str(file.target) if file.target else '-',
+                            file.source.suffix.lower()
+                            if file.source
+                            else file.target.suffix.lower()
+                            if file.target
+                            else '',
+                            'X' if file.in_both else '',
+                            'X' if file.same else '',
+                            'X' if file.moved else '',
+                            'X' if file.in_both and not file.compare_error and file.modified else '',
+                            'X' if file.only_source else '',
+                            'X' if file.only_target else '',
+                            file.source.get_st_size(as_str=True)
+                            if file.source is not None
+                            and (file.source.has_cached_stats or (not file.source.stat_failed and file.source.exists()))
+                            else '',
+                            file.target.get_st_size(as_str=True)
+                            if file.target is not None
+                            and (
+                                file.target.has_cached_stats
+                                or (
+                                    not file.target.is_new_target
+                                    and not file.target.stat_failed
+                                    and file.target.exists()
+                                )
+                            )
+                            else '',
+                            file.source.get_st_mtime(as_date_str=True)
+                            if file.source is not None
+                            and (file.source.has_cached_stats or (not file.source.stat_failed and file.source.exists()))
+                            else '',
+                            file.target.get_st_mtime(as_date_str=True)
+                            if file.target is not None
+                            and (
+                                file.target.has_cached_stats
+                                or (
+                                    not file.target.is_new_target
+                                    and not file.target.stat_failed
+                                    and file.target.exists()
+                                )
+                            )
+                            else '',
+                            file.compare_error,
+                        ]
+                    )
+
+            logger.info('Starting to write comparison report')
+            os.makedirs(os.path.dirname(self.save_report_path), exist_ok=True)
+            wb.save(self.save_report_path)
+            logger.info(f"Comparison report was saved to '{self.save_report_path}'")
+        finally:
+            wb.close()
 
     def print_results(self):
         logger.info('-------------------------')

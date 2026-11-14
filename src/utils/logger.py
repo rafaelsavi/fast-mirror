@@ -82,7 +82,7 @@ class Logger:
         self.file_handler: logging.FileHandler | None = None
 
         # Initialize logger
-        self.logger = logging.getLogger('self.logger')
+        self.logger = logging.getLogger('fastmirror')
         self.logger.setLevel(log_level)
         self.logger.propagate = False
 

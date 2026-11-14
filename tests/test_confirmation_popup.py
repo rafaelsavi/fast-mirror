@@ -1954,6 +1954,7 @@ def test_format_size_and_get_size_robustness(tmp_path):
     assert format_size(0) == '0.00KB'
     assert format_size(1024) == '1.00KB'
     assert format_size(1024**2) == '1.00MB'
+    assert format_size(2 * 1024**4) == '2.00TB'
     assert format_size(-1024) == '-1.00KB'
     assert format_size(-(1024**2) * 2) == '-2.00MB'
 
