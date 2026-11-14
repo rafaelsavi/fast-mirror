@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import subprocess
 import tkinter as tk
 import winsound
 from collections.abc import Callable
@@ -23,7 +22,7 @@ from gui.components.sync_tree_model import (
 )
 from gui.icons import apply_icon, apply_window_icon, conceal_window, reveal_window
 from gui.theme import FILTER_BTN_PALETTES
-from gui.widgets import Action, FilterToggleButton, add_tooltip
+from gui.widgets import Action, FilterToggleButton, add_tooltip, open_path_in_explorer
 from utils.logger import logger
 from utils.utils import format_size
 
@@ -593,22 +592,7 @@ class ActionSelection:
             self._copy_to_clipboard(path_to_copy, 'path')
 
     def _open_path_in_explorer(self, path: str):
-        if not path or path in ('-', '(none)', '(select an item to view path)'):
-            return
-        norm_path = os.path.normpath(path)
-        try:
-            if os.path.isfile(norm_path):
-                subprocess.Popen(['explorer.exe', f'/select,{norm_path}'])
-            elif os.path.isdir(norm_path):
-                os.startfile(norm_path)
-            else:
-                parent_dir = os.path.dirname(norm_path)
-                if os.path.isdir(parent_dir):
-                    os.startfile(parent_dir)
-                else:
-                    logger.warning(f"Neither '{norm_path}' nor its directory exist on disk.")
-        except Exception as e:
-            logger.warning(f"Could not open folder for '{norm_path}': {e}")
+        open_path_in_explorer(path)
 
     def _show_selected_details_dialog(self, item_id: str | None = None):
         if item_id is None:
@@ -983,22 +967,8 @@ class ActionSelection:
                 elif path_to_open is None:
                     path_to_open = p
 
-        if not path_to_open or path_to_open in ('-', '(none)', '(select an item to view path)'):
-            return
-
-        norm_path = os.path.normpath(path_to_open)
-        try:
-            if os.path.isfile(norm_path):
-                # /select,<path> highlights the specific file in Windows Explorer
-                subprocess.Popen(['explorer.exe', f'/select,{norm_path}'])
-            elif os.path.isdir(norm_path):
-                os.startfile(norm_path)
-            else:
-                parent_dir = os.path.dirname(norm_path)
-                if os.path.isdir(parent_dir):
-                    os.startfile(parent_dir)
-        except Exception as e:
-            logger.warning(f"Could not open folder for '{norm_path}': {e}")
+        if path_to_open:
+            open_path_in_explorer(path_to_open)
 
     def _on_item_double_click(self, event):
         """Open folder of selected file in Windows Explorer upon double-click."""

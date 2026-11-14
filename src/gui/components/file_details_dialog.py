@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import contextlib
 import os
-import subprocess
 import tkinter as tk
 from tkinter import ttk
 from typing import Any
 
 from gui.components.sync_tree_model import get_file_type_badge
 from gui.icons import apply_icon, apply_window_icon, conceal_window, reveal_window
-from gui.widgets import Action, BadgeLabel
+from gui.widgets import Action, BadgeLabel, open_path_in_explorer
 from utils.logger import logger
 from utils.utils import format_size
 
@@ -349,20 +348,7 @@ class FileDetailsDialog:
             logger.info(f"Copied {desc} to clipboard: '{text}'")
 
     def _open_in_explorer(self, path: str):
-        if not path or path in ('-', '(none)'):
-            return
-        norm_path = os.path.normpath(path)
-        try:
-            if os.path.isfile(norm_path):
-                subprocess.Popen(['explorer.exe', f'/select,{norm_path}'])
-            elif os.path.isdir(norm_path):
-                os.startfile(norm_path)
-            else:
-                pdir = os.path.dirname(norm_path)
-                if os.path.isdir(pdir):
-                    os.startfile(pdir)
-        except Exception as e:
-            logger.warning(f"Could not open explorer for '{norm_path}': {e}")
+        open_path_in_explorer(path)
 
     def _copy_all_info(self):
         diff_summary = self._compute_diff_summary()

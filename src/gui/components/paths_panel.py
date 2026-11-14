@@ -12,7 +12,7 @@ from typing import Literal
 
 from gui.health_check import TargetHealth, probe_targets_async
 from gui.icons import apply_icon
-from gui.widgets import BadgeLabel, EntryExclusions, EntryPaths, add_tooltip
+from gui.widgets import BadgeLabel, EntryExclusions, EntryPaths, add_tooltip, open_path_in_explorer
 
 
 class PathsPanel(ttk.LabelFrame):
@@ -284,15 +284,7 @@ class PathsPanel(ttk.LabelFrame):
                 target_to_open = first_tgt if os.path.exists(first_tgt) else first_src
 
         if target_to_open and os.path.exists(target_to_open):
-            try:
-                if hasattr(os, 'startfile'):
-                    os.startfile(target_to_open)
-                else:
-                    import subprocess
-
-                    subprocess.Popen(['explorer', target_to_open])
-            except Exception as e:
-                messagebox.showerror('Explorer Error', f'Could not open directory: {e}')
+            open_path_in_explorer(target_to_open)
         else:
             messagebox.showinfo(
                 'Open in Explorer',

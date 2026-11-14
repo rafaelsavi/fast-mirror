@@ -2444,3 +2444,99 @@ def test_gui_tooltips_presence(tmp_path):
     assert hasattr(telem.progress, '_tooltip')
 
     root.destroy()
+
+
+def test_gui_toggle_state_schedule_persistence(tmp_path, monkeypatch):
+    """Verify schedule activation state persists across profile/config save and load."""
+    from gui.gui import Gui
+
+    monkeypatch.setattr(tk.Tk, 'mainloop', lambda self: None)
+    monkeypatch.setattr(Gui, 'load_config', lambda self: None)
+    monkeypatch.setattr(Gui, 'backend_watchdog', lambda self: None)
+    monkeypatch.setattr(Gui, 'log_queue_watchdog', lambda self: None)
+
+    try:
+        gui = Gui()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        cfg_file = tmp_path / 'config.json'
+        gui.config_path = str(cfg_file)
+        gui.toggle_state_schedule = True
+        saved_vars = gui._get_current_config_vars()
+        assert saved_vars['toggle_state_schedule'] is True
+
+        gui._snapshot_saved_config()
+        assert gui.has_unsaved_changes() is False
+        gui.toggle_state_schedule = False
+        assert gui.has_unsaved_changes() is True
+
+        cfg_file.write_text(json.dumps(saved_vars), encoding='utf-8')
+        gui._apply_config_vars_to_gui(json.loads(cfg_file.read_text(encoding='utf-8')))
+
+        assert gui.toggle_state_schedule is True
+        assert gui.schedule_panel.toggle_state_schedule is True
+        assert gui.actions_panel.button_schedule_sync.cget('text') == 'Schedule (ON)'
+    finally:
+        gui.root.destroy()
+
+
+def test_actions_panel_set_running_state_schedule_trigger():
+    """Verify scheduled runs activate Stop Sync / Stopping... state on button_sync_now."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    from gui.components.actions_panel import ActionsPanel
+    from gui.widgets import DefaultActions
+
+    try:
+        stopped = []
+        panel = ActionsPanel(
+            root,
+            checkbox_default_actions=DefaultActions(master=root),
+            checkbox_var_save_report=tk.BooleanVar(master=root),
+            checkbox_var_confirm_sync=tk.BooleanVar(master=root),
+            on_reset_config=lambda: None,
+            on_save_config=lambda: None,
+            on_quick_compare=lambda: None,
+            on_open_report=lambda: None,
+            on_sync_now=lambda: None,
+            on_schedule_sync=lambda: None,
+            on_stop=lambda: stopped.append(True),
+        )
+        panel.set_running_state(True, trigger='schedule')
+        assert panel.button_sync_now.cget('text') == 'Stop Sync'
+        assert str(panel.button_sync_now.cget('state')) == 'normal'
+        panel.button_sync_now.invoke()
+        assert stopped == [True]
+
+        panel.set_running_state(True, trigger='schedule', stopping=True)
+        assert panel.button_sync_now.cget('text') == 'Stopping...'
+        assert str(panel.button_sync_now.cget('state')) == 'disabled'
+    finally:
+        root.destroy()
+
+
+def test_probe_single_target_unc_missing_subfolder(monkeypatch):
+    """Verify probe_single_target walks up UNC subfolders to reachable share root."""
+    from types import SimpleNamespace
+
+    from gui.health_check import probe_single_target
+
+    monkeypatch.setattr(
+        'gui.health_check.os.path.exists',
+        lambda p: os.path.normpath(p).rstrip('\\').lower() == r'\\nas\backups',
+    )
+    monkeypatch.setattr(
+        'gui.health_check.shutil.disk_usage',
+        lambda p: SimpleNamespace(total=100 * 1024**3, used=50 * 1024**3, free=50 * 1024**3),
+    )
+
+    health = probe_single_target(r'\\nas\backups\MissingSub\Sub2')
+    assert health.is_online is True
+    assert health.warning == 'Target folder will be created on sync'
+    assert health.free_bytes == 50 * 1024**3

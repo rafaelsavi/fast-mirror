@@ -936,7 +936,7 @@ class FilterToggleButton(tk.Button):
 
 
 def open_path_in_explorer(path: str) -> None:
-    """Reveal a file or directory in Windows Explorer safely without blocking."""
+    """Reveal a file or nearest existing ancestor directory in Windows Explorer safely without blocking."""
     if not path or path in ('-', '(none)', '(select an item to view path)'):
         return
     norm_path = os.path.normpath(path)
@@ -948,10 +948,15 @@ def open_path_in_explorer(path: str) -> None:
         elif os.path.isdir(norm_path):
             os.startfile(norm_path)
         else:
-            parent_dir = os.path.dirname(norm_path)
-            if os.path.isdir(parent_dir):
-                os.startfile(parent_dir)
+            curr = os.path.dirname(norm_path)
+            while curr and not os.path.isdir(curr):
+                parent = os.path.dirname(curr)
+                if parent == curr:
+                    break
+                curr = parent
+            if curr and os.path.isdir(curr):
+                os.startfile(curr)
             else:
-                logger.warning(f"Neither '{norm_path}' nor its directory exist on disk.")
+                logger.warning(f"Neither '{norm_path}' nor an ancestor directory exist on disk.")
     except Exception as e:
         logger.warning(f"Could not open folder for '{norm_path}': {e}")

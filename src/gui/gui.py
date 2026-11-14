@@ -499,11 +499,14 @@ class Gui:
             'checkbox_var_confirm_sync',
             'checkbox_var_save_report',
             'toggle_auto_scroll',
+            'toggle_state_schedule',
         ]
         config_vars: dict[str, Any] = {}
         for name in config_var_names:
             if name == 'checkbox_var_reset_mirror':
                 config_vars[name] = False  # Reset mirror is a one-shot option
+            elif name == 'toggle_state_schedule':
+                config_vars[name] = bool(self.toggle_state_schedule)
             elif name == 'entry_paths' and hasattr(self, 'entry_paths'):
                 if hasattr(self.entry_paths, 'get_configured_pairs'):
                     config_vars[name] = self.entry_paths.get_configured_pairs()
@@ -530,6 +533,7 @@ class Gui:
             'checkbox_var_confirm_sync': True,
             'checkbox_var_save_report': False,
             'toggle_auto_scroll': True,
+            'toggle_state_schedule': False,
         }
 
     def _apply_config_vars_to_gui(self, config_vars: dict[str, Any]):
@@ -539,12 +543,17 @@ class Gui:
                 self.radio_var_compare_method.set(value)
             elif name == 'checkbox_var_reset_mirror':
                 self.checkbox_var_reset_mirror.set(False)
+            elif name == 'toggle_state_schedule':
+                self.toggle_state_schedule = bool(value)
             elif hasattr(self, name):
                 gui_element = getattr(self, name)
                 if isinstance(gui_element, tk.BooleanVar):
                     gui_element.set(bool(value))
                 else:
                     gui_element.set(value)
+
+        if 'toggle_state_schedule' not in config_vars:
+            self.toggle_state_schedule = False
 
         if 'radio_var_compare_method' not in config_vars and 'checkbox_var_metadata_comparison' in config_vars:
             self.radio_var_compare_method.set(
@@ -556,6 +565,9 @@ class Gui:
             with contextlib.suppress(Exception):
                 self.paths_panel._update_pair_stats()
                 self.paths_panel._update_exclusion_count()
+        if hasattr(self, 'text_var_next_appointment'):
+            with contextlib.suppress(Exception):
+                self.get_next_appointment()
 
     def _normalize_config(self, config: dict[str, Any]) -> dict[str, Any]:
         """Normalize configuration values into canonical immutable types for dirty detection."""
@@ -596,6 +608,7 @@ class Gui:
             'checkbox_var_confirm_sync': bool(config.get('checkbox_var_confirm_sync', True)),
             'checkbox_var_save_report': bool(config.get('checkbox_var_save_report', False)),
             'toggle_auto_scroll': bool(config.get('toggle_auto_scroll', True)),
+            'toggle_state_schedule': bool(config.get('toggle_state_schedule', False)),
         }
 
     def _snapshot_saved_config(self):
@@ -1313,32 +1326,30 @@ class Gui:
 
                     self.root.after(0, _update_taskbar)
 
-        if hasattr(self, 'telemetry_bar'):
-            self.root.after(0, lambda: self.telemetry_bar.set_indeterminate('Scanning and comparing files...'))
-        if hasattr(self, 'taskbar'):
-            self.root.after(0, self.taskbar.set_indeterminate)
-
-        compare = CompareDirs(
-            mirror=mirror,
-            dirs=dirs,
-            exclusions=exclusions,
-            comparison_method=comparison_method,
-            save_report=save_report,
-            use_mirror=use_mirror,
-            increment_mirror=not build_mirror,
-            rebuild_mirror=build_mirror,
-            progress_callback=_on_scan_progress,
-            cancel_requested=self._cancel_event,
-        )
-
-        if self._cancel_event.is_set():
-            logger.info('Operation stopped upon cancellation request')
-            if hasattr(self, 'taskbar'):
-                self.root.after(0, self.taskbar.clear)
-            return
-
         has_error = False
         try:
+            if hasattr(self, 'telemetry_bar'):
+                self.root.after(0, lambda: self.telemetry_bar.set_indeterminate('Scanning and comparing files...'))
+            if hasattr(self, 'taskbar'):
+                self.root.after(0, self.taskbar.set_indeterminate)
+
+            compare = CompareDirs(
+                mirror=mirror,
+                dirs=dirs,
+                exclusions=exclusions,
+                comparison_method=comparison_method,
+                save_report=save_report,
+                use_mirror=use_mirror,
+                increment_mirror=not build_mirror,
+                rebuild_mirror=build_mirror,
+                progress_callback=_on_scan_progress,
+                cancel_requested=self._cancel_event,
+            )
+
+            if self._cancel_event.is_set():
+                logger.info('Operation stopped upon cancellation request')
+                return
+
             if also_sync:
 
                 def _on_sync_progress(

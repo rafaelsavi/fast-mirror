@@ -76,8 +76,8 @@ def probe_single_target(
         will_create = False
         check_path = path_str
         if not os.path.exists(path_str):
-            if expected_serial:
-                # Target drive was verified above; check if drive root / ancestor exists so folder can be created
+            if expected_serial or path_str.startswith('\\\\'):
+                # Walk up to an existing drive root or UNC share ancestor so missing subfolders can be created
                 curr = path_str
                 while curr and not os.path.exists(curr):
                     parent = os.path.dirname(curr)
@@ -85,7 +85,12 @@ def probe_single_target(
                         break
                     curr = parent
 
-                if curr and os.path.exists(curr):
+                unc_valid = True
+                if path_str.startswith('\\\\'):
+                    unc_drive, _ = os.path.splitdrive(curr)
+                    unc_valid = bool(unc_drive and unc_drive.startswith('\\\\'))
+
+                if curr and unc_valid and os.path.exists(curr):
                     check_path = curr
                     will_create = True
                 else:

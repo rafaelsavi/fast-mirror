@@ -251,11 +251,10 @@ class HelpModal(BaseModalDialog):
             'for everyday backups across network shares.\n',
             'body',
         )
-        txt.insert(tk.END, '• Content (SHA-256 Hash): ', 'title')
+        txt.insert(tk.END, '• Content (Byte-by-Byte): ', 'title')
         txt.insert(
             tk.END,
-            'Reads every byte and computes cryptographic SHA-256 hashes. Thoroughly verifies data integrity '
-            'and catches silent bit rot.\n\n',
+            'Thorough byte-by-byte content comparison. Verifies data integrity and catches silent bit rot.\n\n',
             'body',
         )
 

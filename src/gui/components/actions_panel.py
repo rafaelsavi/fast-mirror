@@ -409,14 +409,14 @@ class ActionsPanel(ttk.LabelFrame):
 
         self.rb_content = ttk.Radiobutton(
             self.frame_options,
-            text='Content (SHA-256 hash — thorough)',
+            text='Content (Byte-by-byte — thorough)',
             value='content',
             variable=self.radio_var_compare_method,
         )
         self.rb_content.pack(anchor='w', padx=(4, 0), pady=1)
         add_tooltip(
             self.rb_content,
-            'Thorough byte comparison calculating SHA-256 hashes (detects bit rot and content changes).',
+            'Thorough byte-by-byte content comparison (detects bit rot and content changes).',
         )
 
         # 4b. Local Mirror Database
@@ -586,7 +586,7 @@ class ActionsPanel(ttk.LabelFrame):
             return
 
         if stopping:
-            if trigger == 'sync_now':
+            if trigger in ('sync_now', 'schedule'):
                 self.button_sync_now.configure(text='Stopping...', state='disabled')
                 if hasattr(self.button_sync_now, '_tooltip'):
                     self.button_sync_now._tooltip.text = 'Cancelling active synchronization...'
@@ -595,7 +595,7 @@ class ActionsPanel(ttk.LabelFrame):
                 if hasattr(self.button_quick_compare, '_tooltip'):
                     self.button_quick_compare._tooltip.text = 'Cancelling active comparison...'
         else:
-            if trigger == 'sync_now':
+            if trigger in ('sync_now', 'schedule'):
                 self.button_sync_now.configure(
                     command=stop_cmd,
                     default_style='Stop.TButton',

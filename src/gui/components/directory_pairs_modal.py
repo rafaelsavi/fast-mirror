@@ -578,12 +578,13 @@ class DirectoryPairsModal(BaseModalDialog):
         self.btn_probe.config(state='disabled')
 
         pairs_to_check = list(self._pairs)
+        roots_snapshot = dict(getattr(self.entry_paths, 'storage_roots', {}) or {})
 
         def _worker(*_args):
             results = []
-            roots = getattr(self.entry_paths, 'storage_roots', {})
+            health_updates: dict[str, TargetHealth] = {}
             sorted_roots = sorted(
-                roots.items(),
+                roots_snapshot.items(),
                 key=lambda item: (
                     sanitize_path(item[1].path).rstrip('\\').count('\\'),
                     len(sanitize_path(item[1].path).rstrip('\\')),
@@ -607,7 +608,7 @@ class DirectoryPairsModal(BaseModalDialog):
                             break
 
                 tgt_health = probe_single_target(tgt, expected_serial=exp_serial, expected_root_name=exp_name)
-                self._health_cache[tgt] = tgt_health
+                health_updates[tgt] = tgt_health
 
                 if not src_exists:
                     status = '🔴 Missing Src'
@@ -644,6 +645,7 @@ class DirectoryPairsModal(BaseModalDialog):
                 try:
                     if not self.window.winfo_exists():
                         return
+                    self._health_cache.update(health_updates)
                     self.btn_probe.config(state='normal')
                     for iid_int, idx, src, tgt, status, tag, _ in results:
                         iid = str(iid_int)
