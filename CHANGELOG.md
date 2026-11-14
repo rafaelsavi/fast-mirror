@@ -9,6 +9,30 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-14
+
+### Fixed
+- **Metadata & Content Comparison Accuracy (`file.py`, `backend.py`)**:
+  - Added `< 2.0s` `st_mtime` tolerance in `CompareMethod.METADATA` to prevent repeated re-copies caused by FAT32/exFAT/SMB timestamp rounding, while preserving the `stats_hash` fast path.
+  - Added a fast `st_size` pre-check in `CompareMethod.CONTENT` before byte-by-byte comparison, and automatically bypassed `use_mirror` in Content mode so target files are verified directly on disk.
+  - Aligned `CstmPath.check_length` threshold to `> 259` characters and preserved the underlying exception message alongside path-length warnings in `SyncDirs._execute_batch`.
+- **Comparison Error Reporting & Case-Only Sync (`backend.py`)**:
+  - Preserved `compare_error_files` across `remove_compare_failures()` so comparison errors appear in `print_results()` and exported Excel reports.
+  - Reconciled case-only renames in unattended `SyncDirs` runs when `Action.COPY` is enabled even if `Action.MOVE` is unchecked.
+- **GUI Stability, Thread Safety & State Persistence (`gui.py`, `actions_panel.py`, `health_check.py`, `directory_pairs_modal.py`, `widgets.py`)**:
+  - Scoped Tkinter `BooleanVar`/`StringVar` instances and control groups to explicit `master` widgets to prevent cross-root interpreter leaks.
+  - Wrapped `CompareDirs` inside `backend_thread`'s `try...except...finally` block so the telemetry bar, taskbar progress, and mirror-rebuild flags always reset on errors or cancellation.
+  - Persisted `toggle_state_schedule` across profile/config save and load, and enabled the `Stop Sync` / `Stopping...` state on `button_sync_now` during scheduled runs.
+  - Updated `probe_single_target` to walk up missing subfolders on reachable `\\server\share` UNC paths, moved `_health_cache` updates onto the Tk main thread in `DirectoryPairsModal`, and consolidated Explorer helpers into `open_path_in_explorer`.
+  - Updated Content mode UI/Help wording from SHA-256 to byte-by-byte comparison.
+
+### Changed
+- **Mirror Database Performance (`mirror.py`)**:
+  - Enabled `PRAGMA synchronous=NORMAL`, cached `_ensure_migrated` checks per instance, removed per-file `PRAGMA wal_checkpoint(PASSIVE)`, and maintained `mirror_metadata.file_count` incrementally on single-file updates while preserving granular per-file `commit()` checkpoints.
+- **Dependencies & Packaging (`pyproject.toml`, `fastmirror.spec`, `backend.py`, `utils.py`, `logger.py`)**:
+  - Replaced `pandas` Excel export with direct `openpyxl.Workbook` generation and removed unused `sv-ttk` and `xlsxwriter` dependencies.
+  - Added `TB` unit formatting in `format_size`, fixed `ETL:` -> `ETA:` in `log_progress`, and named the application logger `'fastmirror'`.
+
 ## [1.4.0] - 2026-11-06
 
 ### Added
