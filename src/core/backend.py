@@ -76,6 +76,7 @@ class CompareDirs:
         self.files_in_source: dict[str, set[CstmPath]] = {}
         self.files_in_target: dict[str, set[CstmPath]] = {}
         self.linked_files: list[File] = []
+        self.compare_error_files: list[File] = []
 
         self.files_to_copy: list[tuple[CstmPath, CstmPath]] = []
         self.files_to_move: list[tuple[CstmPath, CstmPath]] = []
@@ -319,10 +320,11 @@ class CompareDirs:
     def remove_compare_failures(self):
         """
         After all files existing in both are compared, some comparisons failed.
-        Remove such files from the repository
+        Record and remove such files from linked_files so they are skipped in sync.
         """
         failed_files = [f for f in self.linked_files if f.in_both and f.compare_error]
         if failed_files:
+            self.compare_error_files.extend(failed_files)
             logger.info(f'Removing {len(failed_files):,} files with compare errors from linked_files')
             self.linked_files = [f for f in self.linked_files if not (f.in_both and f.compare_error)]
 
@@ -376,27 +378,37 @@ class CompareDirs:
                     'in both': 'X' if file.in_both else '',
                     'same': 'X' if file.same else '',
                     'moved': 'X' if file.moved else '',
-                    'modified': 'X' if file.in_both and file.modified else '',
+                    'modified': 'X' if file.in_both and not file.compare_error and file.modified else '',
                     'only source': 'X' if file.only_source else '',
                     'only target': 'X' if file.only_target else '',
                     'size (source)': file.source.get_st_size(as_str=True)
-                    if file.source is not None and (file.source.has_cached_stats or file.source.exists())
+                    if file.source is not None
+                    and (file.source.has_cached_stats or (not file.source.stat_failed and file.source.exists()))
                     else '',
                     'size (target)': file.target.get_st_size(as_str=True)
                     if file.target is not None
-                    and (file.target.has_cached_stats or (not file.target.is_new_target and file.target.exists()))
+                    and (
+                        file.target.has_cached_stats
+                        or (not file.target.is_new_target and not file.target.stat_failed and file.target.exists())
+                    )
                     else '',
                     'modified (source)': file.source.get_st_mtime(as_date_str=True)
-                    if file.source is not None and (file.source.has_cached_stats or file.source.exists())
+                    if file.source is not None
+                    and (file.source.has_cached_stats or (not file.source.stat_failed and file.source.exists()))
                     else '',
                     'modified (target)': file.target.get_st_mtime(as_date_str=True)
                     if file.target is not None
-                    and (file.target.has_cached_stats or (not file.target.is_new_target and file.target.exists()))
+                    and (
+                        file.target.has_cached_stats
+                        or (not file.target.is_new_target and not file.target.stat_failed and file.target.exists())
+                    )
                     else '',
                     'compare error': file.compare_error,
                 }
-                for file in self.linked_files
-                if not (file.in_both and not file.moved and file.same)  # Ignore all same files
+                for file in [
+                    *[f for f in self.linked_files if not (f.in_both and not f.moved and f.same)],
+                    *self.compare_error_files,
+                ]
             ]
         )
 
@@ -418,7 +430,9 @@ class CompareDirs:
         logger.info(f'Files in both and are the same but moved: {moved_count:,}')
         modified_count = len([f for f in self.linked_files if f.in_both and not f.same])
         logger.info(f'Files in both and are modified: {modified_count:,}')
-        paths_compare_error = [str(f) for f in self.linked_files if f.compare_error]
+        paths_compare_error = [
+            str(f) for f in (self.compare_error_files or [f for f in self.linked_files if f.compare_error])
+        ]
         logger.info(
             f'Files with comparing error: {len(paths_compare_error)}'
             + str({True: ': \n  ' + '\n  '.join(paths_compare_error), False: ''}.get(len(paths_compare_error) > 0))
@@ -485,6 +499,12 @@ class SyncDirs:
                 self.files_requested_to_copy = [(str(f1), str(f2)) for f1, f2 in self.files_available_to_copy]
             if Action.MOVE in self.default_actions:
                 self.files_requested_to_move = [(str(f1), str(f2)) for f1, f2 in self.files_available_to_move]
+            elif Action.COPY in self.default_actions:
+                self.files_requested_to_move = [
+                    (str(f1), str(f2))
+                    for f1, f2 in self.files_available_to_move
+                    if str(f1).lower() == str(f2).lower() and str(f1) != str(f2)
+                ]
             if Action.DELETE in self.default_actions:
                 self.files_requested_to_delete = [str(f) for f in self.files_available_to_delete]
 
@@ -627,7 +647,7 @@ class SyncDirs:
                     else:
                         log_progress(meta['past'], i, n_files, start_time, interval=log_interval)
             except Exception as e:
-                error_msg = e if length_check == '' else length_check
+                error_msg = str(e) if length_check == '' else f'{length_check} ({e})'
                 logger.error(f"There was an error while {meta['gerund']} file '{primary_path}'. Exception: {error_msg}")
 
             results.append((item, success))

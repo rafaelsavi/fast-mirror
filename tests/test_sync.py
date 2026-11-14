@@ -7,10 +7,10 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 from core.backend import CompareDirs, SyncDirs
-from core.file import CstmPath, File
+from core.file import CstmPath, File, compare_files
 from core.mirror import MirrorDatabase
 from gui.widgets import Action
-from utils.utils import DirectoryPair
+from utils.utils import CompareMethod, DirectoryPair
 
 
 def test_cstmpath_get_from_dir_exclusions_on_windows(tmp_path):
@@ -855,3 +855,93 @@ def test_full_roundtrip_sync_multiple_folders_mixed(tmp_path):
     assert len(compare2.files_to_move) == 0
     assert len(compare2.files_to_copy) == 0
     assert len(compare2.files_to_delete) == 0
+
+
+def test_compare_files_metadata_sub_2s_tolerance_and_threshold(tmp_path):
+    """Verify METADATA comparison tolerates <2s FAT/SMB mtime jitter while flagging >=2s deltas."""
+    f1 = tmp_path / 'src.bin'
+    f2 = tmp_path / 'tgt.bin'
+    f1.write_bytes(b'payload-123')
+    f2.write_bytes(b'payload-123')
+
+    base = 1700000000.0
+    os.utime(f1, (base + 1.5, base + 1.5))
+    os.utime(f2, (base, base))
+    assert compare_files(CstmPath(f1), CstmPath(f2), CompareMethod.METADATA) == (True, True)
+
+    os.utime(f1, (base + 2.5, base + 2.5))
+    assert compare_files(CstmPath(f1), CstmPath(f2), CompareMethod.METADATA) == (True, False)
+
+
+def test_compare_dirs_preserves_compare_error_files(tmp_path, monkeypatch):
+    """Verify compare failures are removed from sync candidates yet retained in compare_error_files."""
+    import core.file as file_mod
+
+    source = tmp_path / 'src'
+    target = tmp_path / 'tgt'
+    source.mkdir()
+    target.mkdir()
+    (source / 'ok.txt').write_text('ok')
+    (target / 'ok.txt').write_text('ok')
+    (source / 'bad.txt').write_text('bad')
+    (target / 'bad.txt').write_text('bad')
+
+    orig_compare = file_mod.compare_files
+
+    def fake_compare(f1, f2, comparison_method=CompareMethod.METADATA):
+        if f1.name == 'bad.txt':
+            return False, False
+        return orig_compare(f1, f2, comparison_method=comparison_method)
+
+    monkeypatch.setattr(file_mod, 'compare_files', fake_compare)
+
+    mirror = MirrorDatabase(path=str(tmp_path / 'mirror.db'))
+    compare = CompareDirs(
+        mirror=mirror,
+        dirs=[DirectoryPair(str(source), str(target))],
+        exclusions=[],
+        use_mirror=False,
+    )
+
+    assert len(compare.compare_error_files) == 1
+    assert compare.compare_error_files[0].name == 'bad.txt'
+    assert all(f.name != 'bad.txt' for f in compare.linked_files)
+    assert len(compare.files_to_copy) == 0
+
+
+def test_sync_reconciles_case_only_rename_with_copy_only_unattended(tmp_path):
+    """Verify unattended copy-only sync still reconciles case-only renames without executing general moves."""
+    source = tmp_path / 'Source'
+    target = tmp_path / 'Target'
+    (source / 'CaseDir').mkdir(parents=True)
+    (target / 'casedir').mkdir(parents=True)
+    (source / 'CaseDir' / 'photo.jpg').write_text('same-data')
+    (target / 'casedir' / 'photo.jpg').write_text('same-data')
+    shutil.copystat(source / 'CaseDir' / 'photo.jpg', target / 'casedir' / 'photo.jpg')
+
+    (source / 'MovedDir').mkdir(parents=True)
+    (target / 'OldDir').mkdir(parents=True)
+    (source / 'MovedDir' / 'moved.jpg').write_text('moved-data')
+    (target / 'OldDir' / 'moved.jpg').write_text('moved-data')
+    shutil.copystat(source / 'MovedDir' / 'moved.jpg', target / 'OldDir' / 'moved.jpg')
+
+    mirror = MirrorDatabase(path=str(tmp_path / 'mirror.db'))
+    dirs = [DirectoryPair(str(source), str(target))]
+    compare = CompareDirs(mirror=mirror, dirs=dirs, exclusions=[])
+    assert len(compare.files_to_move) == 2
+
+    sync = SyncDirs(
+        files_to_copy=compare.files_to_copy,
+        files_to_move=compare.files_to_move,
+        files_to_delete=compare.files_to_delete,
+        mirror=mirror,
+        root_gui=None,
+        dirs=dirs,
+        default_actions=[Action.COPY],
+        confirm_sync=False,
+    )
+
+    assert len(sync.files_moved) == 1
+    assert 'CaseDir' in os.listdir(target)
+    assert (target / 'OldDir' / 'moved.jpg').exists()
+    assert not (target / 'MovedDir').exists()

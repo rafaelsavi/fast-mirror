@@ -68,7 +68,7 @@ class CstmPath(Path):
         self._stat_failed: bool = is_new_target
 
     def check_length(self) -> str:
-        return f'File path is too long ({len(str(self))}): {self}' if len(str(self)) > 255 else ''
+        return f'File path is too long ({len(str(self))}): {self}' if len(str(self)) > 259 else ''
 
     @property
     def rel_to_root(self) -> str:
@@ -335,9 +335,16 @@ def compare_files(
 
     try:
         if comparison_method == CompareMethod.METADATA:
-            same = f1.stats_hash == f2.stats_hash
+            if f1.stats_hash == f2.stats_hash:
+                same = True
+            elif (f1.has_cached_stats or f1._stats_hash is None) and (f2.has_cached_stats or f2._stats_hash is None):
+                # Allow <2s mtime variance across filesystems/protocols (e.g. FAT32/exFAT/SMB rounding)
+                s1, s2 = f1.stats, f2.stats
+                same = s1.st_size == s2.st_size and abs(s1.st_mtime - s2.st_mtime) < 2.0
+            else:
+                same = False
         elif comparison_method == CompareMethod.CONTENT:
-            same = filecmp.cmp(f1, f2, False)
+            same = False if f1.stats.st_size != f2.stats.st_size else filecmp.cmp(f1, f2, False)
         else:
             raise CustomException(f'Unknown comparison method: {comparison_method}')
         success = True
