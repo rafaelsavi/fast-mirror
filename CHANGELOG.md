@@ -9,6 +9,21 @@ The version is centrally maintained in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-20
+
+### Added
+- **Sticky Nested Group Headers (`sticky_tree_header.py`, `confirmation_popup.py`, `checkbox_treeview.py`)**:
+  - Added VS Code-style frozen ancestor folder headers (`StickyTreeHeader`) pinned beneath the confirmation treeview's column headings when scrolling through long nested groups.
+  - Supports interactive checkbox toggling, `[-]` folder collapsing, click-to-scroll & select, right-click context menus, horizontal scroll/column resize synchronization, and automatic uncovering of focused/filtered rows.
+
+### Fixed
+- **Uniform File & Folder Indentation (`checkbox_treeview.py`, `sync_tree_model.py`, `icons.py`)**:
+  - Replaced variable-width Unicode emoji prefixes in the `#0` tree column with fixed-width `41×16` composite PNG icons (checkbox + 16×16 file/folder icon), eliminating horizontal text misalignment between `.jpg`, `.mp4`, and other file types.
+- **Open in Explorer / See in Folder (`widgets.py`, `confirmation_popup.py`)**:
+  - Fixed `open_path_in_explorer` passing `/select,<path>` as a quoted argument when paths contain spaces, which caused `explorer.exe` to fall back to opening **Documents**.
+  - Fixed `EntryPaths._context_open_explorer` calling `get()` instead of `get_text()`.
+  - Improved `ActionSelection._open_selected_in_folder` to open the selected folder's own path directly rather than jumping into nested leaf subdirectories.
+
 ## [1.4.1] - 2026-11-14
 
 ### Fixed
