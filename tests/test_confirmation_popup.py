@@ -2270,3 +2270,143 @@ def test_composite_icons_uniform_width_and_state_sync(tmp_path):
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
+
+
+def test_sticky_nested_group_headers_on_scroll_and_interactions(tmp_path, monkeypatch):
+    """Verify frozen nested group headers track scrolled-out ancestors and support click/checkbox/collapse/filter."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        from core.file import Stats
+
+        root_dir = tmp_path / 'Backup'
+        entries = [
+            (
+                CstmPath(str(root_dir / 'root_readme.txt'), stats=Stats(64, 1700000000.0)),
+                CstmPath(str(root_dir / 'root_readme.txt'), is_new_target=True),
+            )
+        ]
+        for i in range(40):
+            entries.append(
+                (
+                    CstmPath(
+                        str(root_dir / '2024' / '2024-03-24 Official Training' / f'img_{i:02d}.jpg'),
+                        stats=Stats(1024, 1700000000.0),
+                    ),
+                    CstmPath(
+                        str(root_dir / '2024' / '2024-03-24 Official Training' / f'img_{i:02d}.jpg'),
+                        is_new_target=True,
+                    ),
+                )
+            )
+        for i in range(40):
+            entries.append(
+                (
+                    CstmPath(
+                        str(root_dir / '2024' / '2024-04-01 Next Event' / f'vid_{i:02d}.mp4'),
+                        stats=Stats(2048, 1700000000.0),
+                    ),
+                    CstmPath(
+                        str(root_dir / '2024' / '2024-04-01 Next Event' / f'vid_{i:02d}.mp4'),
+                        is_new_target=True,
+                    ),
+                )
+            )
+
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=entries,
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+        try:
+            popup.popup.update()
+            sh = popup.sticky_header
+
+            # Resolve expected folder IIDs by display name
+            by_name = {popup.tree._folder_display_names[fid]: fid for fid in popup.tree._folder_nodes}
+            f_root = next(fid for name, fid in by_name.items() if 'Backup' in name)
+            f_2024 = by_name['2024']
+            f_training = by_name['2024-03-24 Official Training']
+            f_next = by_name['2024-04-01 Next Event']
+
+            # 1. At scroll top (S=0), sticky headers must be empty and hidden
+            assert sh.get_sticky_folder_ids() == ()
+            assert sh.container.winfo_ismapped() == 0
+
+            # 2. Scroll down into '2024-03-24 Official Training' -> all 3 higher groups stay frozen
+            popup.tree.yview_scroll(10, 'units')
+            popup.popup.update()
+            assert sh.get_sticky_folder_ids() == (f_root, f_2024, f_training)
+            assert sh.container.winfo_ismapped() == 1
+            metrics = sh._measure_metrics()
+            assert metrics is not None
+            _, heading_h, row_h = metrics
+            assert sh.container.winfo_y() == heading_h
+            assert sh.container.winfo_height() == 3 * row_h + 1
+
+            # 3. Scroll further down into sibling '2024-04-01 Next Event' -> deepest sticky group transitions
+            popup.tree.yview_scroll(45, 'units')
+            popup.popup.update()
+            assert sh.get_sticky_folder_ids() == (f_root, f_2024, f_next)
+
+            # 4. Checkbox/stats sync via toolbar deselect_all & select_all
+            popup.tree.deselect_all()
+            popup.popup.update()
+            sticky_2024_iid = f'sticky::{f_2024}'
+            assert '(0/' in sh.sticky_tree.item(sticky_2024_iid, 'values')[0]
+            assert str(sh.sticky_tree.item(sticky_2024_iid, 'image')[0]) == str(popup.tree.get_item_image(f_2024))
+
+            popup.tree.select_all()
+            popup.popup.update()
+            assert '(80/80' in sh.sticky_tree.item(sticky_2024_iid, 'values')[0]
+
+            # 5. Clicking checkbox area on sticky row toggles real folder check state
+            y_2024 = sh.sticky_tree.bbox(sticky_2024_iid)[1] + row_h // 2
+            cb_x = next(x for x in range(0, 140) if 'image' in sh.sticky_tree.identify_element(x, y_2024)) + 2
+            sh._on_click(type('Evt', (), {'x': cb_x, 'y': y_2024})())
+            popup.popup.update()
+            assert popup.tree.tag_has('unchecked', f_2024)
+            assert '(0/' in sh.sticky_tree.item(sticky_2024_iid, 'values')[0]
+            # Toggle back on
+            sh._on_click(type('Evt', (), {'x': cb_x, 'y': y_2024})())
+            popup.popup.update()
+            assert popup.tree.tag_has('checked', f_2024)
+
+            # 6. Clicking sticky row text scrolls that folder cleanly into view and selects it
+            text_x = next(x for x in range(50, 260) if 'text' in sh.sticky_tree.identify_element(x, y_2024))
+            sh._on_click(type('Evt', (), {'x': text_x, 'y': y_2024})())
+            popup.popup.update()
+            assert f_2024 in popup.tree.selection()
+            bbox_2024 = popup.tree.bbox(f_2024)
+            assert bbox_2024 and bbox_2024[1] >= heading_h + len(sh.get_sticky_folder_ids()) * row_h
+
+            # 7. Scroll back into '2024-04-01 Next Event' and click [-] indicator on sticky row to collapse it
+            popup.tree.yview_scroll(50, 'units')
+            popup.popup.update()
+            assert f_next in sh.get_sticky_folder_ids()
+            sticky_next_iid = f'sticky::{f_next}'
+            y_next = sh.sticky_tree.bbox(sticky_next_iid)[1] + row_h // 2
+            ind_x = next(x for x in range(0, 140) if 'indicator' in sh.sticky_tree.identify_element(x, y_next))
+            sh._on_click(type('Evt', (), {'x': ind_x, 'y': y_next})())
+            popup.popup.update()
+            assert not bool(popup.tree.item(f_next, 'open'))
+
+            # 8. Filtering to 0 matches hides sticky header cleanly
+            popup.tree.yview_scroll(10, 'units')
+            popup.popup.update()
+            popup.filter_var.set('nonexistent_filter_xyz_123')
+            popup.popup.update()
+            assert sh.get_sticky_folder_ids() == ()
+            assert sh.container.winfo_ismapped() == 0
+        finally:
+            popup.button_cancel_click()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

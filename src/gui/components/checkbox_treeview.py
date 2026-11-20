@@ -695,17 +695,24 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         for act_str, leaves in self._all_group_children.items():
             self._all_group_children[act_str] = sorted(leaves, key=_sort_key, reverse=reverse)
 
+        if self._on_view_changed is not None:
+            self._on_view_changed()
+
     def expand_all(self):
         """Expand all folder nodes."""
         for folder_iid in self._folder_nodes:
             if self.exists(folder_iid):
                 self.item(folder_iid, open=True)
+        if self._on_view_changed is not None:
+            self._on_view_changed()
 
     def collapse_all(self):
         """Collapse all folder nodes."""
         for folder_iid in self._folder_nodes:
             if self.exists(folder_iid):
                 self.item(folder_iid, open=False)
+        if self._on_view_changed is not None:
+            self._on_view_changed()
 
     def filter_items(
         self,
@@ -744,6 +751,8 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                     continue
                 self.set_children(parent_iid, *children)
                 self._attached_items[parent_iid] = set(children)
+            if self._on_view_changed is not None:
+                self._on_view_changed()
             return 0, None
 
         self._is_filtered = True
@@ -796,5 +805,8 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
                     tags = tuple(self.item(child_iid, 'tags')) + ('highlight_match',)
                     self.item(child_iid, tags=tags)
                     self._highlighted_items.add(child_iid)
+
+        if self._on_view_changed is not None:
+            self._on_view_changed()
 
         return match_count, first_match

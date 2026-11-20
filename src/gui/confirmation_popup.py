@@ -12,6 +12,7 @@ from tkinter import messagebox, ttk
 from core.file import CstmPath
 from gui.components.checkbox_treeview import CustomCheckboxTreeView
 from gui.components.file_details_dialog import FileDetailsDialog
+from gui.components.sticky_tree_header import StickyTreeHeader
 from gui.components.sync_tree_model import (
     FolderNode,
     _compact_trie,
@@ -321,7 +322,22 @@ class ActionSelection:
         hscroll = ttk.Scrollbar(frame_table, orient='horizontal', command=self.tree.xview)
         hscroll.grid(row=1, column=0, sticky='ew')
 
-        self.tree.configure(yscrollcommand=vscroll.set, xscrollcommand=hscroll.set)
+        self.sticky_header = StickyTreeHeader(
+            self.tree,
+            on_context_menu=self._show_group_context_menu,
+            on_item_selected=self._on_item_selected,
+        )
+        self.tree._on_view_changed = lambda: self.sticky_header.schedule_update(force_refresh=True)
+
+        def _on_yscroll(first, last):
+            vscroll.set(first, last)
+            self.sticky_header.update()
+
+        def _on_xscroll(first, last):
+            hscroll.set(first, last)
+            self.sticky_header.sync_xview(first)
+
+        self.tree.configure(yscrollcommand=_on_yscroll, xscrollcommand=_on_xscroll)
 
         self.tree.add_file_lists(
             {
@@ -1123,6 +1139,8 @@ class ActionSelection:
         self.lbl_stat_copy.config(text=_format_badge(Action.COPY, copy_count, copy_bytes, '🟢'))
         self.lbl_stat_move.config(text=_format_badge(Action.MOVE, move_count, move_bytes, '🔵'))
         self.lbl_stat_delete.config(text=_format_badge(Action.DELETE, del_count, del_bytes, '🔴'))
+        if hasattr(self, 'sticky_header'):
+            self.sticky_header.schedule_update(force_refresh=True)
 
     def _update_action_filter_visuals(self, act_id: str):
         for a_key, btn in getattr(self, 'action_buttons', {}).items():
@@ -1158,8 +1176,13 @@ class ActionSelection:
                 self.tree.see(first_match)
                 self.tree.selection_set(first_match)
                 self._on_item_selected(None)
+                if hasattr(self, 'sticky_header'):
+                    self.sticky_header.update()
+                    self.sticky_header.ensure_item_visible(first_match)
         else:
             self.lbl_filter_count.config(text='')
+            if hasattr(self, 'sticky_header'):
+                self.sticky_header.schedule_update(force_refresh=True)
 
     def _focus_filter_entry(self):
         """Focus the search filter entry and select all text (Ctrl+F)."""
