@@ -12,9 +12,10 @@ from gui.widgets import Action
 class FolderNode:
     """Node in directory tree used for multi-level folder hierarchy with compaction."""
 
-    def __init__(self, name: str, path_key: str):
+    def __init__(self, name: str, path_key: str, full_path: str = ''):
         self.name = name
         self.path_key = path_key
+        self.full_path = full_path
         self.children: dict[str, FolderNode] = {}
         self.files: list[tuple[str, Action, str, str, dict[str, Any]]] = []
 
@@ -114,11 +115,61 @@ def _compact_trie(node: FolderNode, is_root: bool = False) -> FolderNode:
 
     if not is_root and len(node.files) == 0 and len(node.children) == 1:
         only_child = next(iter(node.children.values()))
-        compacted = FolderNode(f'{node.name} \\ {only_child.name}', only_child.path_key)
+        compacted = FolderNode(f'{node.name} \\ {only_child.name}', only_child.path_key, full_path=only_child.full_path)
         compacted.children = only_child.children
         compacted.files = only_child.files
         return compacted
     return node
+
+
+_CATEGORY_EXTENSIONS: tuple[tuple[str, frozenset[str]], ...] = (
+    ('image', frozenset({'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico'})),
+    ('media', frozenset({'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mp3', '.wav', '.flac', '.m4a'})),
+    ('document', frozenset({'.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.txt', '.csv', '.rtf'})),
+    ('archive', frozenset({'.zip', '.tar', '.gz', '.7z', '.rar', '.bz2', '.xz'})),
+    (
+        'code',
+        frozenset(
+            {
+                '.py',
+                '.js',
+                '.ts',
+                '.html',
+                '.css',
+                '.json',
+                '.xml',
+                '.yaml',
+                '.yml',
+                '.md',
+                '.sh',
+                '.bat',
+                '.ps1',
+                '.sql',
+            }
+        ),
+    ),
+)
+_BINARY_EXTENSIONS = frozenset({'.exe', '.msi', '.dll'})
+_BADGE_INFO: dict[str, tuple[str, str]] = {
+    'image': ('🖼️', 'Image'),
+    'media': ('🎬', 'Media'),
+    'document': ('📄', 'Document'),
+    'archive': ('📦', 'Archive'),
+    'code': ('💻', 'Code/Config'),
+}
+
+
+def get_file_icon_name(path: str) -> str:
+    """Return the PNG icon asset stem matching a file path's extension."""
+    if not path or path in ('-', '(none)'):
+        return 'document'
+    ext = os.path.splitext(path)[1].lower()
+    if ext in _BINARY_EXTENSIONS:
+        return 'gear'
+    for category, exts in _CATEGORY_EXTENSIONS:
+        if ext in exts:
+            return category
+    return 'document'
 
 
 def get_file_category_group(path: str) -> str:
@@ -126,31 +177,9 @@ def get_file_category_group(path: str) -> str:
     if not path or path in ('-', '(none)'):
         return 'other'
     ext = os.path.splitext(path)[1].lower()
-    if ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico'):
-        return 'image'
-    if ext in ('.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mp3', '.wav', '.flac', '.m4a'):
-        return 'media'
-    if ext in ('.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.txt', '.csv', '.rtf'):
-        return 'document'
-    if ext in ('.zip', '.tar', '.gz', '.7z', '.rar', '.bz2', '.xz'):
-        return 'archive'
-    if ext in (
-        '.py',
-        '.js',
-        '.ts',
-        '.html',
-        '.css',
-        '.json',
-        '.xml',
-        '.yaml',
-        '.yml',
-        '.md',
-        '.sh',
-        '.bat',
-        '.ps1',
-        '.sql',
-    ):
-        return 'code'
+    for category, exts in _CATEGORY_EXTENSIONS:
+        if ext in exts:
+            return category
     return 'other'
 
 
@@ -159,32 +188,11 @@ def get_file_type_badge(path: str) -> tuple[str, str]:
     if not path or path in ('-', '(none)'):
         return ('📄', 'File')
     ext = os.path.splitext(path)[1].lower()
-    if ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico'):
-        return ('🖼️', f'Image ({ext})')
-    if ext in ('.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mp3', '.wav', '.flac', '.m4a'):
-        return ('🎬', f'Media ({ext})')
-    if ext in ('.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.txt', '.csv', '.rtf'):
-        return ('📄', f'Document ({ext})')
-    if ext in ('.zip', '.tar', '.gz', '.7z', '.rar', '.bz2', '.xz'):
-        return ('📦', f'Archive ({ext})')
-    if ext in (
-        '.py',
-        '.js',
-        '.ts',
-        '.html',
-        '.css',
-        '.json',
-        '.xml',
-        '.yaml',
-        '.yml',
-        '.md',
-        '.sh',
-        '.bat',
-        '.ps1',
-        '.sql',
-    ):
-        return ('💻', f'Code/Config ({ext})')
-    if ext in ('.exe', '.msi', '.dll'):
+    for category, exts in _CATEGORY_EXTENSIONS:
+        if ext in exts:
+            emoji, label = _BADGE_INFO[category]
+            return (emoji, f'{label} ({ext})')
+    if ext in _BINARY_EXTENSIONS:
         return ('⚙️', f'Binary ({ext})')
     if ext:
         return ('📄', f'{ext.upper()[1:]} File')

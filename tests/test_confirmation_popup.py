@@ -2195,3 +2195,78 @@ def test_smart_diff_move_origin_formatting():
         )
         == 'from: 2016\\04 - Encontro Old\\RAW\\'
     )
+
+
+def test_composite_icons_uniform_width_and_state_sync(tmp_path):
+    """Verify files and folders use uniform-width composite PNG images without emoji prefix jitter."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        from core.file import Stats
+
+        filenames = [
+            'photo.jpg',
+            'video.mp4',
+            'report.pdf',
+            'archive.zip',
+            'script.py',
+            'tool.exe',
+            'notes.unknown',
+        ]
+        entries = []
+        for name in filenames:
+            src_p = CstmPath(str(tmp_path / 'src' / name), stats=Stats(128, 1700000000.0))
+            tgt_p = CstmPath(str(tmp_path / 'tgt' / 'Album' / name), is_new_target=True)
+            entries.append((src_p, tgt_p))
+
+        tree = CustomCheckboxTreeView(root)
+        tree.add_file_lists({Action.COPY: entries}, default_active=[Action.COPY])
+
+        # Verify every folder and file has clean text (no raw emoji prefixes) and identical 41x16 image dimensions
+        raw_emojis = ('📁', '🖼️', '🎬', '📄', '📦', '💻', '⚙️')
+        for folder_iid in tree._folder_nodes:
+            folder_text = tree.item(folder_iid, 'text')
+            assert not any(em in folder_text for em in raw_emojis)
+            folder_img = tree.get_item_image(folder_iid)
+            assert folder_img is not None
+            assert folder_img.width() == 41
+            assert folder_img.height() == 16
+            img_opt = tree.item(folder_iid, 'image')
+            assert str(folder_img) in (img_opt if isinstance(img_opt, tuple) else (img_opt,))
+
+        leaves = tree.get_children('copy')
+        assert len(leaves) == len(filenames)
+        for lf in leaves:
+            lf_text = tree.item(lf, 'text')
+            assert not any(em in lf_text for em in raw_emojis)
+            lf_img = tree.get_item_image(lf)
+            assert lf_img is not None
+            assert lf_img.width() == 41
+            assert lf_img.height() == 16
+
+        # Verify change_state updates both tag and composite image across checked -> unchecked -> tristate
+        sample_leaf = leaves[0]
+        img_checked = tree.get_item_image(sample_leaf)
+        tree.change_state(sample_leaf, 'unchecked')
+        assert tree.tag_has('unchecked', sample_leaf)
+        img_unchecked = tree.get_item_image(sample_leaf)
+        assert str(img_unchecked) != str(img_checked)
+        img_opt_after = tree.item(sample_leaf, 'image')
+        assert str(img_unchecked) in (img_opt_after if isinstance(img_opt_after, tuple) else (img_opt_after,))
+
+        parent_folder = tree.parent(sample_leaf)
+        tree._uncheck_ancestor(sample_leaf)
+        assert tree.tag_has('tristate', parent_folder)
+        img_tristate = tree.get_item_image(parent_folder)
+        assert img_tristate is not None
+        assert img_tristate.width() == 41
+        assert img_tristate.height() == 16
+        folder_img_opt = tree.item(parent_folder, 'image')
+        assert str(img_tristate) in (folder_img_opt if isinstance(folder_img_opt, tuple) else (folder_img_opt,))
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()

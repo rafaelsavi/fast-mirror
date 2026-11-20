@@ -92,6 +92,12 @@ def get_app_icon_path() -> str | None:
     return _APP_ICON_PATH if os.path.isfile(_APP_ICON_PATH) else None
 
 
+def get_icon_path(name: str) -> str | None:
+    """Return the absolute path to a named PNG icon asset, or None if not found."""
+    icon_path = os.path.join(_ICONS_DIR, f'{name}.png')
+    return icon_path if os.path.isfile(icon_path) else None
+
+
 def apply_window_icon(window: tk.Tk | tk.Toplevel) -> None:
     """
     Apply the unified application icon (.ico) to any window, dialog, or popup modal.

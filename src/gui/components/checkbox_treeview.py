@@ -10,6 +10,8 @@ from tkinter import ttk
 from typing import Any
 
 import ttkwidgets
+from PIL import Image, ImageTk
+from ttkwidgets.checkboxtreeview import IM_CHECKED, IM_TRISTATE, IM_UNCHECKED
 
 from core.file import CstmPath
 from gui.components.sync_tree_model import (
@@ -17,8 +19,9 @@ from gui.components.sync_tree_model import (
     _compact_trie,
     _extract_relative_folder_parts,
     _format_move_origin,
-    get_file_type_badge,
+    get_file_icon_name,
 )
+from gui.icons import get_icon_path
 from gui.widgets import Action
 from utils.utils import format_size
 
@@ -31,6 +34,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         'size',
         'modified',
     ]
+    _ICON_NAMES = ('folder', 'image', 'media', 'document', 'archive', 'code', 'gear')
 
     def __init__(self, *args, on_stats_changed: Callable[[], None] | None = None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -40,16 +44,23 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self._all_group_children: dict[str, list[str]] = {}
         self._folder_nodes: set[str] = set()
         self._folder_display_names: dict[str, str] = {}
+        self._folder_full_paths: dict[str, str] = {}
         self._folder_leaf_map: dict[str, list[str]] = {}
         self._item_parents: dict[str, str] = {}
+        self._item_icon_keys: dict[str, str] = {}
         self._original_tree_structure: dict[str, list[str]] = {}
         self._attached_items: dict[str, set[str]] = {}
         self._highlighted_items: set[str] = set()
         self._search_cache: dict[str, tuple[str, str]] = {}
+        self._composite_images: dict[tuple[str, str], ImageTk.PhotoImage] = {}
+        self._checkbox_hit_width: int = 19
+        self._on_view_changed: Callable[[], None] | None = None
         self.on_stats_changed = on_stats_changed
         self._sort_col: str | None = None
         self._sort_descending: bool = False
         self._is_filtered: bool = False
+
+        self._build_composite_icons()
 
         # Configure Treeview columns and headers
         self['columns'] = self.custom_headers[1:]
@@ -77,6 +88,67 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
         self.apply_theme_tags()
 
+    def _build_composite_icons(self) -> None:
+        """Pre-render fixed-width composite (checkbox + icon) images for consistent `#0` text alignment."""
+        state_sources = {
+            'checked': IM_CHECKED,
+            'unchecked': IM_UNCHECKED,
+            'tristate': IM_TRISTATE,
+        }
+        base_checkboxes: dict[str, Image.Image] = {}
+        for state, path in state_sources.items():
+            with contextlib.suppress(Exception), Image.open(path) as img:
+                base_checkboxes[state] = img.convert('RGBA')
+
+        if not base_checkboxes:
+            return
+
+        sample_cb = next(iter(base_checkboxes.values()))
+        cb_w, cb_h = sample_cb.size
+        icon_size = 16
+        gap = 4
+        right_pad = 4
+        canvas_w = cb_w + gap + icon_size + right_pad
+        canvas_h = max(cb_h, icon_size)
+        self._checkbox_hit_width = cb_w + 2
+
+        for icon_name in self._ICON_NAMES:
+            icon_path = get_icon_path(icon_name)
+            if not icon_path:
+                continue
+            with contextlib.suppress(Exception):
+                with Image.open(icon_path) as raw_icon:
+                    icon_img = raw_icon.convert('RGBA')
+                    if icon_img.size != (icon_size, icon_size):
+                        icon_img = icon_img.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+
+                for state, cb_img in base_checkboxes.items():
+                    canvas = Image.new('RGBA', (canvas_w, canvas_h), (0, 0, 0, 0))
+                    cb_y = (canvas_h - cb_img.height) // 2
+                    icon_y = (canvas_h - icon_size) // 2
+                    canvas.paste(cb_img, (0, cb_y), cb_img)
+                    canvas.paste(icon_img, (cb_w + gap, icon_y), icon_img)
+                    self._composite_images[(state, icon_name)] = ImageTk.PhotoImage(canvas, master=self)
+
+    def _get_composite_image(self, state: str, icon_key: str) -> ImageTk.PhotoImage | None:
+        """Return pre-rendered composite PhotoImage for (state, icon_key), or None if unavailable."""
+        return self._composite_images.get((state, icon_key))
+
+    def get_item_image(self, item_id: str) -> Any:
+        """Return the active PhotoImage (composite or fallback checkbox) for a tree item."""
+        if super().tag_has('checked', item_id):
+            state = 'checked'
+        elif super().tag_has('tristate', item_id):
+            state = 'tristate'
+        else:
+            state = 'unchecked'
+        icon_key = self._item_icon_keys.get(item_id)
+        if icon_key:
+            img = self._get_composite_image(state, icon_key)
+            if img is not None:
+                return img
+        return getattr(self, f'im_{state}', None)
+
     def apply_theme_tags(self):
         """Configure row tinting and match highlighting for day mode."""
         self.tag_configure('copy_tag', background='#f6fff8')
@@ -87,6 +159,19 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self.tag_configure('selected_row', background='#0078d7', foreground='#ffffff')
 
     def _box_click(self, event):
+        x, y, widget = event.x, event.y, event.widget
+        elem = widget.identify('element', x, y)
+        if 'image' not in elem:
+            return
+        item = self.identify_row(y)
+        icon_key = self._item_icon_keys.get(item)
+        if (
+            icon_key
+            and self._get_composite_image('checked', icon_key) is not None
+            and x >= self._checkbox_hit_width
+            and 'image' in widget.identify('element', x - self._checkbox_hit_width, y)
+        ):
+            return
         super()._box_click(event)
         self.refresh_group_stats()
 
@@ -119,7 +204,7 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             folder_display = self._folder_display_names.get(folder_iid, '')
             self.item(
                 folder_iid,
-                text=f'📁  {folder_display}',
+                text=folder_display,
                 values=(
                     f'({n_checked}/{n_total} files)' if n_total > 1 else '(1 file)',
                     '',
@@ -173,8 +258,10 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         self._all_group_children.clear()
         self._folder_nodes.clear()
         self._folder_display_names.clear()
+        self._folder_full_paths.clear()
         self._folder_leaf_map.clear()
         self._item_parents.clear()
+        self._item_icon_keys.clear()
         self._original_tree_structure.clear()
         self._attached_items.clear()
         self._highlighted_items.clear()
@@ -229,12 +316,16 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
 
             curr = root_trie
             accum_parts: list[str] = []
-            for part in folder_parts:
+            for idx, part in enumerate(folder_parts):
                 part_key = part.lower()
                 accum_parts.append(part_key)
                 path_key = '/'.join(accum_parts)
                 if part_key not in curr.children:
-                    curr.children[part_key] = FolderNode(name=part, path_key=path_key)
+                    if idx == 0:
+                        part_full = f'{part}\\' if (len(part) == 2 and part[1] == ':') else part
+                    else:
+                        part_full = os.path.join(curr.full_path, part) if curr.full_path else part
+                    curr.children[part_key] = FolderNode(name=part, path_key=path_key, full_path=part_full)
                 curr = curr.children[part_key]
             curr.files.append((item_key, action, src_val, tgt_val, row))
 
@@ -272,15 +363,19 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             folder_iid = f'folder::{child.path_key}'
             self._folder_nodes.add(folder_iid)
             self._folder_display_names[folder_iid] = child.name
+            self._folder_full_paths[folder_iid] = child.full_path
             self._item_parents[folder_iid] = parent_iid
+            self._item_icon_keys[folder_iid] = 'folder'
             self._attached_items.setdefault(parent_iid, set()).add(folder_iid)
             self._original_tree_structure.setdefault(parent_iid, []).append(folder_iid)
 
+            folder_img = self._get_composite_image('unchecked', 'folder')
             self.insert(
                 parent=parent_iid,
                 index='end',
                 iid=folder_iid,
-                text=f'📁  {child.name}',
+                text=child.name,
+                image=folder_img if folder_img is not None else '',
                 values=('', '', '', ''),
                 tags=('folder_tag',),
                 open=True,
@@ -298,7 +393,8 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             self._all_group_children.setdefault(action.value, []).append(file_key)
 
             primary_path = tgt_val if (tgt_val and tgt_val != '-') else src_val
-            icon, _ = get_file_type_badge(primary_path)
+            icon_key = get_file_icon_name(primary_path)
+            self._item_icon_keys[file_key] = icon_key
             fname = os.path.basename(primary_path) or primary_path
 
             # Determine Origin / Transition details
@@ -328,11 +424,13 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
             )
             self._search_cache[file_key] = (search_str, action.value)
 
+            file_img = self._get_composite_image(state_tag, icon_key)
             self.insert(
                 parent=parent_iid,
                 index='end',
                 iid=file_key,
-                text=f'{icon}  {fname}',
+                text=fname,
+                image=file_img if file_img is not None else '',
                 values=(
                     action_badge,
                     origin_str,
@@ -380,19 +478,28 @@ class CustomCheckboxTreeView(ttkwidgets.CheckboxTreeview):
         return super().item(item, option=option, **kw)
 
     def change_state(self, item, state):
-        """Set checkbox state, cascading across all leaf items for action group names."""
+        """Set checkbox state and sync composite icon image across leaves and ancestors."""
         if item in ('copy', 'move', 'delete'):
             leaves = self._all_group_children.get(item, [])
             for leaf in leaves:
                 if self.exists(leaf):
-                    super().change_state(leaf, state)
+                    self.change_state(leaf, state)
                     if state == 'checked':
                         self._check_ancestor(leaf)
                     else:
                         self._uncheck_ancestor(leaf)
             self.refresh_group_stats()
             return
-        super().change_state(item, state)
+        tags = self.item(item, 'tags')
+        states = ('checked', 'unchecked', 'tristate')
+        new_tags = [t for t in tags if t not in states]
+        new_tags.append(state)
+        icon_key = self._item_icon_keys.get(item)
+        img = self._get_composite_image(state, icon_key) if icon_key else None
+        if img is not None:
+            self.item(item, tags=tuple(new_tags), image=img)
+        else:
+            self.item(item, tags=tuple(new_tags))
 
     def tag_has(self, tag, item=None):
         """Check if an item has a tag, supporting action group names ('copy', 'move', 'delete')."""
