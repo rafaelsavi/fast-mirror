@@ -948,22 +948,22 @@ class ActionSelection:
         if selected:
             item_id = selected[0]
             if item_id in getattr(self.tree, '_folder_nodes', set()):
+                folder_path = getattr(self.tree, '_folder_full_paths', {}).get(item_id, '')
+                if folder_path and os.path.isdir(folder_path):
+                    self._open_path_in_explorer(folder_path)
+                    return
                 leaves = self.tree._folder_leaf_map.get(item_id, [])
                 for lf in leaves:
                     info = getattr(self.tree, '_item_actions', {}).get(lf)
                     if info:
-                        tgt_p = info[2]
-                        if tgt_p and tgt_p not in ('-', '(none)'):
-                            dir_to_open = os.path.dirname(tgt_p)
-                            if os.path.exists(dir_to_open):
-                                self._open_path_in_explorer(dir_to_open)
-                                return
                         src_p = info[1]
                         if src_p and src_p not in ('-', '(none)'):
                             dir_to_open = os.path.dirname(src_p)
-                            if os.path.exists(dir_to_open):
+                            if os.path.isdir(dir_to_open):
                                 self._open_path_in_explorer(dir_to_open)
                                 return
+                if folder_path:
+                    self._open_path_in_explorer(folder_path)
                 return
             item_info = getattr(self.tree, '_item_actions', {}).get(item_id)
             if item_info is not None:

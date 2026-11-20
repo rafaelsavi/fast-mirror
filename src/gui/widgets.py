@@ -1,5 +1,6 @@
 import contextlib
 import os
+import subprocess
 import time
 import tkinter as tk
 from collections.abc import Callable
@@ -40,21 +41,15 @@ class EntryPaths(ScrolledText):
         self.bind('<Button-3>', _show_menu)
 
     def _context_open_explorer(self):
-        line = self.get('insert linestart', 'insert lineend').strip()
+        line = self.get_text('insert linestart', 'insert lineend').strip()
         target = ''
         if ' -> ' in line:
             src, tgt = [p.strip().strip('"\'') for p in line.split(' -> ', 1)]
             target = src if os.path.exists(src) else tgt
         elif os.path.exists(line.strip('"\'')):
             target = line.strip('"\'')
-        if target and os.path.exists(target):
-            with contextlib.suppress(Exception):
-                if hasattr(os, 'startfile'):
-                    os.startfile(target)
-                else:
-                    import subprocess
-
-                    subprocess.Popen(['explorer', target])
+        if target:
+            open_path_in_explorer(target)
 
     def highlight_syntax(self):
         """Apply clean syntax highlighting to source paths, arrows, and target paths."""
@@ -939,14 +934,33 @@ def open_path_in_explorer(path: str) -> None:
     """Reveal a file or nearest existing ancestor directory in Windows Explorer safely without blocking."""
     if not path or path in ('-', '(none)', '(select an item to view path)'):
         return
-    norm_path = os.path.normpath(path)
-    try:
-        import subprocess
 
+    cleaned = path.strip().strip('"')
+    if not cleaned:
+        return
+    if cleaned.startswith('\\\\?\\UNC\\'):
+        cleaned = '\\\\' + cleaned[8:]
+    elif cleaned.startswith('\\\\?\\'):
+        cleaned = cleaned[4:]
+
+    norm_path = os.path.normpath(cleaned)
+    if len(norm_path) == 2 and norm_path[1] == ':':
+        norm_path += '\\'
+
+    def _open_directory(dir_path: str) -> None:
+        if len(dir_path) == 2 and dir_path[1] == ':':
+            dir_path += '\\'
+        if hasattr(os, 'startfile'):
+            os.startfile(dir_path)
+        else:
+            subprocess.Popen(f'explorer.exe "{dir_path}"')
+
+    try:
         if os.path.isfile(norm_path):
-            subprocess.Popen(['explorer.exe', f'/select,{norm_path}'])
+            # Pass a raw command string so CreateProcessW receives /select,"<path>" unquoted
+            subprocess.Popen(f'explorer.exe /select,"{norm_path}"')
         elif os.path.isdir(norm_path):
-            os.startfile(norm_path)
+            _open_directory(norm_path)
         else:
             curr = os.path.dirname(norm_path)
             while curr and not os.path.isdir(curr):
@@ -955,7 +969,7 @@ def open_path_in_explorer(path: str) -> None:
                     break
                 curr = parent
             if curr and os.path.isdir(curr):
-                os.startfile(curr)
+                _open_directory(curr)
             else:
                 logger.warning(f"Neither '{norm_path}' nor an ancestor directory exist on disk.")
     except Exception as e:

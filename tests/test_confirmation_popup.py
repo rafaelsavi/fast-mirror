@@ -1294,8 +1294,12 @@ def test_action_selection_see_in_folder_button(tmp_path, monkeypatch):
         popup.btn_see_in_folder.invoke()
 
         assert len(explorer_calls) == 1
-        assert 'explorer.exe' in explorer_calls[0][0]
-        assert 'folder_test.txt' in explorer_calls[0][1]
+        cmd = explorer_calls[0]
+        assert isinstance(cmd, str)
+        assert cmd.startswith('explorer.exe /select,"')
+        assert '"/select,' not in cmd
+        assert str(f1) in cmd
+        assert cmd.endswith('"')
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
@@ -2407,6 +2411,124 @@ def test_sticky_nested_group_headers_on_scroll_and_interactions(tmp_path, monkey
             assert sh.container.winfo_ismapped() == 0
         finally:
             popup.button_cancel_click()
+    finally:
+        with contextlib.suppress(Exception):
+            root.destroy()
+
+
+def test_open_path_in_explorer_quoting_and_fallbacks(tmp_path, monkeypatch):
+    """Verify open_path_in_explorer avoids quoting /select, and handles spaces, commas, UNC, and ancestors."""
+    from gui.widgets import open_path_in_explorer
+
+    popen_calls: list[object] = []
+    startfile_calls: list[str] = []
+
+    monkeypatch.setattr('subprocess.Popen', lambda cmd, *a, **kw: popen_calls.append(cmd))
+    monkeypatch.setattr('os.startfile', lambda p: startfile_calls.append(p), raising=False)
+
+    # 1. File inside directory with spaces + filename with spaces
+    spaced_dir = tmp_path / '2024-03-24 Official Training'
+    spaced_dir.mkdir()
+    spaced_file = spaced_dir / '20240323_120000 Aftermovie.mp4'
+    spaced_file.write_bytes(b'video')
+
+    open_path_in_explorer(str(spaced_file))
+    assert popen_calls[-1] == f'explorer.exe /select,"{os.path.normpath(str(spaced_file))}"'
+    assert '"/select,' not in str(popen_calls[-1])
+
+    # 2. File containing commas and spaces
+    comma_file = spaced_dir / 'part 1, take 2.jpg'
+    comma_file.write_bytes(b'img')
+    open_path_in_explorer(str(comma_file))
+    assert popen_calls[-1] == f'explorer.exe /select,"{os.path.normpath(str(comma_file))}"'
+
+    # 3. Extended-length local prefix (\\?\) stripped cleanly
+    open_path_in_explorer(f'\\\\?\\{spaced_file}')
+    assert popen_calls[-1] == f'explorer.exe /select,"{os.path.normpath(str(spaced_file))}"'
+
+    # 4. Existing directory opens via os.startfile
+    open_path_in_explorer(str(spaced_dir))
+    assert startfile_calls[-1] == os.path.normpath(str(spaced_dir))
+
+    # 5. Non-existent nested file walks up to nearest existing ancestor directory
+    missing_file = spaced_dir / 'nonexistent_sub' / 'deep' / 'missing.jpg'
+    open_path_in_explorer(str(missing_file))
+    assert startfile_calls[-1] == os.path.normpath(str(spaced_dir))
+
+    # 6. UNC file with spaces + \\?\UNC\ prefix (mocking os.path.isfile for offline UNC)
+    unc_file = r'\\192.168.1.100\Share\2024-03-24 Official Training\photo.jpg'
+    monkeypatch.setattr('os.path.isfile', lambda p: p == unc_file)
+    open_path_in_explorer(unc_file)
+    assert popen_calls[-1] == f'explorer.exe /select,"{unc_file}"'
+
+    open_path_in_explorer(r'\\?\UNC\192.168.1.100\Share\2024-03-24 Official Training\photo.jpg')
+    assert popen_calls[-1] == f'explorer.exe /select,"{unc_file}"'
+
+
+def test_open_selected_folder_node_and_entry_paths_context_explorer(tmp_path, monkeypatch):
+    """Verify folder selection opens that folder and EntryPaths calls open_path_in_explorer."""
+    monkeypatch.setattr('winsound.PlaySound', lambda *args, **kwargs: None)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip('Tkinter display not available')
+
+    try:
+        from gui.widgets import EntryPaths
+
+        src_root = tmp_path / 'src_root'
+        tgt_root = tmp_path / 'tgt_root'
+        src_child = src_root / '2024' / 'Nested Album'
+        tgt_parent = tgt_root / '2024'
+        tgt_child = tgt_parent / 'Nested Album'
+        src_child.mkdir(parents=True)
+        tgt_child.mkdir(parents=True)
+        src_file = src_child / 'photo.jpg'
+        tgt_file = tgt_child / 'photo.jpg'
+        src_file.write_bytes(b'src')
+        tgt_file.write_bytes(b'tgt')
+        # Add another subfolder so '2024' is not compacted with 'Nested Album'
+        src_other = src_root / '2024' / 'Other'
+        tgt_other = tgt_parent / 'Other'
+        src_other.mkdir()
+        tgt_other.mkdir()
+        (src_other / 'b.jpg').write_bytes(b'b')
+        (tgt_other / 'b.jpg').write_bytes(b'b')
+
+        opened_paths: list[str] = []
+        monkeypatch.setattr('gui.widgets.open_path_in_explorer', lambda p: opened_paths.append(p))
+        monkeypatch.setattr('gui.confirmation_popup.open_path_in_explorer', lambda p: opened_paths.append(p))
+
+        popup = ActionSelection(
+            root_gui=root,
+            files_available_to_copy=[
+                (CstmPath(src_file, root_dir=src_root), CstmPath(tgt_file, root_dir=tgt_root)),
+                (CstmPath(src_other / 'b.jpg', root_dir=src_root), CstmPath(tgt_other / 'b.jpg', root_dir=tgt_root)),
+            ],
+            files_available_to_move=[],
+            files_available_to_delete=[],
+            default_actions=[Action.COPY],
+        )
+        try:
+            folder_2024 = next(fid for fid, name in popup.tree._folder_display_names.items() if name.endswith('2024'))
+            popup.tree.selection_set(folder_2024)
+            popup._on_item_selected(None)
+            popup._open_selected_in_folder()
+
+            assert len(opened_paths) == 1
+            assert os.path.normpath(opened_paths[0]) == os.path.normpath(str(tgt_parent))
+        finally:
+            popup.button_cancel_click()
+
+        # Verify EntryPaths._context_open_explorer uses get_text() rather than overridden get()
+        ep = EntryPaths(root)
+        ep.set([(str(src_root), str(tgt_root))])
+        ep.mark_set('insert', '1.0')
+        opened_paths.clear()
+        ep._context_open_explorer()
+        assert len(opened_paths) == 1
+        assert os.path.normpath(opened_paths[0]) == os.path.normpath(str(src_root))
     finally:
         with contextlib.suppress(Exception):
             root.destroy()
